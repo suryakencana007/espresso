@@ -96,12 +96,12 @@ markdown: {
           ]
         }
       ],
-      '/api/': [
+'/api/': [
         {
           text: 'API Reference',
           items: [
             { text: 'Overview', link: '/api/' },
-            { text: 'Handler', link: '/api/handler' },
+            { text: 'Espresso (Core)', link: '/api/espresso' },
             { text: 'Extractor', link: '/api/extractor' },
             { text: 'Middleware - HTTP', link: '/api/middleware-http' },
             { text: 'Middleware - Service', link: '/api/middleware-service' },
