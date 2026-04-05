@@ -4,16 +4,10 @@ Handlers process requests and return responses. Espresso provides coffee-themed 
 
 ## Handler Types
 
-<div class="mermaid-wrapper">
-
-```mermaid
-graph LR
-    A[Ristretto<br/>func Res] -->|0 params| B[Health checks<br/>Static responses]
-    C[Solo<br/>func Req Res] -->|1 param| C[Simple handlers<br/>No context needed]
-    D[Doppio<br/>func ctx Req Res] -->|2 params| D[Production use<br/>Full control]
-```
-
-</div>
+<Mermaid source="graph LR
+    A[Ristretto func Res] -->|0 params| B[Health checks Static responses]
+    C[Solo func Req Res] -->|1 param| D[Simple handlers No context needed]
+    E[Doppio func ctx Req Res] -->|2 params| F[Production use Full control]" />
 
 | Handler | Signature | Use Case |
 |---------|------------|----------|

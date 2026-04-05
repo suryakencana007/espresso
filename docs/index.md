@@ -8,7 +8,7 @@ hero:
   text: Production-grade HTTP Routing Framework for Go
   tagline: Brew robust APIs with the precision of a barista ☕
   image:
-    src: /logo.svg
+    src: /logo.png
     alt: Espresso Logo
   actions:
     - theme: brand
@@ -34,8 +34,6 @@ features:
 ---
 
 <script setup>
-import { VPTeamMembers } from 'vitepress/theme'
-
 const members = [
   {
     avatar: 'https://github.com/suryakencana007.png',
@@ -48,7 +46,7 @@ const members = [
 ]
 </script>
 
-< VPTeamMembers :members="members" />
+<VPTeamMembers :members="members" />
 
 ## Quick Example
 
@@ -131,22 +129,15 @@ Uses sync.Pool for request objects — no allocations per request.
 
 ## Architecture
 
-<div class="mermaid-wrapper">
-
-```mermaid
-graph TB
+<Mermaid source="graph TB
     Request[HTTP Request] --> Middleware[HTTP Middleware]
     Middleware --> Extract[Extractor]
     Extract --> Layers[Service Layers]
     Layers --> Handler[Handler]
     Handler --> Response[HTTP Response]
-    
     Middleware -.->|Use Middleware| M1[RequestID, CORS, RateLimit]
     Layers -.->|WithLayers| L1[Timeout, Retry, CircuitBreaker]
-    Handler -.->|Handler Funcs| H1[Ristretto, Solo, Doppio]
-```
-
-</div>
+    Handler -.->|Handler Funcs| H1[Ristretto, Solo, Doppio]" />
 
 ## Performance
 
