@@ -1,5 +1,4 @@
 import { defineConfig } from 'vitepress'
-import mermaidPlugin from 'vitepress-plugin-mermaid'
 
 export default defineConfig({
   title: 'Espresso',
@@ -9,7 +8,7 @@ export default defineConfig({
   lastUpdated: true,
 
   head: [
-    ['link', { rel: 'icon', href: '/espresso/logo.svg', type: 'image/svg+xml' }],
+    ['link', { rel: 'icon', href: '/logo.png', type: 'image/png' }],
     ['meta', { name: 'theme-color', content: '#8B4513' }],
     ['meta', { property: 'og:title', content: 'Espresso | HTTP Routing Framework for Go' }],
     ['meta', { property: 'og:description', content: 'Production-grade HTTP routing framework for Go, inspired by Axum and Tower' }],
@@ -19,14 +18,11 @@ export default defineConfig({
   ],
 
   markdown: {
-    lineNumbers: true,
-    config: (md) => {
-      md.use(mermaidPlugin)
-    }
+    lineNumbers: true
   },
 
   themeConfig: {
-    logo: '/logo.svg',
+    logo: '/logo.png',
     siteTitle: 'Espresso',
 
     nav: [

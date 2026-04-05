@@ -67,14 +67,12 @@ func handler(ctx context.Context, req *espresso.JSON[Req]) (Res, error) {
 
 ### Mermaid Diagrams
 
-Use Mermaid forarchitecture diagrams:
+Use the Mermaid component for architecture diagrams:
 
-````markdown
-```mermaid
-graph TB
-    Request --> Middleware --> Handler --> Response
+```markdown
+<Mermaid source="graph TB
+    Request --> Middleware --> Handler --> Response" />
 ```
-````
 
 ### API Generation
 

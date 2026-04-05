@@ -9,12 +9,12 @@
     "docs:preview": "vitepress preview docs",
     "docs:gen-api": "go run scripts/gen-api-docs.go"
   },
-  "dependencies": {
+"dependencies": {
+    "mermaid": "^11.4.0",
     "vitepress": "^1.5.0"
   },
   "devDependencies": {
-    "@shikijs/transformers": "^1.0.0",
-    "vitepress-plugin-mermaid": "^2.0.17"
+    "@shikijs/transformers": "^1.0.0"
   },
   "engines": {
     "node": ">=20.0.0"

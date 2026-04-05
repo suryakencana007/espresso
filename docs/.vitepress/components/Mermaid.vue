@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted, watch, nextTick } from 'vue'
 import { useData } from 'vitepress'
 
 const props = defineProps<{
@@ -8,48 +8,36 @@ const props = defineProps<{
 
 const { isDark } = useData()
 const rendered = ref('')
-const Mermaid = ref<any>(null)
+const diagramId = `mermaid-${Math.random().toString(36).substr(2, 9)}`
 
-onMounted(async () => {
+async function renderDiagram() {
   try {
-    const mermaid = await import('mermaid')
-    mermaid.default.initialize({
-      startOnLoad: true,
+    const mermaid = (await import('mermaid')).default
+    mermaid.initialize({
+      startOnLoad: false,
       theme: isDark.value ? 'dark' : 'default',
       securityLevel: 'loose',
       flowchart: {
         useMaxWidth: true,
         htmlLabels: true,
         curve: 'basis'
-      },
-      sequence: {
-        useMaxWidth: true,
-        diagramMarginX: 50,
-        diagramMarginY: 10,
-        actorMargin: 50,
-        width: 150,
-        height: 65
-      },
-      class: {
-        useMaxWidth: true
       }
     })
-
-    const { svg } = await mermaid.default.render('mermaid-' + Math.random().toString(36).substr(2, 9), props.source)
+    const { svg } = await mermaid.render(diagramId, props.source)
     rendered.value = svg
   } catch (e) {
     console.error('Mermaid render error:', e)
-    rendered.value = '<p>Diagram failed to render</p>'
+    rendered.value = '<p style="color: red;">Diagram failed to render</p>'
   }
+}
+
+onMounted(async () => {
+  await nextTick()
+  await renderDiagram()
 })
 
-watch(isDark, async (dark) => {
-  const mermaid = await import('mermaid')
-  mermaid.default.initialize({
-    theme: dark ? 'dark' : 'default'
-  })
-  const { svg } = await mermaid.default.render('mermaid-' + Math.random().toString(36).substr(2, 9), props.source)
-  rendered.value = svg
+watch(isDark, async () => {
+  await renderDiagram()
 })
 </script>
 
@@ -65,9 +53,5 @@ watch(isDark, async (dark) => {
   border-radius: 8px;
   overflow-x: auto;
   text-align: center;
-}
-
-.dark .mermaid-wrapper {
-  background: var(--vp-c-bg-alt);
 }
 </style>

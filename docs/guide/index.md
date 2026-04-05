@@ -1,11 +1,7 @@
 # Introduction
 
-<script setup>
-import { VPIcon } from 'vitepress/theme'
-</script>
-
 <div style="text-align: center; margin-bottom: 2rem;">
-  <img src="/logo.svg" alt="Espresso Logo" style="width: 200px; height: 200px; margin: 0 auto;" />
+  <img src="/logo.png" alt="Espresso Logo" style="width: 200px; height: 200px; margin: 0 auto;" />
 </div>
 
 **Espresso** is a production-grade HTTP routing framework for Go, inspired by [Axum](https://github.com/tokio-rs/axum) (Rust) and [Tower](https://github.com/tower-rs/tower) (Rust).
@@ -95,33 +91,24 @@ func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espress
 
 ## Architecture Overview
 
-<div class="mermaid-wrapper">
-
-```mermaid
-graph TB
-    subgraph "HTTP Layer"
+<Mermaid source="graph TB
+    subgraph HTTP[HTTP Layer]
         Request[HTTP Request]
         MW[Middleware Use]
         Extract[Extractor]
     end
-    
-    subgraph "Service Layer"
+    subgraph Service[Service Layer]
         Layers[WithLayers]
         Handler[Handler]
     end
-    
-    subgraph "Response"
+    subgraph Resp[Response]
         Response[IntoResponse]
     end
-    
     Request --> MW
     MW --> Extract
     Extract --> Layers
     Layers --> Handler
-    Handler --> Response
-```
-
-</div>
+    Handler --> Response" />
 
 ## Next Steps
 

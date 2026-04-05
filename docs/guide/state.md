@@ -6,26 +6,18 @@ Espresso provides **Axum-style state management** with Go-idiomatic `context.Con
 
 State is immutable and thread-safe - perfect for application-wide dependencies like databases, configuration, and loggers.
 
-<div class="mermaid-wrapper">
-
-```mermaid
-graph TB
+<Mermaid source="graph TB
     Router[Router.WithState] -->|inject| MW[Middleware]
     MW -->|context.WithValue| H[Handler]
     H -->|GetState T| S[AppState]
-    
     S --> DB[Database]
     S --> Config[Config]
     S --> Logger[Logger]
-    
-    subgraph "Immutable State"
+    subgraph Immutable[Immutable State]
         DB
         Config
         Logger
-    end
-```
-
-</div>
+    end" />
 
 ## Quick Start
 

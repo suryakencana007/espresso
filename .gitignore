@@ -48,6 +48,11 @@ Thumbs.db
 
 # Environment files
 .env
+
+# VitePress cache and build
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+node_modules/
 .env.local
 .env.*.local
 *.env

@@ -4,30 +4,21 @@
 
 Espresso follows a layered architecture inspired by Axum (Rust):
 
-<div class="mermaid-wrapper">
-
-```mermaid
-graph TB
-    subgraph "HTTP Layer"
+<Mermaid source="graph TB
+    subgraph HTTP[HTTP Layer]
         A[HTTP Request] --> B[HTTP Middleware]
         B --> C[Extractor]
     end
-    
-    subgraph "Service Layer"
+    subgraph Service[Service Layer]
         C --> D[Service Layers]
         D --> E[Handler]
     end
-    
-    subgraph "Response"
+    subgraph Resp[Response]
         E --> F[IntoResponse]
         F --> G[HTTP Response]
     end
-    
     B -.->|RequestID, CORS, Logging| B
-    D -.->|Timeout, Retry, CircuitBreaker| D
-```
-
-</div>
+    D -.->|Timeout, Retry, CircuitBreaker| D" />
 
 ## The Coffee Metaphor
 
@@ -44,16 +35,12 @@ Espresso uses coffee terminology to make the API intuitive:
 
 ## Request Flow
 
-<div class="mermaid-wrapper">
-
-```mermaid
-sequenceDiagram
+<Mermaid source="sequenceDiagram
     participant C as Client
     participant M as Middleware
     participant E as Extractor
     participant S as Service Layers
     participant H as Handler
-    
     C->>M: HTTP Request
     M->>M: RequestID, CORS, RateLimit
     M->>E: Extract Request
@@ -64,10 +51,7 @@ sequenceDiagram
     H->>S: Typed Response
     S->>E: IntoResponse
     E->>M: HTTP Response
-    M->>C: Final Response
-```
-
-</div>
+    M->>C: Final Response" />
 
 ## Handler Types
 
