@@ -42,9 +42,6 @@ jobs:
       - name: Install dependencies
         run: bun install
 
-      - name: Generate API docs
-        run: go run scripts/gen-api-docs.go || true
-
       - name: Build with VitePress
         run: bun run docs:build
 
