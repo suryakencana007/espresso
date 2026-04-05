@@ -1,0 +1,188 @@
+# golangci-lint configuration for espresso
+# https://golangci-lint.run/usage/configuration/
+#
+# Usage:
+#   golangci-lint run ./...              # lint all packages
+#   golangci-lint run --fix ./...       # auto-fix issues
+#   golangci-lint run --fast ./...      # fast mode (skip slow linters)
+
+version: "2"
+
+run:
+  # Concurrency (default is available CPU count)
+  concurrency: 2
+
+  # Timeout for analysis
+  timeout: 5m
+
+  # Include test files
+  tests: true
+
+  # Build tags
+  build-tags:
+    - e2e
+    - integration
+
+  # Go version (major.minor)
+  go: "1.23"
+
+# Linters configuration
+linters:
+  disable:
+    # Windows specific
+    - wsl
+    - wsl_v5
+
+  enable:
+    # Bugs
+    - errcheck # Check for unchecked errors
+    - gochecksumtype # Check for checksum type mismatches
+    - gocritic # Provide diagnostics that check for bugs, performance and style issues
+    - govet # Vet examines Go source code and reports suspicious problems
+    - ineffassign # Detect ineffectual assignments
+    - staticcheck # Go static analysis
+
+    # Complexity
+    - bodyclose # Checks that HTTP response bodies are closed
+    - gocyclo # Compute cyclomatic complexities
+    - godot # Check if comments end in a period
+    - gosec # Inspect source code for security problems
+    - revive # Fast, configurable, extensible, flexible, and beautiful linter
+
+    # Formatting and style
+    - misspell # Find commonly misspelled English words in comments
+    - whitespace # Detection of leading and trailing whitespace
+
+    # Performance
+    - prealloc # Find slice declarations that could potentially be preallocated
+
+    # Unused code
+    - unused # Check Go code for unused constants, variables, functions and types
+    - unparam # Find unused function parameters
+
+  settings:
+    wsl_v5:
+      allow-first-in-block: true
+      allow-whole-block: false
+      branch-max-lines: 2
+      case-max-lines: 0
+      default: all
+
+    errcheck:
+      # Report about not checking of errors in type assertions: `a := b.(MyType)`
+      check-type-assertions: true
+      # Check for ignored errors in assignments with blank identifier: `num, _ = ...`
+      check-blank: false
+
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - opinionated
+        - performance
+      disabled-tags:
+        - experimental
+        - style
+      settings:
+        # Enable specific checks
+        hugeParam:
+          sizeThreshold: 8192 # 8KB threshold for huge parameters
+        rangeValCopy:
+          sizeThreshold: 256
+
+    gocyclo:
+      min-complexity: 15
+
+    gosec:
+      excludes:
+        - G104 # Errors unhandled in main/package (often acceptable for CLIs)
+        - G107 # Url provided to HTTP request as argument
+        - G204 # Audit use of command execution
+        - G307 # Deferring a method which returns an error
+
+    govet:
+      # Enable specific analyzers (remove 'shadow' from disable to enable it)
+      enable:
+        - atomicalign
+      disable:
+        - shadow # Shadowed variables can be intentional
+
+    revive:
+      confidence: 0.8
+      severity: warning
+      rules:
+        - name: var-naming
+          severity: warning
+          disabled: false
+          arguments:
+            - [^ID] # Don't require specific acronyms (ID, URL, etc.)
+        - name: exported
+          severity: warning
+          disabled: false
+        - name: unexported-return
+          severity: warning
+          disabled: true
+        - name: context-as-argument
+          severity: warning
+          disabled: false
+        - name: error-strings
+          severity: warning
+          disabled: false
+        - name: error-naming
+          severity: warning
+          disabled: false
+        - name: receiver-naming
+          severity: warning
+          disabled: false
+        - name: if-return
+          severity: warning
+          disabled: false
+        - name: superfluous-else
+          severity: warning
+          disabled: false
+        - name: confusing-naming
+          severity: warning
+          disabled: true
+        - name: get-return
+          severity: warning
+          disabled: false
+        - name: unused-parameter
+          severity: warning
+          disabled: true # We use unparam for this
+        - name: unused-receiver
+          severity: warning
+          disabled: true
+        - name: indent-error-flow
+          severity: warning
+          disabled: true
+        - name: empty-block
+          severity: warning
+          disabled: false
+
+    staticcheck:
+      checks: ["all"]
+      # To disable specific checks, add them to exclude (e.g., "SA9003", "SA1019")
+      # exclude:
+      #   - "SA9003"  # Depends on loop structure, often FP
+
+    unparam:
+      # Check exported functions
+      check-exported: false
+
+    misspell:
+      locale: US
+      ignore-rules:
+        - somewhow
+        - importas
+
+    prealloc:
+      simple: true
+      range-loops: true
+      for-loops: false
+
+issues:
+  # Show all issues
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  # Don't fail on found issues (use with --out-of-format flag)
+  new: false
+  fix: false
