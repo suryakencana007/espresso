@@ -1,0 +1,122 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Coverage output
+coverage.out
+coverage.html
+coverage.xml
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+go.work.sum
+
+# Build output
+bin/
+dist/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*.swn
+*.bak
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Environment files
+.env
+.env.local
+.env.*.local
+*.env
+
+# Config files with secrets
+config/secrets.yaml
+config/local.yaml
+*.secret
+*.key
+*.pem
+
+# Log files
+*.log
+logs/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Docker
+*.tar
+.docker/
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+
+# Mockery generated files
+mocks/
+
+# Air live reload
+.air.toml
+.tmp/
+
+# Binaries built by Makefile
+/app
+/server
+/cmd/app/app
+/cmd/server/server
+
+# Profiling
+*.prof
+*.pprof
+cpu.prof
+mem.prof
+
+# Test artifacts
+test-results/
+.nyc_output/
+
+# Docker build cache
+.docker/cache/
+
+# Helm charts
+charts/*.tgz
+
+# Node modules (if using frontend tools)
+node_modules/
+
+# Static files (generated)
+static/dist/
+web/dist/
+
+# Cache
+.cache/
