@@ -74,7 +74,7 @@ func WithStateMiddleware[T any](state T) func(http.Handler) http.Handler {
 }
 
 // State is an extractor that provides type-safe access to application state.
-// Similar to Axum's State<S> extractor, but designed for Go.
+// Similar to Axum's `State[S]` extractor, but designed for Go.
 //
 // Example:
 //

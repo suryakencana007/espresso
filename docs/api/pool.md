@@ -31,9 +31,9 @@ func PutBuffer(buf *bytes.Buffer)
 ```
 
 Size buckets:
-- Small: <= 256 bytes
-- Medium: <= 4KB
-- Large: > 4KB
+- Small: less than or equal to 256 bytes
+- Medium: less than or equal to 4KB
+- Large: greater than 4KB
 
 Example:
 ```go

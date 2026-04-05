@@ -63,7 +63,7 @@ func (j *JSON[T]) Reset() {
 
 // Extract implements FromRequest by decoding JSON body into Data.
 // This allows JSON[T] to be used as both a request extractor AND response type,
-// following the Axum pattern where Json<T> works bidirectionally.
+// following the Axum pattern where `Json[T]` works bidirectionally.
 //
 // Example (request extraction):
 //
