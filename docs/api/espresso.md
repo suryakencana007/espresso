@@ -51,6 +51,7 @@ func Ristretto[T any](f func() T) http.HandlerFunc
 ```
 
 Example:
+
 ```go
 router.Get("/health", espresso.Ristretto(func() string {
     return "OK"
@@ -66,6 +67,7 @@ func Solo[T any](f func(context.Context) T) http.HandlerFunc
 ```
 
 Example:
+
 ```go
 router.Get("/time", espresso.Solo(func(ctx context.Context) espresso.Text {
     return espresso.Text{Body: time.Now().String()}
@@ -81,6 +83,7 @@ func Doppio[T any, Req any](f func(context.Context, *Req) T) http.HandlerFunc
 ```
 
 Example:
+
 ```go
 router.Post("/users", espresso.Doppio(createUser))
 
@@ -99,6 +102,7 @@ func Trio[T any, Req1 any, Req2 any](f func(context.Context, *Req1, *Req2) T) ht
 ```
 
 Example:
+
 ```go
 router.Put("/users/{id}", espresso.Trio(updateUser))
 
@@ -172,7 +176,7 @@ func WithServer(srv *http.Server) ServerOption
 
 ### IntoResponse
 
-Response types implement this:
+Response types implement this interface:
 
 ```go
 type IntoResponse interface {
@@ -182,7 +186,7 @@ type IntoResponse interface {
 
 ### FromRequest
 
-Request extractors implement this:
+Request extractors implement this interface:
 
 ```go
 type FromRequest interface {

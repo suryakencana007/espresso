@@ -4,23 +4,23 @@ This directory contains the VitePress documentation site for Espresso.
 
 ## Prerequisites
 
-- Node.js 20+
-- npm or yarn
+- Node.js 20+ or Bun
+- Bun (recommended) or npm/yarn
 
 ## Setup
 
 ```bash
 # Install dependencies
-npm install
+bun install
 
 # Run development server
-npm run docs:dev
+bun run docs:dev
 
 # Build for production
-npm run docs:build
+bun run docs:build
 
 # Preview production build
-npm run docs:preview
+bun run docs:preview
 ```
 
 ## Structure
