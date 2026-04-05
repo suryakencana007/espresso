@@ -414,6 +414,233 @@ app.Post("/users", espresso.WithLayers(createUser, commonLayers...))
 
 ---
 
+## Dependency Injection (State Management)
+
+Espresso provides **Axum-style state management** with Go-idiomatic context-based approach.
+
+### Quick Start
+
+```go
+// Define your application state
+type AppState struct {
+    DB     *sql.DB
+    Config Config
+    Logger zerolog.Logger
+}
+
+// Provide state to router
+func main() {
+    appState := AppState{
+        DB:     db,
+        Config: config,
+        Logger: logger,
+    }
+
+    espresso.Portafilter().
+        WithState(appState).                    // Inject state
+        Get("/users", espresso.Doppio(getUsers)).
+        Post("/users", espresso.Doppio(createUser)).
+        Brew(espresso.WithAddr(":8080"))
+}
+
+// Access state in handlers
+func getUsers(ctx context.Context, req *espresso.JSON[GetUsersReq]) (espresso.JSON[UsersRes], error) {
+    // Method 1: GetState (returns state and boolean)
+    state, ok := espresso.GetState[AppState](ctx)
+    if !ok {
+        return espresso.JSON[UsersRes]{}, errors.New("state not found")
+    }
+    
+    users := state.DB.FindAllUsers()
+    return espresso.JSON[UsersRes]{Data: users}, nil
+}
+
+func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[UserRes], error) {
+    // Method 2: MustGetState (panics if not found - use when state is guaranteed)
+    state := espresso.MustGetState[AppState](ctx)
+    
+    user := state.DB.CreateUser(req.Data)
+    return espresso.JSON[UserRes]{Data: user}, nil
+}
+```
+
+### Three Ways to Use State
+
+#### 1. Context-Based (Recommended)
+
+```go
+func handler(ctx context.Context, req *espresso.JSON[Req]) (Res, error) {
+    state := espresso.MustGetState[AppState](ctx)
+    db := state.DB
+    // use state...
+}
+```
+
+**Advantages:**
+- ✅ Zero breaking changes to existing handlers
+- ✅ Works with all existing handler signatures
+- ✅ Most Go-idiomatic approach
+- ✅ No extra handler parameters needed
+
+#### 2. State Extractor (Axum-style)
+
+```go
+func handler(ctx context.Context, req *espresso.JSON[Req], 
+             state espresso.State[AppState]) (Res, error) {
+    db := state.Data.DB
+    // use state...
+}
+```
+
+**Advantages:**
+- ✅ Similar to Axum's `State<S>` extractor
+- ✅ Explicit dependency in handler signature
+- ✅ Type-safe at compile time
+
+#### 3. Substate Pattern
+
+```go
+// Extract substate from parent state
+func handler(ctx context.Context, req *espresso.JSON[Req]) (Res, error) {
+    db, ok := espresso.FromState[AppState, *sql.DB](ctx, func(s AppState) *sql.DB {
+        return s.DB
+    })
+    if !ok {
+        return Res{}, errors.New("database not found")
+    }
+    // use db...
+}
+```
+
+### Middleware State Injection
+
+```go
+// Via router method (fluent API)
+router := espresso.Portafilter().
+    WithState(appState).
+    Get("/api/users", handler)
+
+// Via middleware (manual)
+router := espresso.Portafilter()
+router.Use(espresso.WithStateMiddleware(appState))
+router.Get("/api/users", handler)
+```
+
+### Immutable State Pattern
+
+State is immutable and thread-safe by design:
+
+```go
+type AppState struct {
+    DB     *sql.DB          // Thread-safe
+    Config Config            // Immutable after creation
+    Cache  *sync.Map         // Thread-safe map
+}
+
+// ❌ Don't: Mutable state without synchronization
+type BadState struct {
+    Counter int  // NOT thread-safe!
+}
+
+// ✅ Do: Use sync primitives for mutable state
+type GoodState struct {
+    Counter *atomic.Int64  // Thread-safe
+}
+```
+
+### Shared Mutable State
+
+For mutable state, use Go's synchronization primitives:
+
+```go
+type AppState struct {
+    DB     *sql.DB
+    Counter *atomic.Int64      // Atomic counter
+    Cache  *sync.Map           // Thread-safe map
+    Mu     sync.RWMutex        // Mutex for complex state
+    Data   map[string]string   // Protected by Mu
+}
+
+func (s *AppState) Increment() {
+    s.Counter.Add(1)
+}
+
+func (s *AppState) GetData(key string) (string, bool) {
+    s.Mu.RLock()
+    defer s.Mu.RUnlock()
+    val, ok := s.Data[key]
+    return val, ok
+}
+```
+
+### Complete Example
+
+```go
+package main
+
+import (
+    "context"
+    "database/sql"
+    "net/http"
+    
+    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/extractor"
+    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+)
+
+type AppState struct {
+    DB     *sql.DB
+    Config Config
+}
+
+type Config struct {
+    Port int
+    Env  string
+}
+
+type CreateUserReq struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+func main() {
+    db := initDB()
+    config := loadConfig()
+    
+    appState := AppState{DB: db, Config: config}
+
+    espresso.Portafilter().
+        Use(httpmiddleware.RequestIDMiddleware()).
+        Use(httpmiddleware.RecoverMiddleware()).
+        WithState(appState).                    // Inject state
+        Get("/users/{id}", getUser).
+        Post("/users", createUser).
+        Brew(espresso.WithAddr(":8080"))
+}
+
+func getUser(ctx context.Context, req *extractor.Path[struct{ ID int `path:"id"` }]) (espresso.JSON[User], error) {
+    state := espresso.MustGetState[AppState](ctx)
+    
+    user, err := state.DB.FindUser(req.Data.ID)
+    if err != nil {
+        return espresso.JSON[User]{}, err
+    }
+    return espresso.JSON[User]{Data: user}, nil
+}
+
+func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
+    state := espresso.MustGetState[AppState](ctx)
+    
+    user, err := state.DB.CreateUser(req.Data.Name, req.Data.Email)
+    if err != nil {
+        return espresso.JSON[User]{}, err
+    }
+    return espresso.JSON[User]{Data: user}, nil
+}
+```
+
+---
+
 ## Object Pooling
 
 Reduce GC pressure with object pools:
