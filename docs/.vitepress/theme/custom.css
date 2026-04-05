@@ -1,0 +1,158 @@
+/**
+ * Espresso Documentation Theme
+ * Coffee-inspired colors with modern dark mode support
+ */
+
+:root {
+  /* Coffee color palette */
+  --vp-c-brand-1: #8B4513;
+  --vp-c-brand-2: #A0522D;
+  --vp-c-brand-3: #D2691E;
+  --vp-c-brand-soft: #D2691E20;
+
+  /* Coffee accent colors */
+  --vp-c-coffee-light: #C4A484;
+  --vp-c-coffee-medium: #8B4513;
+  --vp-c-coffee-dark: #5C4033;
+  --vp-c-coffee-darker: #3E2723;
+
+  /* Custom block colors */
+  --vp-custom-block-tip-border: #8B4513;
+  --vp-custom-block-tip-text: #8B4513;
+  --vp-custom-block-tip-bg: #D2691E10;
+
+  /* Sidebar */
+  --vp-sidebar-width: 280px;
+}
+
+.dark {
+  --vp-c-brand-1: #C4A484;
+  --vp-c-brand-2: #D2691E;
+  --vp-c-brand-3: #8B4513;
+  --vp-c-brand-soft: #C4A48420;
+
+  --vp-custom-block-tip-border: #C4A484;
+  --vp-custom-block-tip-text: #C4A484;
+  --vp-custom-block-tip-bg: #C4A48410;
+}
+
+/* Logo */
+.VPNavBarTitle .logo {
+  height: 32px;
+  width: 32px;
+}
+
+.VPNavBarTitle .text {
+  font-weight: 700;
+  background: linear-gradient(120deg, var(--vp-c-brand-1) 0%, var(--vp-c-brand-2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* Hero section */
+.VPHero .name {
+  background: linear-gradient(120deg, var(--vp-c-brand-1) 0%, var(--vp-c-brand-2) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.VPHero .tagline {
+  color: var(--vp-c-text-2);
+}
+
+/* Feature sections */
+.VPFeature {
+  border-radius: 12px;
+}
+
+.VPFeature:hover {
+  border-color: var(--vp-c-brand-2);
+}
+
+/* Code blocks */
+.vp-code-group .tabs label {
+  font-weight: 500;
+}
+
+/* Mermaid diagrams */
+.mermaid {
+  text-align: center;
+  margin: 1.5rem auto;
+  padding: 1rem;
+  background: var(--vp-c-bg-soft);
+  border-radius: 8px;
+  overflow-x: auto;
+}
+
+.dark .mermaid {
+  background: var(--vp-c-bg-alt);
+}
+
+/* Custom container for code examples */
+.custom-block.code-example {
+  margin: 1rem 0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+/* API signatures */
+.api-signature {
+  font-family: var(--vp-font-family-mono);
+  font-size: 0.9em;
+  background: var(--vp-c-bg-soft);
+  padding: 1rem 1.25rem;
+  border-radius: 6px;
+  margin: 0.5rem 0;
+}
+
+/* Tables */
+.vp-doc table {
+  width: 100%;
+  display: table;
+}
+
+.vp-doc th {
+  background: var(--vp-c-bg-soft);
+}
+
+/* Badges */
+.badge {
+  display: inline-block;
+  padding: 0.125rem 0.5rem;
+  border-radius: 0.25rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  margin-left: 0.5rem;
+}
+
+.badge.tip {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+}
+
+.badge.warning {
+  background: #F59E0B20;
+  color: #F59E0B;
+}
+
+.badge.danger {
+  background: #EF444420;
+  color: #EF4444;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .VPDoc .content-container {
+    padding-left: 16px;
+    padding-right: 16px;
+  }
+}
+
+/* Print styles */
+@media print {
+  .VPNav,
+  .VPLocalNav,
+  .VPFooter {
+    display: none;
+  }
+}
