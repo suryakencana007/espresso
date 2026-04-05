@@ -259,7 +259,631 @@ func TestInvalidTypeError(t *testing.T) {
 	}
 }
 
+func TestQueryExtractor_UintTypes(t *testing.T) {
+	type TestReq struct {
+		ID    uint   `query:"id"`
+		Count uint64 `query:"count"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?id=42&count=100", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("QueryExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.ID != 42 {
+		t.Errorf("expected ID 42, got %d", ext.Data.ID)
+	}
+	if ext.Data.Count != 100 {
+		t.Errorf("expected Count 100, got %d", ext.Data.Count)
+	}
+}
+
+func TestQueryExtractor_FloatTypes(t *testing.T) {
+	type TestReq struct {
+		Price float32 `query:"price"`
+		Rate  float64 `query:"rate"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?price=19.99&rate=3.14159", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("QueryExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.Price != 19.99 {
+		t.Errorf("expected Price 19.99, got %f", ext.Data.Price)
+	}
+	if ext.Data.Rate != 3.14159 {
+		t.Errorf("expected Rate 3.14159, got %f", ext.Data.Rate)
+	}
+}
+
+func TestQueryExtractor_BoolTypes(t *testing.T) {
+	type TestReq struct {
+		Active  bool `query:"active"`
+		Enabled bool `query:"enabled"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?active=true&enabled=false", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("QueryExtractor.Extract() error = %v", err)
+	}
+
+	if !ext.Data.Active {
+		t.Errorf("expected Active true, got %v", ext.Data.Active)
+	}
+	if ext.Data.Enabled {
+		t.Errorf("expected Enabled false, got %v", ext.Data.Enabled)
+	}
+}
+
+func TestQueryExtractor_IntConversionError(t *testing.T) {
+	type TestReq struct {
+		Age int `query:"age"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?age=invalid", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for invalid integer")
+	}
+
+	var typeErr *TypeConversionError
+	if err != nil {
+		if te, ok := err.(*TypeConversionError); ok {
+			typeErr = te
+		}
+	}
+	if typeErr == nil {
+		t.Errorf("expected TypeConversionError, got %T", err)
+	}
+}
+
+func TestQueryExtractor_FloatConversionError(t *testing.T) {
+	type TestReq struct {
+		Price float64 `query:"price"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?price=invalid", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for invalid float")
+	}
+}
+
+func TestQueryExtractor_BoolConversionError(t *testing.T) {
+	type TestReq struct {
+		Active bool `query:"active"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?active=invalid", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for invalid boolean")
+	}
+}
+
+func TestQueryExtractor_UintConversionError(t *testing.T) {
+	type TestReq struct {
+		ID uint `query:"id"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?id=invalid", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for invalid uint")
+	}
+}
+
+func TestQueryExtractor_NegativeInt(t *testing.T) {
+	type TestReq struct {
+		Value int `query:"value"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?value=-42", nil)
+	ext := &QueryExtractor[TestReq]{}
+
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("QueryExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.Value != -42 {
+		t.Errorf("expected Value -42, got %d", ext.Data.Value)
+	}
+}
+
+func TestFormExtractor_RequiredField(t *testing.T) {
+	type TestReq struct {
+		Required string `form:"required,required"`
+		Optional string `form:"optional"`
+	}
+
+	body := "optional=value"
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	ext := &FormExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for missing required field")
+	}
+}
+
+func TestFormExtractor_InvalidFormData(t *testing.T) {
+	type TestReq struct {
+		Name string `form:"name"`
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader("invalid%form"))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	ext := &FormExtractor[TestReq]{}
+	// This should still work - Go's ParseForm is lenient
+	_ = ext.Extract(req)
+}
+
+func TestFormExtractor_IntTypes(t *testing.T) {
+	type TestReq struct {
+		Age   int `form:"age"`
+		Count int `form:"count"`
+	}
+
+	body := "age=25&count=100"
+	req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	ext := &FormExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("FormExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.Age != 25 {
+		t.Errorf("expected Age 25, got %d", ext.Data.Age)
+	}
+}
+
+func TestFormExtractor_Reset(t *testing.T) {
+	type TestReq struct {
+		Name string `form:"name"`
+	}
+
+	ext := &FormExtractor[TestReq]{Data: TestReq{Name: "test"}}
+	ext.Reset()
+
+	if ext.Data.Name != "" {
+		t.Errorf("expected empty Name after reset, got '%s'", ext.Data.Name)
+	}
+}
+
+func TestPathExtractor_RequiredField(t *testing.T) {
+	type TestReq struct {
+		ID string `path:"id,required"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/users/", nil)
+	// Don't set path value - should error on required field
+
+	ext := &PathExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for missing required path field")
+	}
+}
+
+func TestPathExtractor_IntTypes(t *testing.T) {
+	type TestReq struct {
+		ID int `path:"id"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/users/123", nil)
+	req.SetPathValue("id", "123")
+
+	ext := &PathExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("PathExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.ID != 123 {
+		t.Errorf("expected ID 123, got %d", ext.Data.ID)
+	}
+}
+
+func TestPathExtractor_Reset(t *testing.T) {
+	type TestReq struct {
+		ID string `path:"id"`
+	}
+
+	ext := &PathExtractor[TestReq]{Data: TestReq{ID: "123"}}
+	ext.Reset()
+
+	if ext.Data.ID != "" {
+		t.Errorf("expected empty ID after reset, got '%s'", ext.Data.ID)
+	}
+}
+
+func TestHeaderExtractor_RequiredField(t *testing.T) {
+	type TestReq struct {
+		Token string `header:"Authorization,required"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	// Don't set header - should error on required field
+
+	ext := &HeaderExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for missing required header")
+	}
+}
+
+func TestHeaderExtractor_IntTypes(t *testing.T) {
+	type TestReq struct {
+		Count int `header:"X-Count"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("X-Count", "42")
+
+	ext := &HeaderExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("HeaderExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.Count != 42 {
+		t.Errorf("expected Count 42, got %d", ext.Data.Count)
+	}
+}
+
+func TestHeaderExtractor_Reset(t *testing.T) {
+	type TestReq struct {
+		Token string `header:"Authorization"`
+	}
+
+	ext := &HeaderExtractor[TestReq]{Data: TestReq{Token: "test"}}
+	ext.Reset()
+
+	if ext.Data.Token != "" {
+		t.Errorf("expected empty Token after reset, got '%s'", ext.Data.Token)
+	}
+}
+
+func TestRawBodyExtractor_LargeBody(t *testing.T) {
+	largeBody := make([]byte, 100*1024) // 100KB
+	for i := range largeBody {
+		largeBody[i] = 'x'
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader(largeBody))
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	ext := &RawBodyExtractor{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("RawBodyExtractor.Extract() error = %v", err)
+	}
+
+	if len(ext.Data) != len(largeBody) {
+		t.Errorf("expected body length %d, got %d", len(largeBody), len(ext.Data))
+	}
+
+	// Test reset of large body (> 64KB threshold)
+	ext.Reset()
+	if ext.Data != nil {
+		t.Errorf("expected nil Data after reset of large body, got len %d", len(ext.Data))
+	}
+}
+
+func TestXMLExtractor_Reset(t *testing.T) {
+	type TestReq struct {
+		Name string `xml:"name"`
+	}
+
+	ext := &XMLExtractor[TestReq]{Data: TestReq{Name: "test"}}
+	ext.Reset()
+
+	if ext.Data.Name != "" {
+		t.Errorf("expected empty Name after reset, got '%s'", ext.Data.Name)
+	}
+}
+
+func TestXMLExtractor_WriteResponse(t *testing.T) {
+	type TestReq struct {
+		Name string `xml:"name"`
+	}
+
+	ext := &XMLExtractor[TestReq]{Data: TestReq{Name: "john"}}
+
+	rec := httptest.NewRecorder()
+	err := ext.WriteResponse(rec)
+	if err != nil {
+		t.Errorf("XMLExtractor.WriteResponse() error = %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+
+	if rec.Header().Get("Content-Type") != "application/xml" {
+		t.Errorf("expected Content-Type 'application/xml', got '%s'", rec.Header().Get("Content-Type"))
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "john") {
+		t.Errorf("expected body to contain 'john', got '%s'", body)
+	}
+}
+
+func TestXMLExtractor_WriteResponseWithStatus(t *testing.T) {
+	type StatusReq struct {
+		Name string `xml:"name"`
+	}
+
+	ext := &XMLExtractor[StatusReq]{Data: StatusReq{Name: "test"}}
+
+	rec := httptest.NewRecorder()
+	err := ext.WriteResponse(rec)
+	if err != nil {
+		t.Errorf("XMLExtractor.WriteResponse() error = %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status 200, got %d", rec.Code)
+	}
+}
+
+func TestFieldErrors_Empty(t *testing.T) {
+	errors := FieldErrors{}
+
+	if errors.Error() != "validation errors" {
+		t.Errorf("expected 'validation errors', got '%s'", errors.Error())
+	}
+}
+
+func TestFieldErrors_Single(t *testing.T) {
+	errors := FieldErrors{
+		{Field: "name", Message: "required"},
+	}
+
+	if errors.Error() != "required" {
+		t.Errorf("expected 'required', got '%s'", errors.Error())
+	}
+}
+
+func TestFieldErrors_AddFieldError(t *testing.T) {
+	errors := NewFieldErrors()
+	_ = errors.AddFieldError("name", "required", nil)
+	_ = errors.AddFieldError("email", "invalid", "test@example.com", "user")
+
+	if len(*errors) != 2 {
+		t.Errorf("expected 2 errors, got %d", len(*errors))
+	}
+
+	if (*errors)[0].Field != "name" {
+		t.Errorf("expected field 'name', got '%s'", (*errors)[0].Field)
+	}
+
+	if (*errors)[1].Path != "user" {
+		t.Errorf("expected path 'user', got '%s'", (*errors)[1].Path)
+	}
+}
+
+func TestUnsupportedTypeError(t *testing.T) {
+	err := &UnsupportedTypeError{
+		Field:    "data",
+		Expected: "string",
+		Actual:   "map",
+	}
+
+	if err.Error() == "" {
+		t.Error("expected non-empty error message")
+	}
+
+	fieldErr := err.ToFieldError()
+	if fieldErr.Field != "data" {
+		t.Errorf("expected Field 'data', got '%s'", fieldErr.Field)
+	}
+}
+
+func TestUnsupportedTypeError_NoField(t *testing.T) {
+	err := &UnsupportedTypeError{
+		Expected: "string",
+		Actual:   "map",
+	}
+
+	if !strings.Contains(err.Error(), "unsupported type") {
+		t.Errorf("expected 'unsupported type' in error, got '%s'", err.Error())
+	}
+}
+
+func TestTypeConversionError_NoField(t *testing.T) {
+	err := &TypeConversionError{
+		Expected: "int",
+		Actual:   "string",
+		Value:    "abc",
+	}
+
+	if !strings.Contains(err.Error(), "cannot convert") {
+		t.Errorf("expected 'cannot convert' in error, got '%s'", err.Error())
+	}
+}
+
+func TestTypeConversionError_WithField(t *testing.T) {
+	err := &TypeConversionError{
+		Field:    "age",
+		Expected: "int",
+		Actual:   "string",
+		Value:    "abc",
+	}
+
+	if !strings.Contains(err.Error(), "field 'age'") {
+		t.Errorf("expected 'field' in error, got '%s'", err.Error())
+	}
+}
+
+func TestGetValueFromCache(t *testing.T) {
+	type TestReq struct {
+		Name string `query:"name"`
+	}
+
+	// First call - should populate cache
+	req1 := httptest.NewRequest(http.MethodGet, "/test?name=test1", nil)
+	ext1 := &QueryExtractor[TestReq]{}
+	_ = ext1.Extract(req1)
+
+	// Second call - should use cache
+	req2 := httptest.NewRequest(http.MethodGet, "/test?name=test2", nil)
+	ext2 := &QueryExtractor[TestReq]{}
+	err := ext2.Extract(req2)
+	if err != nil {
+		t.Errorf("QueryExtractor.Extract() error = %v", err)
+	}
+
+	if ext2.Data.Name != "test2" {
+		t.Errorf("expected Name 'test2', got '%s'", ext2.Data.Name)
+	}
+}
+
+func TestUnexportedField(t *testing.T) {
+	type TestReq struct {
+		_    string `query:"-"`
+		Name string `query:"name"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?name=test", nil)
+	ext := &QueryExtractor[TestReq]{}
+	// Should not error, just skip unexported field
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
+func TestIgnoredField(t *testing.T) {
+	type TestReq struct {
+		Name string `query:"-"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?name=test", nil)
+	ext := &QueryExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("unexpected error: %v", err)
+	}
+
+	// Field should remain empty (ignored)
+	if ext.Data.Name != "" {
+		t.Errorf("expected empty Name for ignored field, got '%s'", ext.Data.Name)
+	}
+}
+
+func TestPathParams_Empty(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	retrieved := GetPathParams(req)
+
+	if retrieved == nil {
+		t.Error("expected non-nil PathParams")
+	}
+
+	if len(retrieved) != 0 {
+		t.Errorf("expected empty PathParams, got %d items", len(retrieved))
+	}
+}
+
+func TestFieldErrors_Multiple(t *testing.T) {
+	errors := FieldErrors{
+		{Field: "name", Message: "required"},
+		{Field: "email", Message: "invalid"},
+		{Field: "age", Message: "must be positive"},
+	}
+
+	if errors.Error() != "3 validation errors" {
+		t.Errorf("expected '3 validation errors', got '%s'", errors.Error())
+	}
+}
+
 func BenchmarkQueryExtractor_Extract(b *testing.B) {
+	type TestReq struct {
+		Name  string `query:"name"`
+		Email string `query:"email"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test?name=john&email=john@example.com", nil)
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ext := &QueryExtractor[TestReq]{}
+		_ = ext.Extract(req)
+	}
+}
+
+func BenchmarkFormExtractor_Extract(b *testing.B) {
+	type TestReq struct {
+		Username string `form:"username"`
+		Password string `form:"password"`
+	}
+
+	body := "username=john&password=secret"
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		ext := &FormExtractor[TestReq]{}
+		_ = ext.Extract(req)
+	}
+}
+
+func BenchmarkPathExtractor_Extract(b *testing.B) {
+	type TestReq struct {
+		ID int `path:"id"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/users/123", nil)
+	req.SetPathValue("id", "123")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ext := &PathExtractor[TestReq]{}
+		_ = ext.Extract(req)
+	}
+}
+
+func BenchmarkHeaderExtractor_Extract(b *testing.B) {
+	type TestReq struct {
+		Auth string `header:"Authorization"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.Header.Set("Authorization", "Bearer token123")
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ext := &HeaderExtractor[TestReq]{}
+		_ = ext.Extract(req)
+	}
+}
+
+func BenchmarkCachedFields(b *testing.B) {
 	type TestReq struct {
 		Name  string `query:"name"`
 		Email string `query:"email"`
