@@ -29,6 +29,7 @@ import "net/http"
 type Router struct {
 	mux        *http.ServeMux
 	middleware []func(http.Handler) http.Handler
+	state      any
 }
 
 // Portafilter creates a new Router with an initialized ServeMux.
@@ -55,6 +56,29 @@ func Portafilter() *Router {
 //	router.Use(httpmiddleware.CORSMiddleware(httpmiddleware.DefaultCORSConfig))
 func (r *Router) Use(mw ...func(http.Handler) http.Handler) *Router {
 	r.middleware = append(r.middleware, mw...)
+	return r
+}
+
+// WithState adds application state to the router context.
+// State is immutable and available to all handlers via GetState[T] or State[T] extractor.
+// This is the recommended way to provide application-wide dependencies (DB, config, etc.).
+//
+// Example:
+//
+//	appState := AppState{DB: db, Config: config}
+//	router := espresso.Portafilter().
+//	    WithState(appState).
+//	    Get("/users", espresso.Doppio(getUsers))
+//
+//	// In handler:
+//	func getUsers(ctx context.Context, req *espresso.JSON[Req]) (Res, error) {
+//	    state := espresso.MustGetState[AppState](ctx)
+//	    users := state.DB.FindAllUsers()
+//	    return Res{Data: users}, nil
+//	}
+func (r *Router) WithState(state any) *Router {
+	r.state = state
+	r.middleware = append([]func(http.Handler) http.Handler{WithStateMiddleware(state)}, r.middleware...)
 	return r
 }
 
