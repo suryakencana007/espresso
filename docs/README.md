@@ -90,8 +90,8 @@ Workflow: `.github/workflows/docs.yml`
 
 ## Local Development
 
-1. Install dependencies: `npm install`
-2. Start dev server: `npm run docs:dev`
+1. Install dependencies: `bun install`
+2. Start dev server: `bun run docs:dev`
 3. Open http://localhost:5173/espresso/
 
 ## Customization
@@ -114,5 +114,5 @@ Edit `.vitepress/config.ts` to update navigation and sidebar.
 ## Contributing
 
 1. Edit `.md` files in `docs/` directory
-2. Run `npm run docs:build` to verify build
+2. Run `bun run docs:build` to verify build
 3. Submit PR with changes

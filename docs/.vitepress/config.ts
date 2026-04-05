@@ -17,9 +17,11 @@ export default defineConfig({
     ['meta', { property: 'og:image', content: 'https://suryakencana007.github.io/espresso/logo.png' }],
   ],
 
-  markdown: {
+markdown: {
     lineNumbers: true
   },
+
+  ignoreDeadLinks: true,
 
   themeConfig: {
     logo: '/logo.png',
