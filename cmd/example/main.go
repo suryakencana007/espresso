@@ -44,6 +44,13 @@ type CreateUserReq struct {
 	Email string `json:"email"`
 }
 
+// UpdateUserReq is used for updating user via JSON body.
+// Demonstrates JSON extraction with Doppio and Lungo handlers.
+type UpdateUserReq struct {
+	Name  string `json:"name"`
+	Email string `json:"email"`
+}
+
 // SearchReq demonstrates query parameter extraction.
 // Use struct tags with `query:"name"` - supports required fields with ",required".
 type SearchReq struct {
@@ -162,6 +169,22 @@ func main() {
 
 		Post("/api/users", espresso.WithLayers(createUserJSON, userLayers...)).
 		Get("/api/users/{id}", espresso.WithLayers(getUserWithState, userLayers...)).
+
+		// ============================================
+		// Lungo Example: Path + JSON Body
+		// ============================================
+		// PUT /api/users/{id} - Update user by ID with body
+		// Lungo extracts both path params AND JSON body
+
+		Put("/api/users/{id}", espresso.Lungo(updateUserLungo)).
+
+		// ============================================
+		// Doppio Example: JSON Body Only
+		// ============================================
+		// POST /api/users/update - Update user with body only
+		// Doppio extracts only JSON body (no path extraction)
+
+		Post("/api/users/update", espresso.Doppio(updateUserDoppio)).
 		Get("/api/search", espresso.WithLayers(searchQuery, commonLayers...)).
 
 		// ============================================
@@ -248,6 +271,72 @@ func getUserWithState(ctx context.Context, req *extractor.Path[UserPathReq]) (es
 		Data: UserRes{
 			Message: fmt.Sprintf("User %d (env: %s)", userID, state.Config.Env),
 			UserID:  userID,
+		},
+	}, nil
+}
+
+// updateUserLungo demonstrates Lungo handler with path + JSON body extraction.
+// PUT /api/users/{id} - Update user by ID with request body.
+// Requires 3 params: context, *Path (path params), *JSON (body).
+func updateUserLungo(ctx context.Context, path *extractor.Path[UserPathReq], body *espresso.JSON[UpdateUserReq]) (espresso.JSON[UserRes], error) {
+	// Access application state
+	state := espresso.MustGetState[AppState](ctx)
+
+	// Path parameter (already typed as int)
+	userID := path.Data.ID
+
+	// JSON body (already decoded)
+	req := body.Data
+
+	// Real-world example:
+	// _, err := state.DB.Exec("UPDATE users SET name=?, email=? WHERE id=?", req.Name, req.Email, userID)
+	// if err != nil {
+	//     return espresso.JSON[UserRes]{}, err
+	// }
+
+	log.Info().
+		Int("user_id", userID).
+		Str("name", req.Name).
+		Str("email", req.Email).
+		Msg("updating user")
+
+	return espresso.JSON[UserRes]{
+		StatusCode: http.StatusOK,
+		Data: UserRes{
+			Message: fmt.Sprintf("User %d updated: name=%s, email=%s (env: %s)",
+				userID, req.Name, req.Email, state.Config.Env),
+			UserID: userID,
+		},
+	}, nil
+}
+
+// updateUserDoppio demonstrates Doppio handler with JSON body only (no path extraction).
+// POST /api/users/update - Update user with request body only.
+// Requires 2 params: context, *JSON (body).
+// Note: Path parameters not extracted - use when ID comes from body or query.
+func updateUserDoppio(ctx context.Context, body *espresso.JSON[UpdateUserReq]) (espresso.JSON[UserRes], error) {
+	// Access application state
+	state := espresso.MustGetState[AppState](ctx)
+
+	// JSON body only (no path params)
+	req := body.Data
+
+	// Real-world example:
+	// _, err := state.DB.Exec("UPDATE users SET name=?, email=? WHERE email=?", req.Name, req.Email, req.Email)
+	// if err != nil {
+	//     return espresso.JSON[UserRes]{}, err
+	// }
+
+	log.Info().
+		Str("name", req.Name).
+		Str("email", req.Email).
+		Msg("updating user (body only)")
+
+	return espresso.JSON[UserRes]{
+		StatusCode: http.StatusOK,
+		Data: UserRes{
+			Message: fmt.Sprintf("User updated: name=%s, email=%s (env: %s)",
+				req.Name, req.Email, state.Config.Env),
 		},
 	}, nil
 }
