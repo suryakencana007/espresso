@@ -48,6 +48,10 @@ var handlerCache sync.Map // map[reflect.Type]*handlerInfo
 //	func(context.Context, *Req) T
 //		- Receives context and extracted Req, returns T
 //
+//	func(context.Context, *Req1, *Req2) (T, error)
+//		- Receives context and two extracted requests (e.g., path + body)
+//		- Use Lungo() alias for this signature
+//
 // Service interface:
 //
 //	Any struct implementing Service[*Req, Res] will have its Call method invoked
@@ -139,6 +143,117 @@ func HandlerCtxReqErr[Req FromRequest, Res IntoResponse](fn func(context.Context
 			return
 		}
 
+		if err := res.WriteResponse(w); err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
+// HandlerCtxReq1Req2Err creates a handler for func(context.Context, *Req1, *Req2) (Res, error).
+// Use when you need two extractors (e.g., path params AND request body).
+//
+// Example:
+//
+//	app.Put("/users/{id}", HandlerCtxReq1Req2Err(updateUser))
+//
+//	func updateUser(ctx context.Context, path *Path[UserPath], body *JSON[UpdateReq]) (JSON[User], error) {
+//	    id := path.Data.ID
+//	    req := body.Data
+//	    return JSON[User]{Data: user}, nil
+//	}
+func HandlerCtxReq1Req2Err[Req1 FromRequest, Req2 FromRequest, Res IntoResponse](
+	fn func(context.Context, Req1, Req2) (Res, error),
+) http.HandlerFunc {
+	pool1 := &sync.Pool{
+		New: func() any {
+			var zero Req1
+			return newReq(zero)
+		},
+	}
+	pool2 := &sync.Pool{
+		New: func() any {
+			var zero Req2
+			return newReq(zero)
+		},
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		req1 := pool1.Get().(Req1) //nolint:errcheck // poolNew returns correct type
+		req2 := pool2.Get().(Req2) //nolint:errcheck // poolNew returns correct type
+		defer func() {
+			resetReq(req1)
+			resetReq(req2)
+			pool1.Put(req1)
+			pool2.Put(req2)
+		}()
+
+		if err := req1.Extract(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := req2.Extract(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		res, err := fn(r.Context(), req1, req2)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		if err := res.WriteResponse(w); err != nil {
+			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		}
+	}
+}
+
+// HandlerCtxReq1Req2 creates a handler for func(context.Context, *Req1, *Req2) Res.
+// Use when you need two extractors and don't return errors.
+//
+// Example:
+//
+//	app.Put("/users/{id}", HandlerCtxReq1Req2(updateUser))
+//
+//	func updateUser(ctx context.Context, path *Path[UserPath], body *JSON[UpdateReq]) JSON[User] {
+//	    return JSON[User]{Data: user}
+//	}
+func HandlerCtxReq1Req2[Req1 FromRequest, Req2 FromRequest, Res IntoResponse](
+	fn func(context.Context, Req1, Req2) Res,
+) http.HandlerFunc {
+	pool1 := &sync.Pool{
+		New: func() any {
+			var zero Req1
+			return newReq(zero)
+		},
+	}
+	pool2 := &sync.Pool{
+		New: func() any {
+			var zero Req2
+			return newReq(zero)
+		},
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		req1 := pool1.Get().(Req1) //nolint:errcheck // poolNew returns correct type
+		req2 := pool2.Get().(Req2) //nolint:errcheck // poolNew returns correct type
+		defer func() {
+			resetReq(req1)
+			resetReq(req2)
+			pool1.Put(req1)
+			pool2.Put(req2)
+		}()
+
+		if err := req1.Extract(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if err := req2.Extract(r); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		res := fn(r.Context(), req1, req2)
 		if err := res.WriteResponse(w); err != nil {
 			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
 		}
@@ -349,6 +464,7 @@ func HandlerNoReqNoErr[Res IntoResponse](fn func() Res) http.HandlerFunc {
 //   - Ristretto: "Restricted" shot - smallest, most concentrated (0 params)
 //   - Solo: Single shot - standard espresso (1 param: request)
 //   - Doppio: Double shot - full-powered (2 params: context + request)
+//   - Lungo: "Long" shot - extended extraction (3 params: context + 2 requests)
 
 // Ristretto creates a handler for func() Res.
 // Named after the "restricted" espresso shot - smallest, most concentrated.
@@ -393,6 +509,44 @@ func Solo[Req FromRequest, Res IntoResponse](fn func(Req) (Res, error)) http.Han
 //	}
 func Doppio[Req FromRequest, Res IntoResponse](fn func(context.Context, Req) (Res, error)) http.HandlerFunc {
 	return HandlerCtxReqErr(fn)
+}
+
+// Lungo creates a handler for func(context.Context, *Req1, *Req2) (Res, error).
+// Named after the "long" espresso shot - extended extraction with two extractors.
+// Use for handlers that need both path parameters AND request body.
+//
+// Example:
+//
+//	app.Put("/users/{id}", Lungo(updateUser))
+//
+//	func updateUser(ctx context.Context, path *Path[UserPath], body *JSON[UpdateReq]) (JSON[User], error) {
+//	    id := path.Data.ID          // Path parameter
+//	    req := body.Data            // Request body
+//	    return JSON[User]{Data: user}, nil
+//	}
+func Lungo[Req1 FromRequest, Req2 FromRequest, Res IntoResponse](
+	fn func(context.Context, Req1, Req2) (Res, error),
+) http.HandlerFunc {
+	return HandlerCtxReq1Req2Err(fn)
+}
+
+// LungoNoErr creates a handler for func(context.Context, *Req1, *Req2) Res.
+// Named after the "long" espresso shot - extended extraction with two extractors.
+// Use for handlers that need both path parameters AND request body and don't return errors.
+//
+// Example:
+//
+//	app.Put("/users/{id}", LungoNoErr(updateUser))
+//
+//	func updateUser(ctx context.Context, path *Path[UserPath], body *JSON[UpdateReq]) JSON[User] {
+//	    id := path.Data.ID          // Path parameter
+//	    req := body.Data            // Request body
+//	    return JSON[User]{Data: user}
+//	}
+func LungoNoErr[Req1 FromRequest, Req2 FromRequest, Res IntoResponse](
+	fn func(context.Context, Req1, Req2) Res,
+) http.HandlerFunc {
+	return HandlerCtxReq1Req2(fn)
 }
 
 // newReq creates a new request object for the pool.

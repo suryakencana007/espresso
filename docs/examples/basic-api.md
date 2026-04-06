@@ -191,7 +191,7 @@ func main() {
     router.Get("/users", espresso.Doppio(users.List))
     router.Get("/users/{id}", espresso.Doppio(users.Get))
     router.Post("/users", espresso.Doppio(users.Create))
-    router.Put("/users/{id}", espresso.Trio(users.Update))// Requires path + body
+    router.Put("/users/{id}", espresso.Lungo(users.Update))// Requires path + body
     router.Delete("/users/{id}", espresso.Doppio(users.Delete))
     
     // Start server
@@ -201,10 +201,10 @@ func main() {
 
 ## Using Multiple Extractors
 
-For handlers that need multiple extractors, use Trio or manual extraction:
+For handlers that need multiple extractors, use Lungo or manual extraction:
 
 ```go
-// Using Trio (path + JSON body)
+// Using Lungo (path + JSON body)
 func (h *UserHandler) Update(
     ctx context.Context,
     path *espresso.Path[models.UserPath],
@@ -212,11 +212,10 @@ func (h *UserHandler) Update(
 ) (espresso.JSON[models.User], error) {
     // path.Data.ID contains path parameter
     // req.Data contains request body
-    // ...
 }
 
-// Register with Trio
-router.Put("/users/{id}", espresso.Trio(users.Update))
+// Register with Lungo
+router.Put("/users/{id}", espresso.Lungo(users.Update))
 ```
 
 ## Error Handling

@@ -93,18 +93,18 @@ func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espress
 }
 ```
 
-### Trio
+### Lungo
 
-Three-argument handler:
+Three-argument handler (context + two extractors):
 
 ```go
-func Trio[T any, Req1 any, Req2 any](f func(context.Context, *Req1, *Req2) T) http.HandlerFunc
+func Lungo[T any, Req1 any, Req2 any](f func(context.Context, *Req1, *Req2) (T, error)) http.HandlerFunc
 ```
 
 Example:
 
 ```go
-router.Put("/users/{id}", espresso.Trio(updateUser))
+router.Put("/users/{id}", espresso.Lungo(updateUser))
 
 func updateUser(ctx context.Context, path *espresso.Path[UserPath], req *espresso.JSON[UpdateUserReq]) (espresso.JSON[User], error) {
     // path.Data.ID contains path parameter
