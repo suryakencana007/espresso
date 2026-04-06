@@ -94,7 +94,7 @@ module your-project
 go 1.22
 
 require (
-    github.com/suryakencana007/espresso v1.0.0
+    github.com/suryakencana007/espresso v1.0.2
     github.com/bytedance/sonic v1.11.0
     github.com/rs/zerolog v1.32.0
 )

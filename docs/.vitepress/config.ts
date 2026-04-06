@@ -32,7 +32,7 @@ markdown: {
       { text: 'Examples', link: '/examples/', activeMatch: '/examples/' },
       { text: 'API', link: '/api/', activeMatch: '/api/' },
       {
-        text: 'v1.0.0',
+        text: 'v1.0.2',
         items: [
           { text: 'Changelog', link: 'https://github.com/suryakencana007/espresso/releases' },
           { text: 'Contributing', link: 'https://github.com/suryakencana007/espresso/blob/main/CONTRIBUTING.md' }
