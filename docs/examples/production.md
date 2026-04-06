@@ -276,7 +276,7 @@ func registerRoutes(router *espresso.Router, state *app.State) {
     router.Get("/api/users", espresso.Doppio(handlers.ListUsers(state)))
     router.Get("/api/users/{id}", espresso.Doppio(handlers.GetUser(state)))
     router.Post("/api/users", espresso.Doppio(handlers.CreateUser(state)))
-    router.Put("/api/users/{id}", espresso.Trio(handlers.UpdateUser(state)))
+    router.Put("/api/users/{id}", espresso.Lungo(handlers.UpdateUser(state)))
     router.Delete("/api/users/{id}", espresso.Doppio(handlers.DeleteUser(state)))
 }
 

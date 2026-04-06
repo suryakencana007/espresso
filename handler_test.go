@@ -546,3 +546,198 @@ func TestHandlerCtxReq_WithError(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 }
+
+// Test types for Lungo (two extractors)
+type testPathID struct {
+	ID int64 `path:"id"`
+}
+
+func (r *testPathID) Extract(req *http.Request) error {
+	// Simulate path parameter extraction
+	idStr := req.PathValue("id")
+	if idStr == "" {
+		idStr = "123" // Default for tests
+	}
+	var err error
+	r.ID, err = parseInt64(idStr)
+	return err
+}
+
+func parseInt64(s string) (int64, error) {
+	var n int64
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return 0, errors.New("invalid id")
+		}
+		n = n*10 + int64(c-'0')
+	}
+	return n, nil
+}
+
+func (r *testPathID) Reset() {
+	r.ID = 0
+}
+
+func TestLungo(t *testing.T) {
+	handler := Lungo(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{Message: "path and body ok"}, nil
+	})
+
+	body := `{"name":"john"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/123", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "123")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var result testRes
+	if err := sonic.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Errorf("json.Unmarshal() error = %v", err)
+	}
+
+	if result.Message != "path and body ok" {
+		t.Errorf("expected message 'path and body ok', got '%s'", result.Message)
+	}
+}
+
+func TestLungo_WithValues(t *testing.T) {
+	handler := Lungo(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{Message: "id=" + string(rune(path.ID)) + ",name=" + body.Name}, nil
+	})
+
+	body := `{"name":"john","email":"john@example.com"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/456", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "456")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestLungo_FirstExtractorError(t *testing.T) {
+	handler := Lungo(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{Message: "ok"}, nil
+	})
+
+	body := `{"name":"john"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/invalid", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "invalid!")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	// Path extraction should fail with invalid ID
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestLungo_SecondExtractorError(t *testing.T) {
+	handler := Lungo(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{Message: "ok"}, nil
+	})
+
+	body := `{invalid json}`
+	req := httptest.NewRequest(http.MethodPut, "/users/123", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "123")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	// Body extraction should fail with invalid JSON
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status %d, got %d", http.StatusBadRequest, rec.Code)
+	}
+}
+
+func TestLungo_HandlerError(t *testing.T) {
+	handler := Lungo(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{}, errors.New("handler error")
+	})
+
+	body := `{"name":"john"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/123", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "123")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status %d, got %d", http.StatusInternalServerError, rec.Code)
+	}
+}
+
+func TestLungoNoErr(t *testing.T) {
+	handler := LungoNoErr(func(ctx context.Context, path *testPathID, body *testReq) testRes {
+		return testRes{Message: "no error"}
+	})
+
+	body := `{"name":"john"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/123", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "123")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	var result testRes
+	if err := sonic.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+		t.Errorf("json.Unmarshal() error = %v", err)
+	}
+
+	if result.Message != "no error" {
+		t.Errorf("expected message 'no error', got '%s'", result.Message)
+	}
+}
+
+func TestHandlerCtxReq1Req2Err(t *testing.T) {
+	handler := HandlerCtxReq1Req2Err(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{Message: "both extractors ok"}, nil
+	})
+
+	body := `{"name":"john"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/123", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "123")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestHandlerCtxReq1Req2(t *testing.T) {
+	handler := HandlerCtxReq1Req2(func(ctx context.Context, path *testPathID, body *testReq) testRes {
+		return testRes{Message: "typed handler"}
+	})
+
+	body := `{"name":"john"}`
+	req := httptest.NewRequest(http.MethodPut, "/users/123", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req.SetPathValue("id", "123")
+	rec := httptest.NewRecorder()
+
+	handler(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
