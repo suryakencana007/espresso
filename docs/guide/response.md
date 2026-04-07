@@ -59,6 +59,75 @@ func deleteHandler(ctx context.Context, req *espresso.Path[ID]) (espresso.Status
 }
 ```
 
+### Server-Sent Events (SSE)
+
+Real-time streaming from server to client:
+
+```go
+func streamHandler(w http.ResponseWriter, r *http.Request) {
+    writer := espresso.NewSSEWriter(w)
+    
+    // Send events
+    writer.Event("message", "Hello, World!")
+    writer.Event("update", `{"count": 42}`)
+    writer.KeepAlive()
+}
+
+// With event ID and retry
+writer.EventWithID("123", "message", "data here")
+
+// JSON events
+writer.EventJSON("data", map[string]any{"user": "john", "count": 42})
+
+// Simple data messages
+writer.Data("simple message")
+
+// Reconnection time
+writer.Retry(5000) // 5 seconds
+```
+
+#### SSE Event Format
+
+```go
+// Simple event
+event: message
+data: Hello, World!
+
+// Event with ID
+id: 123
+event: message
+data: Hello, World!
+
+// Event with retry
+event: message
+retry: 5000
+data: Hello, World!
+```
+
+#### Integration with Handlers
+
+```go
+func sseHandler(w http.ResponseWriter, r *http.Request) {
+    // Set SSE headers automatically
+    writer := espresso.NewSSEWriter(w)
+    
+    // Flushing listener for real-time updates
+    ctx := r.Context()
+    for {
+        select {
+        case <-ctx.Done():
+            return
+        case msg := <-messages:
+            writer.Event("message", msg)
+        case <-time.After(30 * time.Second):
+            writer.KeepAlive()
+        }
+    }
+}
+
+router.Get("/events", http.HandlerFunc(sseHandler))
+```
+
 ## Custom Response Types
 
 Implement `IntoResponse` interface:

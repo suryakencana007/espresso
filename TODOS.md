@@ -28,11 +28,11 @@ Priority-sorted task list for Espresso framework development.
 ---
 
 ### 3. Server-Sent Events (SSE) Response
-- [ ] Implement `espresso.SSE` response type
-- [ ] Support streaming responses
-- [ ] Add `SSEWriter` helper for real-time events
-- [ ] Add tests for SSE
-- [ ] Document SSE usage
+- [x] Implement `espresso.SSE` response type
+- [x] Support streaming responses
+- [x] Add `SSEWriter` helper for real-time events
+- [x] Add tests for SSE
+- [x] Document SSE usage
 
 **Use case:** Real-time notifications, live updates, dashboards
 

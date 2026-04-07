@@ -154,6 +154,56 @@ func (s Status) WriteResponse(w http.ResponseWriter) error
 func (s *Status) Reset()
 ```
 
+### SSE
+
+Server-Sent Events for real-time streaming:
+
+```go
+type SSE struct {
+    StatusCode int
+}
+
+type SSEEvent struct {
+    ID    string
+    Event string
+    Data  string
+    Retry int
+}
+
+func (s *SSE) WriteResponse(w http.ResponseWriter) error
+func (s *SSE) WriteEvent(w http.ResponseWriter, event SSEEvent)
+func (s *SSE) WriteKeepAlive(w http.ResponseWriter)
+```
+
+### SSEWriter
+
+Helper for streaming SSE events:
+
+```go
+type SSEWriter struct { ... }
+
+func NewSSEWriter(w http.ResponseWriter) *SSEWriter
+func (s *SSEWriter) Event(event, data string)
+func (s *SSEWriter) EventWithID(id, event, data string)
+func (s *SSEWriter) Data(data string)
+func (s *SSEWriter) EventJSON(event string, data any) error
+func (s *SSEWriter) KeepAlive()
+func (s *SSEWriter) Retry(ms int)
+```
+
+Example:
+
+```go
+func streamHandler(w http.ResponseWriter, r *http.Request) {
+    writer := espresso.NewSSEWriter(w)
+    
+    // Stream events to client
+    writer.Event("message", "Hello, World!")
+    writer.EventJSON("data", map[string]any{"count": 42})
+    writer.KeepAlive()
+}
+```
+
 ## Server Options
 
 ### WithAddr

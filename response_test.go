@@ -309,3 +309,181 @@ func TestJSON_Bidirectional(t *testing.T) {
 		}
 	})
 }
+
+func TestSSE_WriteResponse(t *testing.T) {
+	rec := httptest.NewRecorder()
+	sse := &SSE{}
+	if err := sse.WriteResponse(rec); err != nil {
+		t.Errorf("WriteResponse() error = %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type 'text/event-stream', got '%s'", ct)
+	}
+
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("expected Cache-Control 'no-cache', got '%s'", cc)
+	}
+
+	if conn := rec.Header().Get("Connection"); conn != "keep-alive" {
+		t.Errorf("expected Connection 'keep-alive', got '%s'", conn)
+	}
+}
+
+func TestSSE_WriteEvent(t *testing.T) {
+	tests := []struct {
+		name  string
+		event SSEEvent
+		want  string
+	}{
+		{
+			name:  "basic event",
+			event: SSEEvent{Event: "message", Data: "hello"},
+			want:  "event: message\ndata: hello\n\n",
+		},
+		{
+			name:  "event with ID",
+			event: SSEEvent{ID: "123", Event: "message", Data: "hello"},
+			want:  "id: 123\nevent: message\ndata: hello\n\n",
+		},
+		{
+			name:  "event with retry",
+			event: SSEEvent{Event: "message", Data: "hello", Retry: 5000},
+			want:  "event: message\nretry: 5000\ndata: hello\n\n",
+		},
+		{
+			name:  "full event",
+			event: SSEEvent{ID: "456", Event: "update", Data: `{"count":42}`},
+			want:  "id: 456\nevent: update\ndata: {\"count\":42}\n\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rec := httptest.NewRecorder()
+			sse := &SSE{}
+			_ = sse.WriteResponse(rec)
+			sse.WriteEvent(rec, tt.event)
+
+			body := rec.Body.String()
+			if !strings.Contains(body, tt.want) {
+				t.Errorf("expected body to contain '%s', got '%s'", tt.want, body)
+			}
+		})
+	}
+}
+
+func TestSSE_WriteKeepAlive(t *testing.T) {
+	rec := httptest.NewRecorder()
+	sse := &SSE{}
+	_ = sse.WriteResponse(rec)
+	sse.WriteKeepAlive(rec)
+
+	body := rec.Body.String()
+	if !strings.Contains(body, ": keep-alive\n\n") {
+		t.Errorf("expected keep-alive comment, got '%s'", body)
+	}
+}
+
+func TestSSEWriter_Event(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writer := NewSSEWriter(rec)
+	writer.Event("message", "hello world")
+
+	body := rec.Body.String()
+	expected := "event: message\ndata: hello world\n\n"
+	if body != expected {
+		t.Errorf("expected '%s', got '%s'", expected, body)
+	}
+}
+
+func TestSSEWriter_EventWithID(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writer := NewSSEWriter(rec)
+	writer.EventWithID("123", "message", "hello")
+
+	body := rec.Body.String()
+	expected := "id: 123\nevent: message\ndata: hello\n\n"
+	if body != expected {
+		t.Errorf("expected '%s', got '%s'", expected, body)
+	}
+}
+
+func TestSSEWriter_Data(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writer := NewSSEWriter(rec)
+	writer.Data("simple message")
+
+	body := rec.Body.String()
+	expected := "data: simple message\n\n"
+	if body != expected {
+		t.Errorf("expected '%s', got '%s'", expected, body)
+	}
+}
+
+func TestSSEWriter_EventJSON(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writer := NewSSEWriter(rec)
+
+	data := map[string]any{"id": 1, "name": "test"}
+	if err := writer.EventJSON("data", data); err != nil {
+		t.Errorf("EventJSON() error = %v", err)
+	}
+
+	body := rec.Body.String()
+	if !strings.Contains(body, "event: data\n") {
+		t.Errorf("expected 'event: data' in body, got '%s'", body)
+	}
+	if !strings.Contains(body, `"id":1`) {
+		t.Errorf("expected '\"id\":1' in body, got '%s'", body)
+	}
+	if !strings.Contains(body, `"name":"test"`) {
+		t.Errorf("expected '\"name\":\"test\"' in body, got '%s'", body)
+	}
+}
+
+func TestSSEWriter_KeepAlive(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writer := NewSSEWriter(rec)
+	writer.KeepAlive()
+
+	body := rec.Body.String()
+	expected := ": keep-alive\n\n"
+	if body != expected {
+		t.Errorf("expected '%s', got '%s'", expected, body)
+	}
+}
+
+func TestSSEWriter_Retry(t *testing.T) {
+	rec := httptest.NewRecorder()
+	writer := NewSSEWriter(rec)
+	writer.Retry(3000)
+
+	body := rec.Body.String()
+	expected := "retry: 3000\n\n"
+	if body != expected {
+		t.Errorf("expected '%s', got '%s'", expected, body)
+	}
+}
+
+func TestSSEWriter_Headers(t *testing.T) {
+	rec := httptest.NewRecorder()
+	_ = NewSSEWriter(rec)
+
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type 'text/event-stream', got '%s'", ct)
+	}
+	if cc := rec.Header().Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("expected Cache-Control 'no-cache', got '%s'", cc)
+	}
+	if conn := rec.Header().Get("Connection"); conn != "keep-alive" {
+		t.Errorf("expected Connection 'keep-alive', got '%s'", conn)
+	}
+	if ace := rec.Header().Get("Access-Control-Allow-Origin"); ace != "*" {
+		t.Errorf("expected Access-Control-Allow-Origin '*', got '%s'", ace)
+	}
+}

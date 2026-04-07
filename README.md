@@ -692,6 +692,26 @@ return espresso.Text{StatusCode: http.StatusNotFound, Body: "not found"}
 return espresso.Status(http.StatusNoContent) // 204
 ```
 
+### Server-Sent Events (SSE)
+
+For real-time streaming from server to client:
+
+```go
+func streamHandler(w http.ResponseWriter, r *http.Request) {
+    writer := espresso.NewSSEWriter(w)
+    
+    // Stream events
+    writer.Event("message", "Hello, World!")
+    writer.EventJSON("data", map[string]any{"count": 42})
+    writer.KeepAlive()
+}
+
+// Or use with handler pattern
+func sseHandler(ctx context.Context, req *espresso.JSON[StreamReq]) (*espresso.SSE, error) {
+    return &espresso.SSE{}, nil
+}
+```
+
 ### Custom Response
 
 ```go
