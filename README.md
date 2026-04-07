@@ -476,6 +476,61 @@ config := httpmiddleware.JWTConfig{
 
 ---
 
+## OpenAPI Documentation
+
+Generate OpenAPI 3.0 specifications from your routes:
+
+```go
+import "github.com/suryakencana007/espresso/openapi"
+
+// Create generator
+gen := openapi.NewGenerator("My API", "1.0.0")
+gen.SetDescription("REST API for my application")
+gen.AddServer("http://localhost:8080", "Development")
+
+// Generate schema from Go types
+userSchema := openapi.GenerateSchemaFromType(reflect.TypeOf(User{}))
+gen.AddSchema("User", userSchema)
+
+// Add paths
+gen.AddPath("GET", "/users", openapi.Operation{
+    Summary: "List users",
+    Responses: map[string]openapi.Response{
+        "200": {Description: "Success"},
+    },
+})
+
+// Serve spec
+http.Handle("/openapi.json", gen.Handler())
+
+// Serve Swagger UI
+http.Handle("/docs", openapi.SwaggerUIHandler("/openapi.json"))
+```
+
+### Schema Generation
+
+```go
+type User struct {
+    ID    int    `json:"id" doc:"User ID"`
+    Name  string `json:"name" doc:"User name"`
+    Email string `json:"email,omitempty" doc:"User email"`
+}
+
+schema := openapi.GenerateSchemaFromType(reflect.TypeOf(User{}))
+// Generates:
+// {
+//   "type": "object",
+//   "properties": {
+//     "id": {"type": "integer", "description": "User ID"},
+//     "name": {"type": "string", "description": "User name"},
+//     "email": {"type": "string", "description": "User email"}
+//   },
+//   "required": ["id", "name"]
+// }
+```
+
+---
+
 ## Service Layers
 
 Service layers run **after extraction** with typed request/response.
