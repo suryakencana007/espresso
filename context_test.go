@@ -14,19 +14,19 @@ type testLogger struct {
 	logs []string
 }
 
-func (l *testLogger) Debug(msg string, fields ...interface{}) {
+func (l *testLogger) Debug(msg string, fields ...any) {
 	l.logs = append(l.logs, "DEBUG: "+msg)
 }
 
-func (l *testLogger) Info(msg string, fields ...interface{}) {
+func (l *testLogger) Info(msg string, fields ...any) {
 	l.logs = append(l.logs, "INFO: "+msg)
 }
 
-func (l *testLogger) Warn(msg string, fields ...interface{}) {
+func (l *testLogger) Warn(msg string, fields ...any) {
 	l.logs = append(l.logs, "WARN: "+msg)
 }
 
-func (l *testLogger) Error(msg string, fields ...interface{}) {
+func (l *testLogger) Error(msg string, fields ...any) {
 	l.logs = append(l.logs, "ERROR: "+msg)
 }
 

@@ -174,5 +174,5 @@ func (r *Router) Routes() []Route {
 type Route struct {
 	Method  string
 	Path    string
-	Handler interface{}
+	Handler any
 }

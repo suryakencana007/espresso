@@ -10,11 +10,11 @@ import (
 
 // Spec represents the OpenAPI 3.0 specification.
 type Spec struct {
-	OpenAPI    string                 `json:"openapi"`
-	Info       Info                   `json:"info"`
-	Servers    []Server               `json:"servers,omitempty"`
-	Paths      map[string]PathItem    `json:"paths"`
-	Components map[string]interface{} `json:"components,omitempty"`
+	OpenAPI    string              `json:"openapi"`
+	Info       Info                `json:"info"`
+	Servers    []Server            `json:"servers,omitempty"`
+	Paths      map[string]PathItem `json:"paths"`
+	Components map[string]any      `json:"components,omitempty"`
 }
 
 // Info represents the OpenAPI info section.
@@ -62,12 +62,12 @@ type Operation struct {
 
 // Parameter represents an OpenAPI parameter.
 type Parameter struct {
-	Name        string      `json:"name"`
-	In          string      `json:"in"`
-	Description string      `json:"description,omitempty"`
-	Required    bool        `json:"required"`
-	Schema      *Schema     `json:"schema,omitempty"`
-	Example     interface{} `json:"example,omitempty"`
+	Name        string  `json:"name"`
+	In          string  `json:"in"`
+	Description string  `json:"description,omitempty"`
+	Required    bool    `json:"required"`
+	Schema      *Schema `json:"schema,omitempty"`
+	Example     any     `json:"example,omitempty"`
 }
 
 // RequestBody represents an OpenAPI request body.
@@ -79,8 +79,8 @@ type RequestBody struct {
 
 // MediaType represents an OpenAPI media type.
 type MediaType struct {
-	Schema  *Schema     `json:"schema,omitempty"`
-	Example interface{} `json:"example,omitempty"`
+	Schema  *Schema `json:"schema,omitempty"`
+	Example any     `json:"example,omitempty"`
 }
 
 // Response represents an OpenAPI response.
@@ -97,8 +97,8 @@ type Schema struct {
 	Properties           map[string]*Schema `json:"properties,omitempty"`
 	Required             []string           `json:"required,omitempty"`
 	Items                *Schema            `json:"items,omitempty"`
-	AdditionalProperties interface{}        `json:"additionalProperties,omitempty"`
-	Example              interface{}        `json:"example,omitempty"`
+	AdditionalProperties any                `json:"additionalProperties,omitempty"`
+	Example              any                `json:"example,omitempty"`
 	Ref                  string             `json:"$ref,omitempty"`
 }
 
@@ -117,9 +117,9 @@ func NewGenerator(title, version string) *Generator {
 				Version: version,
 			},
 			Paths: make(map[string]PathItem),
-			Components: map[string]interface{}{
+			Components: map[string]any{
 				"schemas":         make(map[string]*Schema),
-				"securitySchemes": make(map[string]interface{}),
+				"securitySchemes": make(map[string]any),
 			},
 		},
 	}

@@ -184,7 +184,7 @@ func (v JWTValidator) Validate(r *http.Request) (context.Context, error) {
     }
     
     token := strings.TrimPrefix(auth, "Bearer ")
-    claims, err := jwt.Parse(token, func(t *jwt.Token) (interface{}, error) {
+    claims, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
         return v.secret, nil
     })
     if err != nil {

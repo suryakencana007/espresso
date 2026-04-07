@@ -321,7 +321,7 @@ func New() *Validator {
     }
 }
 
-func (v *Validator) Struct(s interface{}) error {
+func (v *Validator) Struct(s any) error {
     return v.validate.Struct(s)
 }
 
