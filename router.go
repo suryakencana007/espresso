@@ -163,3 +163,16 @@ func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 func (r *Router) Handle(f any) http.HandlerFunc {
 	return Handler(f)
 }
+
+// Routes returns all registered routes.
+// Note: This is a best-effort implementation as ServeMux doesn't expose routes.
+func (r *Router) Routes() []Route {
+	return nil // ServeMux doesn't expose routes
+}
+
+// Route represents a registered route.
+type Route struct {
+	Method  string
+	Path    string
+	Handler interface{}
+}
