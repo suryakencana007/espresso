@@ -167,7 +167,7 @@ type Spec struct {
     Info       Info                   `json:"info"`
     Servers    []Server               `json:"servers,omitempty"`
     Paths      map[string]PathItem    `json:"paths"`
-    Components map[string]interface{} `json:"components,omitempty"`
+    Components map[string]any `json:"components,omitempty"`
 }
 ```
 
@@ -195,8 +195,8 @@ type Schema struct {
     Properties           map[string]*Schema `json:"properties,omitempty"`
     Required             []string           `json:"required,omitempty"`
     Items               *Schema            `json:"items,omitempty"`
-    AdditionalProperties interface{}        `json:"additionalProperties,omitempty"`
-    Example             interface{}         `json:"example,omitempty"`
+AdditionalProperties any `json:"additionalProperties,omitempty"`
+    Example             any `json:"example,omitempty"`
     Ref                 string             `json:"$ref,omitempty"`
 }
 ```

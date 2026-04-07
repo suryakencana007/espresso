@@ -15,10 +15,10 @@ const (
 
 // Logger defines an interface for structured logging.
 type Logger interface {
-	Debug(msg string, fields ...interface{})
-	Info(msg string, fields ...interface{})
-	Warn(msg string, fields ...interface{})
-	Error(msg string, fields ...interface{})
+	Debug(msg string, fields ...any)
+	Info(msg string, fields ...any)
+	Warn(msg string, fields ...any)
+	Error(msg string, fields ...any)
 }
 
 // Tenant defines an interface for multi-tenant context values.
@@ -28,12 +28,12 @@ type Tenant interface {
 }
 
 // SetUser stores a user value in the context.
-func SetUser(ctx context.Context, user interface{}) context.Context {
+func SetUser(ctx context.Context, user any) context.Context {
 	return context.WithValue(ctx, userKey, user)
 }
 
 // GetUser retrieves a user value from the context.
-func GetUser(ctx context.Context) (interface{}, bool) {
+func GetUser(ctx context.Context) (any, bool) {
 	user := ctx.Value(userKey)
 	if user == nil {
 		return nil, false
