@@ -121,6 +121,35 @@ type AuthHeader struct {
 }
 ```
 
+### Cookie
+
+Extract HTTP cookies:
+
+```go
+type Cookie[T any] struct {
+    Data T
+}
+```
+
+Usage:
+```go
+type SessionCookies struct {
+    SessionID string `cookie:"session_id,required"`
+    UserID    string `cookie:"user_id"`
+    Theme     string `cookie:"theme"`
+}
+
+func handler(ctx context.Context, req *extractor.Cookie[SessionCookies]) (espresso.JSON[User], error) {
+    sessionID := req.Data.SessionID
+    userID := req.Data.UserID
+    return espresso.JSON[User]{Data: User{ID: userID}}, nil
+}
+
+router.Get("/profile", espresso.Doppio(handler))
+```
+
+Supported types: `string`, `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`, `bool`.
+
 ### XML
 
 Extract XML request body:
@@ -198,6 +227,7 @@ type Query[T any] = QueryExtractor[T]
 type Form[T any] = FormExtractor[T]
 type Path[T any] = PathExtractor[T]
 type Header[T any] = HeaderExtractor[T]
+type Cookie[T any] = CookieExtractor[T]
 type XML[T any] = XMLExtractor[T]
 type RawBody = RawBodyExtractor
 ```
