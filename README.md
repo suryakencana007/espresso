@@ -503,8 +503,8 @@ gen.AddPath("GET", "/users", openapi.Operation{
 // Serve spec
 http.Handle("/openapi.json", gen.Handler())
 
-// Serve Swagger UI
-http.Handle("/docs", openapi.SwaggerUIHandler("/openapi.json"))
+// Serve Scalar UI
+http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
 ```
 
 ### Schema Generation
