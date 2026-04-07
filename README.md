@@ -259,6 +259,10 @@ router.Post("/users", espresso.Doppio(createUser))
 | `Path[T]` | `path:"id"` | Path parameters |
 | `Header[T]` | `header:"Name"` | HTTP headers |
 | `Form[T]` | `form:"field"` | Form data |
+| `Cookie[T]` | `cookie:"name"` | HTTP cookies |
+| `Multipart[T]` | `form:"field"`, `file:"name"` | Multipart form data |
+| `File` | — | Single file upload |
+| `Files` | — | Multiple file uploads |
 | `XML[T]` | `xml:"field"` | XML body |
 | `RawBody` | — | Raw bytes body |
 

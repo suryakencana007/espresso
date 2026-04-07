@@ -2,6 +2,7 @@ package extractor
 
 import (
 	"bytes"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -894,6 +895,207 @@ func BenchmarkCachedFields(b *testing.B) {
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		ext := &QueryExtractor[TestReq]{}
+		_ = ext.Extract(req)
+	}
+}
+
+func TestMultipartExtractor_Basic(t *testing.T) {
+	type TestReq struct {
+		Name  string `form:"name"`
+		Email string `form:"email"`
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("name", "john")
+	_ = writer.WriteField("email", "john@example.com")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	ext := &MultipartExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("MultipartExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.Name != "john" {
+		t.Errorf("expected Name 'john', got '%s'", ext.Data.Name)
+	}
+	if ext.Data.Email != "john@example.com" {
+		t.Errorf("expected Email 'john@example.com', got '%s'", ext.Data.Email)
+	}
+}
+
+func TestMultipartExtractor_RequiredField(t *testing.T) {
+	type TestReq struct {
+		Required string `form:"required,required"`
+		Optional string `form:"optional"`
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("optional", "value")
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	ext := &MultipartExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for missing required field")
+	}
+}
+
+func TestMultipartExtractor_Reset(t *testing.T) {
+	type TestReq struct {
+		Name string `form:"name"`
+	}
+
+	ext := &MultipartExtractor[TestReq]{Data: TestReq{Name: "test"}}
+	ext.Reset()
+
+	if ext.Data.Name != "" {
+		t.Errorf("expected empty Name after reset, got '%s'", ext.Data.Name)
+	}
+}
+
+func TestFileExtractor_Basic(t *testing.T) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.txt")
+	_, _ = part.Write([]byte("hello world"))
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	ext := &FileExtractor{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("FileExtractor.Extract() error = %v", err)
+	}
+
+	if ext.File.Filename != "test.txt" {
+		t.Errorf("expected Filename 'test.txt', got '%s'", ext.File.Filename)
+	}
+	if ext.File.Size != 11 {
+		t.Errorf("expected Size 11, got %d", ext.File.Size)
+	}
+}
+
+func TestFileExtractor_MissingFile(t *testing.T) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	ext := &FileExtractor{}
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for missing file")
+	}
+}
+
+func TestFileExtractor_Reset(t *testing.T) {
+	ext := &FileExtractor{File: FileInfo{Filename: "test.txt", Size: 100}}
+	ext.Reset()
+
+	if ext.File.Filename != "" {
+		t.Errorf("expected empty Filename after reset, got '%s'", ext.File.Filename)
+	}
+}
+
+func TestFilesExtractor_Basic(t *testing.T) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part1, _ := writer.CreateFormFile("files", "file1.txt")
+	_, _ = part1.Write([]byte("content1"))
+	part2, _ := writer.CreateFormFile("files", "file2.txt")
+	_, _ = part2.Write([]byte("content2"))
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	ext := &FilesExtractor{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("FilesExtractor.Extract() error = %v", err)
+	}
+
+	if len(ext.Files) != 2 {
+		t.Errorf("expected 2 files, got %d", len(ext.Files))
+	}
+}
+
+func TestFilesExtractor_NoFiles(t *testing.T) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.Close()
+
+	req := httptest.NewRequest(http.MethodPost, "/test", body)
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+
+	ext := &FilesExtractor{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("FilesExtractor.Extract() error = %v", err)
+	}
+
+	if len(ext.Files) != 0 {
+		t.Errorf("expected 0 files, got %d", len(ext.Files))
+	}
+}
+
+func TestFilesExtractor_Reset(t *testing.T) {
+	ext := &FilesExtractor{Files: []FileInfo{{Filename: "test.txt"}}}
+	ext.Reset()
+
+	if ext.Files != nil {
+		t.Errorf("expected nil Files after reset, got %v", ext.Files)
+	}
+}
+
+func BenchmarkMultipartExtractor_Extract(b *testing.B) {
+	type TestReq struct {
+		Name  string `form:"name"`
+		Email string `form:"email"`
+	}
+
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	_ = writer.WriteField("name", "john")
+	_ = writer.WriteField("email", "john@example.com")
+	_ = writer.Close()
+	contentType := writer.FormDataContentType()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader(body.Bytes()))
+		req.Header.Set("Content-Type", contentType)
+		ext := &MultipartExtractor[TestReq]{}
+		_ = ext.Extract(req)
+	}
+}
+
+func BenchmarkFileExtractor_Extract(b *testing.B) {
+	body := &bytes.Buffer{}
+	writer := multipart.NewWriter(body)
+	part, _ := writer.CreateFormFile("file", "test.txt")
+	_, _ = part.Write([]byte("hello world"))
+	_ = writer.Close()
+	contentType := writer.FormDataContentType()
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		req := httptest.NewRequest(http.MethodPost, "/test", bytes.NewReader(body.Bytes()))
+		req.Header.Set("Content-Type", contentType)
+		ext := &FileExtractor{}
 		_ = ext.Extract(req)
 	}
 }

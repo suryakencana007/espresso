@@ -17,11 +17,11 @@ Priority-sorted task list for Espresso framework development.
 ---
 
 ### 2. Multipart/File Upload Extractor
-- [ ] Implement `extractor.Multipart[T]` for file uploads
-- [ ] Support `multipart/form-data` parsing
-- [ ] Add `extractor.File` type for file metadata
-- [ ] Add tests for Multipart extractor
-- [ ] Document file upload examples
+- [x] Implement `extractor.Multipart[T]` for file uploads
+- [x] Support `multipart/form-data` parsing
+- [x] Add `extractor.File` type for file metadata
+- [x] Add tests for Multipart extractor
+- [x] Document file upload examples
 
 **Use case:** Profile pictures, documents, CSV imports
 

@@ -142,6 +142,67 @@ func handler(ctx context.Context, req *espresso.RawBody) (Response, error) {
 router.Post("/raw", espresso.Solo(handler))
 ```
 
+### Multipart
+
+Handle multipart/form-data with file uploads:
+
+```go
+type UploadForm struct {
+    Title       string          `form:"title"`
+    Description string          `form:"description"`
+    Filename    string          `file:"document"`
+}
+
+func handler(ctx context.Context, req *extractor.Multipart[UploadForm]) (Response, error) {
+    title := req.Data.Title
+    filename := req.Data.Filename
+    // Process form with file
+    return espresso.JSON[Response]{Data: Response{Status: "uploaded"}}, nil
+}
+
+router.Post("/upload", espresso.Doppio(handler))
+```
+
+### File
+
+Handle single file uploads:
+
+```go
+func handler(ctx context.Context, req *extractor.File) (Response, error) {
+    filename := req.File.Filename
+    size := req.File.Size
+    // File metadata only, not content
+    return espresso.JSON[Response]{Data: Response{
+        Filename: filename,
+        Size:     size,
+    }}, nil
+}
+
+router.Post("/upload", espresso.Doppio(handler))
+```
+
+For file content, access via `r.FormFile("file")` in your handler.
+
+### Files
+
+Handle multiple file uploads:
+
+```go
+func handler(ctx context.Context, req *extractor.Files) (Response, error) {
+    count := len(req.Files)
+    filenames := make([]string, 0, count)
+    for _, f := range req.Files {
+        filenames = append(filenames, f.Filename)
+    }
+    return espresso.JSON[Response]{Data: Response{
+        Count:     count,
+        Filenames: filenames,
+    }}, nil
+}
+
+router.Post("/upload/multiple", espresso.Doppio(handler))
+```
+
 ## Combining Extractors
 
 Use multiple extractors in a single handler:
