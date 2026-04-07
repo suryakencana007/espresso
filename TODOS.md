@@ -124,10 +124,10 @@ Priority-sorted task list for Espresso framework development.
 ---
 
 ## Documentation
-- [ ] Add `extractor.Cookie` documentation to `docs/api/extractor.md`
-- [ ] Add file upload example to `docs/examples/`
-- [ ] Add SSE streaming example to `docs/examples/`
-- [ ] Add authentication guide to `docs/guide/`
+- [x] Add `extractor.Cookie` documentation to `docs/api/extractor.md`
+- [x] Add file upload example to `docs/examples/`
+- [x] Add SSE streaming example to `docs/examples/`
+- [x] Add authentication example to `docs/examples/`
 
 ---
 

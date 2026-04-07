@@ -7,6 +7,9 @@ Welcome to the Espresso examples gallery. These examples demonstrate common patt
 | Example | Description |
 |---------|-------------|
 | [Basic REST API](/examples/basic-api) | Simple CRUD API with handlers and extractors |
+| [File Upload](/examples/file-upload) | Handle file uploads with Multipart extractor |
+| [SSE Streaming](/examples/sse-streaming) | Real-time updates with Server-Sent Events |
+| [Authentication](/examples/authentication) | JWT, Basic Auth, and API Key authentication |
 | [Middleware Stack](/examples/middleware-stack) | Complete middleware configuration for production |
 | [State Management](/examples/state-management) | Dependency injection with application state |
 | [Production Setup](/examples/production) | Full production-ready configuration |
