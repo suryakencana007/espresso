@@ -97,6 +97,100 @@ type AuthValidator interface {
 func AuthMiddleware(validator AuthValidator) Middleware
 ```
 
+### JWTMiddleware
+
+JWT token validation:
+
+```go
+type JWTConfig struct {
+    Secret          string
+    SigningMethod   string
+    TokenLookup     string
+    TokenHeader     string
+    ContextKey      string
+    Skipper         func(r *http.Request) bool
+    ClaimsExtractor func(token string) (map[string]any, error)
+}
+
+func JWTMiddleware(config JWTConfig) Middleware
+func GetClaims(ctx context.Context, key string) map[string]any
+```
+
+Example:
+
+```go
+config := httpmiddleware.JWTConfig{
+    Secret: "your-secret-key",
+    SigningMethod: "HS256",
+    TokenLookup: "header:Authorization",
+    TokenHeader: "Bearer",
+    ContextKey: "user",
+    ClaimsExtractor: func(token string) (map[string]any, error) {
+        // Parse JWT and return claims
+        return claims, nil
+    },
+}
+
+router.Use(httpmiddleware.JWTMiddleware(config))
+```
+
+### BasicAuthMiddleware
+
+HTTP Basic Authentication:
+
+```go
+type BasicAuthConfig struct {
+    Realm     string
+    Users     map[string]string
+    Skipper   func(r *http.Request) bool
+    Validator func(username, password string) bool
+}
+
+func BasicAuthMiddleware(config BasicAuthConfig) Middleware
+func GetUsername(ctx context.Context) string
+```
+
+Example:
+
+```go
+config := httpmiddleware.BasicAuthConfig{
+    Realm: "API",
+    Users: map[string]string{
+        "admin": "password123",
+    },
+}
+
+router.Use(httpmiddleware.BasicAuthMiddleware(config))
+```
+
+### APIKeyMiddleware
+
+API Key validation:
+
+```go
+type APIKeyConfig struct {
+    Keys        []string
+    KeyLookup   string
+    ContextKey  string
+    Skipper     func(r *http.Request) bool
+    KeyValidator func(key string) bool
+}
+
+func APIKeyMiddleware(config APIKeyConfig) Middleware
+func GetAPIKey(ctx context.Context, key string) string
+```
+
+Example:
+
+```go
+config := httpmiddleware.APIKeyConfig{
+    Keys: []string{"key-123", "key-456"},
+    KeyLookup: "header:X-API-Key",
+}
+
+router.Use(httpmiddleware.APIKeyMiddleware(config))
+```
+
 ## Rate Limiters
 
 ### TokenBucketLimiter
