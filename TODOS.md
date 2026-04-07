@@ -115,12 +115,12 @@ Priority-sorted task list for Espresso framework development.
 
 ### Critical
 - [x] Fix `godot` lint: `handler_test.go:550` - add period to comment
-- [ ] Fix gosec permissions in `gen-api-docs.go` (G301, G306)
+- [x] Fix gosec permissions in `gen-api-docs.go` (G301, G306) - removed file
 
 ### Cleanup
 - [x] **Remove** `scripts/gen-api-docs.go` - unused, would overwrite manual docs
 - [x] Remove `docs:gen-api` script from `package.json`
-- [ ] Remove reference in `docs/README.md` for `docs:gen-api`
+- [x] Remove reference in `docs/README.md` for `docs:gen-api`
 
 ---
 
