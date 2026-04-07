@@ -12,7 +12,7 @@ Welcome to the Espresso examples gallery. These examples demonstrate common patt
 | [Authentication](/examples/authentication) | JWT, Basic Auth, and API Key authentication |
 | [Middleware Stack](/examples/middleware-stack) | Complete middleware configuration for production |
 | [State Management](/examples/state-management) | Dependency injection with application state |
-| [Production Setup](/examples/production) | Full production-ready configuration |
+| [Production Setup](/examples/production) | Full production-ready configuration (includes OpenAPI docs) |
 
 ## Getting Started
 
@@ -71,4 +71,12 @@ func main() {
 - [Basic REST API](/examples/basic-api) - Learn handlers and extractors
 - [Middleware Stack](/examples/middleware-stack) - Configure HTTP and service middleware
 - [State Management](/examples/state-management) - Share state across handlers
-- [Production Setup](/examples/production) - Full production configuration
+- [Production Setup](/examples/production) - Full production configuration with OpenAPI docs
+
+## API Documentation
+
+All examples include optional OpenAPI documentation support:
+
+- **OpenAPI 3.0 Spec**: Auto-generated from your handlers
+- **Scalar UI**: Modern, beautiful API documentation
+- See [Production Setup](/examples/production#openapi-documentation-optional) for full example

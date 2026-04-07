@@ -553,3 +553,163 @@ scrape_configs:
 8. **Health Checks**: /health and /ready endpoints
 9. **Docker**: Multi-stage build, minimal image
 10. **Kubernetes**: Resource limits, probes, secrets
+
+## OpenAPI Documentation (Optional)
+
+Add auto-generated OpenAPI 3.0 documentation with Scalar UI.
+
+### Setup OpenAPI Generator
+
+```go
+// internal/openapi/openapi.go
+package openapi
+
+import (
+    "reflect"
+    
+    "github.com/suryakencana007/espresso/openapi"
+    "myapp/internal/models"
+)
+
+func NewGenerator() *openapi.Generator {
+    gen := openapi.NewGenerator("My API", "1.0.0")
+    gen.SetDescription("Production REST API")
+    gen.AddServer("https://api.example.com", "Production")
+    gen.AddServer("http://localhost:8080", "Development")
+    
+    // Add schemas from models
+    gen.AddSchema("User", openapi.GenerateSchemaFromType(
+        reflect.TypeOf(models.User{}),
+    ))
+    gen.AddSchema("Error", openapi.GenerateSchemaFromType(
+        reflect.TypeOf(models.APIError{}),
+    ))
+    
+    return gen
+}
+
+func RegisterPaths(gen *openapi.Generator) {
+    // Users
+    gen.AddPath("GET", "/api/users", openapi.Operation{
+        Summary: "List users",
+        Tags:    []string{"users"},
+        Responses: map[string]openapi.Response{
+            "200": {
+                Description: "List of users",
+                Content: map[string]openapi.MediaType{
+                    "application/json": {
+                        Schema: &openapi.Schema{
+                            Type: "array",
+                            Items: &openapi.Schema{
+                                Ref: "#/components/schemas/User",
+                            },
+                        },
+                    },
+                },
+            },
+        },
+    })
+    
+    gen.AddPath("POST", "/api/users", openapi.Operation{
+        Summary: "Create user",
+        Tags:    []string{"users"},
+        RequestBody: &openapi.RequestBody{
+            Required: true,
+            Content: map[string]openapi.MediaType{
+                "application/json": {
+                    Schema: &openapi.Schema{
+                        Ref: "#/components/schemas/User",
+                    },
+                },
+            },
+        },
+        Responses: map[string]openapi.Response{
+            "201": {
+                Description: "User created",
+                Content: map[string]openapi.MediaType{
+                    "application/json": {
+                        Schema: &openapi.Schema{
+                            Ref: "#/components/schemas/User",
+                        },
+                    },
+                },
+            },
+        },
+    })
+}
+```
+
+### Add to Router
+
+```go
+// cmd/server/main.go
+import (
+    "net/http"
+    
+    "github.com/suryakencana007/espresso/openapi"
+    myopenapi "myapp/internal/openapi"
+)
+
+func main() {
+    // ... existing setup ...
+    
+    // Create OpenAPI generator
+    gen := myopenapi.NewGenerator()
+    myopenapi.RegisterPaths(gen)
+    
+    // Register routes
+    registerRoutes(router, state)
+    
+    // Serve OpenAPI spec
+    http.Handle("/openapi.json", gen.Handler())
+    
+    // Serve Scalar UI (modern API documentation)
+    http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
+    
+    // Start server
+    startServer(router, cfg, logger)
+}
+```
+
+### Access Documentation
+
+After starting the server:
+
+- **OpenAPI Spec**: `http://localhost:8080/openapi.json`
+- **Scalar UI**: `http://localhost:8080/docs`
+
+### Customize Scalar UI
+
+```go
+http.Handle("/docs", openapi.ScalarUI(openapi.ScalarOpts{
+    Title:   "My API Documentation",
+    SpecURL: "/openapi.json",
+}))
+```
+
+### OpenAPI Generation Tips
+
+1. **Auto-generate schemas**: Use `GenerateSchemaFromType()` with struct tags
+2. **Document fields**: Add `doc` tags to your structs
+   
+```go
+type User struct {
+    ID    int    `json:"id" doc:"User ID"`
+    Name  string `json:"name" doc:"User name"`
+    Email string `json:"email,omitempty" doc:"User email address"`
+}
+```
+
+3. **Add security schemes**: Document authentication
+   
+```go
+gen := openapi.NewGenerator("My API", "1.0.0")
+// Security will be added when middleware supports it
+```
+
+4. **Export spec**: Save to file for CI/CD pipelines
+   
+```go
+data, _ := gen.ToJSON()
+os.WriteFile("api/openapi.json", data, 0644)
+```

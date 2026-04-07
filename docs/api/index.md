@@ -15,6 +15,7 @@ Complete API reference for all Espresso packages.
 | [extractor](/api/extractor) | Request extractors |
 | [middleware/http](/api/middleware-http) | HTTP middleware |
 | [middleware/service](/api/middleware-service) | Service layers |
+| [openapi](/api/openapi) | OpenAPI 3.0 specification generator |
 | [pool](/api/pool) | Object pooling |
 
 ## Import Paths
@@ -25,6 +26,7 @@ import (
     "github.com/suryakencana007/espresso/extractor"
     httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
     servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+    "github.com/suryakencana007/espresso/openapi"
     "github.com/suryakencana007/espresso/pool"
 )
 ```
