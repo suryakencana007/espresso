@@ -136,12 +136,19 @@ Usage:
 type SessionCookies struct {
     SessionID string `cookie:"session_id,required"`
     UserID    string `cookie:"user_id"`
+    Theme     string `cookie:"theme"`
 }
 
-func handler(ctx context.Context, req *extractor.Cookie[SessionCookies]) (Response, error) {
-    return Response{SessionID: req.Data.SessionID}, nil
+func handler(ctx context.Context, req *extractor.Cookie[SessionCookies]) (espresso.JSON[User], error) {
+    sessionID := req.Data.SessionID
+    userID := req.Data.UserID
+    return espresso.JSON[User]{Data: User{ID: userID}}, nil
 }
+
+router.Get("/profile", espresso.Doppio(handler))
 ```
+
+Supported types: `string`, `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`, `bool`.
 
 ### Multipart
 

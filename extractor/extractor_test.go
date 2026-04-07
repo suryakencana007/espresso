@@ -899,6 +899,161 @@ func BenchmarkCachedFields(b *testing.B) {
 	}
 }
 
+func TestCookieExtractor_Basic(t *testing.T) {
+	type TestReq struct {
+		SessionID string `cookie:"session_id"`
+		UserID    string `cookie:"user_id"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "abc123"})
+	req.AddCookie(&http.Cookie{Name: "user_id", Value: "user456"})
+
+	ext := &CookieExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("CookieExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.SessionID != "abc123" {
+		t.Errorf("expected SessionID 'abc123', got '%s'", ext.Data.SessionID)
+	}
+	if ext.Data.UserID != "user456" {
+		t.Errorf("expected UserID 'user456', got '%s'", ext.Data.UserID)
+	}
+}
+
+func TestCookieExtractor_IntTypes(t *testing.T) {
+	type TestReq struct {
+		Count int `cookie:"count"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "count", Value: "42"})
+
+	ext := &CookieExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("CookieExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.Count != 42 {
+		t.Errorf("expected Count 42, got %d", ext.Data.Count)
+	}
+}
+
+func TestCookieExtractor_RequiredField(t *testing.T) {
+	type TestReq struct {
+		SessionID string `cookie:"session_id,required"`
+		Optional  string `cookie:"optional"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	// Don't add session_id cookie - should error on required field
+
+	ext := &CookieExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err == nil {
+		t.Error("expected error for missing required cookie")
+	}
+}
+
+func TestCookieExtractor_OptionalField(t *testing.T) {
+	type TestReq struct {
+		Required string `cookie:"required,required"`
+		Optional string `cookie:"optional"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "required", Value: "present"})
+
+	ext := &CookieExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("CookieExtractor.Extract() error = %v", err)
+	}
+
+	if ext.Data.Required != "present" {
+		t.Errorf("expected Required 'present', got '%s'", ext.Data.Required)
+	}
+	if ext.Data.Optional != "" {
+		t.Errorf("expected empty Optional, got '%s'", ext.Data.Optional)
+	}
+}
+
+func TestCookieExtractor_Reset(t *testing.T) {
+	type TestReq struct {
+		SessionID string `cookie:"session_id"`
+	}
+
+	ext := &CookieExtractor[TestReq]{Data: TestReq{SessionID: "test"}}
+	ext.Reset()
+
+	if ext.Data.SessionID != "" {
+		t.Errorf("expected empty SessionID after reset, got '%s'", ext.Data.SessionID)
+	}
+}
+
+func TestCookieExtractor_BoolTypes(t *testing.T) {
+	type TestReq struct {
+		Active  bool `cookie:"active"`
+		Enabled bool `cookie:"enabled"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "active", Value: "true"})
+	req.AddCookie(&http.Cookie{Name: "enabled", Value: "false"})
+
+	ext := &CookieExtractor[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("CookieExtractor.Extract() error = %v", err)
+	}
+
+	if !ext.Data.Active {
+		t.Errorf("expected Active true, got %v", ext.Data.Active)
+	}
+	if ext.Data.Enabled {
+		t.Errorf("expected Enabled false, got %v", ext.Data.Enabled)
+	}
+}
+
+func TestCookieExtractor_TypeAlias(t *testing.T) {
+	type TestReq struct {
+		Token string `cookie:"token"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "token", Value: "secret"})
+
+	ext := &Cookie[TestReq]{}
+	err := ext.Extract(req)
+	if err != nil {
+		t.Errorf("Cookie.Extract() error = %v", err)
+	}
+
+	if ext.Data.Token != "secret" {
+		t.Errorf("expected Token 'secret', got '%s'", ext.Data.Token)
+	}
+}
+
+func BenchmarkCookieExtractor_Extract(b *testing.B) {
+	type TestReq struct {
+		SessionID string `cookie:"session_id"`
+		UserID    string `cookie:"user_id"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/test", nil)
+	req.AddCookie(&http.Cookie{Name: "session_id", Value: "abc123"})
+	req.AddCookie(&http.Cookie{Name: "user_id", Value: "user456"})
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ext := &CookieExtractor[TestReq]{}
+		_ = ext.Extract(req)
+	}
+}
+
 func TestMultipartExtractor_Basic(t *testing.T) {
 	type TestReq struct {
 		Name  string `form:"name"`
