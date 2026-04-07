@@ -136,9 +136,9 @@ http.Handle("/openapi.json", gen.Handler())
 http.ListenAndServe(":8080", nil)
 ```
 
-### SwaggerUI
+### ScalarUI
 
-Serve Swagger UI:
+Serve Scalar UI:
 
 ```go
 gen := openapi.NewGenerator("My API", "1.0.0")
@@ -146,13 +146,12 @@ gen := openapi.NewGenerator("My API", "1.0.0")
 // Serve spec
 http.Handle("/openapi.json", gen.Handler())
 
-// Serve Swagger UI
-http.Handle("/docs", openapi.SwaggerUIHandler("/openapi.json"))
+// Serve Scalar UI
+http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
 // or with options
-http.Handle("/docs", openapi.SwaggerUI(openapi.SwaggerOpts{
-    Title:       "My API Documentation",
-    SpecURL:     "/openapi.json",
-    DeepLinking: true,
+http.Handle("/docs", openapi.ScalarUI(openapi.ScalarOpts{
+    Title:   "My API Documentation",
+    SpecURL: "/openapi.json",
 }))
 
 http.ListenAndServe(":8080", nil)
@@ -256,11 +255,11 @@ func main() {
     router := espresso.Portafilter()
     router.Get("/users", getUsers)
     
-    // Serve OpenAPI spec
+// Serve OpenAPI spec
     http.Handle("/openapi.json", gen.Handler())
     
-    // Serve Swagger UI
-    http.Handle("/docs", openapi.SwaggerUIHandler("/openapi.json"))
+    // Serve Scalar UI
+    http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
     
     // Serve API
     router.Brew(espresso.WithAddr(":8080"))

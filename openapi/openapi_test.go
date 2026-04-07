@@ -268,3 +268,66 @@ func TestSpec(t *testing.T) {
 		t.Error("expected Paths to be initialized")
 	}
 }
+
+func TestScalarUIHandler(t *testing.T) {
+	handler := ScalarUIHandler("/openapi.json")
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+	if rec.Header().Get("Content-Type") != "text/html; charset=utf-8" {
+		t.Errorf("expected Content-Type 'text/html; charset=utf-8', got %s", rec.Header().Get("Content-Type"))
+	}
+
+	body := rec.Body.String()
+	if !contains(body, "scalar") {
+		t.Error("expected 'scalar' in body")
+	}
+	if !contains(body, "/openapi.json") {
+		t.Error("expected '/openapi.json' in body")
+	}
+}
+
+func TestScalarUI(t *testing.T) {
+	opts := ScalarOpts{
+		Title:    "API Docs",
+		SpecURL:  "/openapi.json",
+		BasePath: "/api",
+	}
+
+	handler := ScalarUI(opts)
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	rec := httptest.NewRecorder()
+
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+}
+
+func TestReplaceString(t *testing.T) {
+	tests := []struct {
+		s, old, new, want string
+	}{
+		{"hello world", "world", "universe", "hello universe"},
+		{"no match", "foo", "bar", "no match"},
+		{"", "foo", "bar", ""},
+		{"aaa", "a", "b", "baa"},
+	}
+
+	for _, tt := range tests {
+		got := replaceString(tt.s, tt.old, tt.new)
+		if got != tt.want {
+			t.Errorf("replaceString(%q, %q, %q) = %q, want %q", tt.s, tt.old, tt.new, got, tt.want)
+		}
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr))
+}

@@ -67,7 +67,7 @@ Priority-sorted task list for Espresso framework development.
 - [x] Generate OpenAPI 3.0 spec from routes
 - [x] Support request/response schema generation
 - [x] Add `/swagger.json` endpoint via Handler()
-- [x] Add Swagger UI integration
+- [x] Add Scalar UI integration
 - [x] Document OpenAPI generation
 
 **Use case:** API documentation, client SDK generation
