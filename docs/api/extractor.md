@@ -150,6 +150,74 @@ router.Get("/profile", espresso.Doppio(handler))
 
 Supported types: `string`, `int`, `int8`, `int16`, `int32`, `int64`, `uint`, `uint8`, `uint16`, `uint32`, `uint64`, `float32`, `float64`, `bool`.
 
+### Multipart
+
+Extract multipart/form-data with file uploads:
+
+```go
+type Multipart[T any] struct {
+    Data T
+}
+```
+
+Usage:
+```go
+type UploadForm struct {
+    Title    string `form:"title"`
+    Filename string `file:"document"`
+}
+
+func handler(ctx context.Context, req *extractor.Multipart[UploadForm]) (Response, error) {
+    return Response{Title: req.Data.Title}, nil
+}
+```
+
+### FileInfo
+
+File metadata from uploads:
+
+```go
+type FileInfo struct {
+    Filename string
+    Size     int64
+    Header   textproto.MIMEHeader
+}
+```
+
+### File
+
+Extract single file upload:
+
+```go
+type File struct {
+    File FileInfo
+}
+```
+
+Usage:
+```go
+func handler(ctx context.Context, req *extractor.File) (Response, error) {
+    return Response{Filename: req.File.Filename}, nil
+}
+```
+
+### Files
+
+Extract multiple file uploads:
+
+```go
+type Files struct {
+    Files []FileInfo
+}
+```
+
+Usage:
+```go
+func handler(ctx context.Context, req *extractor.Files) (Response, error) {
+    return Response{Count: len(req.Files)}, nil
+}
+```
+
 ### XML
 
 Extract XML request body:
@@ -229,7 +297,10 @@ type Path[T any] = PathExtractor[T]
 type Header[T any] = HeaderExtractor[T]
 type Cookie[T any] = CookieExtractor[T]
 type XML[T any] = XMLExtractor[T]
+type Multipart[T any] = MultipartExtractor[T]
 type RawBody = RawBodyExtractor
+type File = FileExtractor
+type Files = FilesExtractor
 ```
 
 ## Helper Functions

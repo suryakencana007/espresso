@@ -5,7 +5,9 @@ import (
 	"encoding/xml"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
+	"net/textproto"
 	"reflect"
 	"strconv"
 	"strings"
@@ -94,6 +96,125 @@ func (f *FormExtractor[T]) Reset() {
 	var zero T
 	f.Data = zero
 }
+
+// FileInfo contains metadata about an uploaded file.
+type FileInfo struct {
+	Filename string
+	Size     int64
+	Header   textproto.MIMEHeader
+}
+
+// MultipartExtractor extracts multipart/form-data including file uploads.
+// Uses struct tags with `form:"name"` for regular fields and `file:"name"` for files.
+// Supports required fields with `form:"name,required"` and `file:"name,required"`.
+type MultipartExtractor[T any] struct {
+	Data T
+}
+
+// Extract populates the struct from multipart form data.
+func (m *MultipartExtractor[T]) Extract(r *http.Request) error {
+	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil { // 32 MB max memory
+		return err
+	}
+
+	if r.MultipartForm == nil {
+		return nil
+	}
+
+	return extractStructTagsFromMultipart(&m.Data, r.MultipartForm)
+}
+
+// Reset clears the extractor data for reuse.
+func (m *MultipartExtractor[T]) Reset() {
+	var zero T
+	m.Data = zero
+}
+
+// Multipart is a type alias for MultipartExtractor[T].
+type Multipart[T any] = MultipartExtractor[T]
+
+// FileExtractor extracts a single file from multipart form data.
+// Use for handlers that accept a single file upload.
+type FileExtractor struct {
+	File FileInfo
+}
+
+// Extract reads the file from the multipart form.
+// The form field name must be "file" or specified via `file:"fieldname"` tag.
+func (f *FileExtractor) Extract(r *http.Request) error {
+	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		return err
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		return err
+	}
+	defer func() { _ = file.Close() }()
+
+	f.File = FileInfo{
+		Filename: header.Filename,
+		Size:     header.Size,
+		Header:   header.Header,
+	}
+
+	return nil
+}
+
+// Reset clears the extractor data for reuse.
+func (f *FileExtractor) Reset() {
+	f.File = FileInfo{}
+}
+
+// File is a type alias for FileExtractor.
+type File = FileExtractor
+
+// FilesExtractor extracts multiple files from multipart form data.
+type FilesExtractor struct {
+	Files []FileInfo
+}
+
+// Extract reads all files from the multipart form.
+// The form field name must be "files" or specified via `files:"fieldname"` tag.
+func (f *FilesExtractor) Extract(r *http.Request) error {
+	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
+
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		return err
+	}
+
+	if r.MultipartForm == nil || r.MultipartForm.File == nil {
+		return nil
+	}
+
+	headers, ok := r.MultipartForm.File["files"]
+	if !ok {
+		return nil
+	}
+
+	f.Files = make([]FileInfo, 0, len(headers))
+	for _, header := range headers {
+		f.Files = append(f.Files, FileInfo{
+			Filename: header.Filename,
+			Size:     header.Size,
+			Header:   header.Header,
+		})
+	}
+
+	return nil
+}
+
+// Reset clears the extractor data for reuse.
+func (f *FilesExtractor) Reset() {
+	f.Files = nil
+}
+
+// Files is a type alias for FilesExtractor.
+type Files = FilesExtractor
 
 // PathExtractor extracts path parameters from the URL.
 // Uses Go 1.22+ r.PathValue() for native path parameter extraction.
@@ -274,6 +395,87 @@ func extractStructTags[T any](target *T, values map[string][]string, tagName str
 		}
 	}
 
+	return nil
+}
+
+func extractStructTagsFromMultipart[T any](target *T, form *multipart.Form) error {
+	targetVal := reflect.ValueOf(target).Elem()
+	targetType := targetVal.Type()
+
+	if err := extractFormFields(targetVal, targetType, form); err != nil {
+		return err
+	}
+
+	return extractFileFields(targetVal, targetType, form)
+}
+
+func extractFormFields(targetVal reflect.Value, targetType reflect.Type, form *multipart.Form) error {
+	fields := getCachedFields(targetType, "form")
+	for _, fi := range fields {
+		fieldVal := targetVal.Field(fi.index)
+		if !fieldVal.CanSet() {
+			continue
+		}
+
+		vals, ok := form.Value[fi.name]
+		if !ok || len(vals) == 0 {
+			if fi.required {
+				fieldErr := RequiredFieldError(fi.name, "form")
+				return &fieldErr
+			}
+			continue
+		}
+
+		if err := setValueFromString(fieldVal, vals[0]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func extractFileFields(targetVal reflect.Value, targetType reflect.Type, form *multipart.Form) error {
+	fileFields := getCachedFields(targetType, "file")
+	for _, fi := range fileFields {
+		fieldVal := targetVal.Field(fi.index)
+		if !fieldVal.CanSet() {
+			continue
+		}
+
+		headers, ok := form.File[fi.name]
+		if !ok || len(headers) == 0 {
+			if fi.required {
+				fieldErr := RequiredFieldError(fi.name, "file")
+				return &fieldErr
+			}
+			continue
+		}
+
+		// Check if field is FileInfo, []FileInfo, or string (filename)
+		switch fieldVal.Kind() {
+		case reflect.Struct:
+			if fieldVal.Type() == reflect.TypeFor[FileInfo]() {
+				fieldVal.Set(reflect.ValueOf(FileInfo{
+					Filename: headers[0].Filename,
+					Size:     headers[0].Size,
+					Header:   headers[0].Header,
+				}))
+			}
+		case reflect.Slice:
+			if fieldVal.Type().Elem() == reflect.TypeFor[FileInfo]() {
+				files := make([]FileInfo, 0, len(headers))
+				for _, header := range headers {
+					files = append(files, FileInfo{
+						Filename: header.Filename,
+						Size:     header.Size,
+						Header:   header.Header,
+					})
+				}
+				fieldVal.Set(reflect.ValueOf(files))
+			}
+		case reflect.String:
+			fieldVal.SetString(headers[0].Filename)
+		}
+	}
 	return nil
 }
 
