@@ -74,14 +74,6 @@ Use the Mermaid component for architecture diagrams:
     Request --> Middleware --> Handler --> Response" />
 ```
 
-### API Generation
-
-Run the API documentation generator:
-
-```bash
-npm run docs:gen-api
-```
-
 ## Deployment
 
 Documentation is automatically deployed to GitHub Pages on push to `main` branch.

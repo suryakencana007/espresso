@@ -547,7 +547,7 @@ func TestHandlerCtxReq_WithError(t *testing.T) {
 	}
 }
 
-// Test types for Lungo (two extractors)
+// Test types for Lungo (two extractors).
 type testPathID struct {
 	ID int64 `path:"id"`
 }
