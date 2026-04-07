@@ -127,6 +127,27 @@ func (h *HeaderExtractor[T]) Reset() {
 	h.Data = zero
 }
 
+// CookieExtractor extracts HTTP cookies into a struct.
+// Uses struct tags with `cookie:"name"` to map cookies to struct fields.
+// Supports required fields with `cookie:"name,required"`.
+type CookieExtractor[T any] struct {
+	Data T
+}
+
+// Extract populates the struct from HTTP cookies.
+func (c *CookieExtractor[T]) Extract(r *http.Request) error {
+	return extractStructTagsFromCookies(&c.Data, r.Cookies())
+}
+
+// Reset clears the extractor data for reuse.
+func (c *CookieExtractor[T]) Reset() {
+	var zero T
+	c.Data = zero
+}
+
+// Cookie is a type alias for CookieExtractor[T].
+type Cookie[T any] = CookieExtractor[T]
+
 // RawBodyExtractor extracts the raw request body as bytes.
 // Uses pooled byte slices to reduce allocations for frequently accessed request bodies.
 type RawBodyExtractor struct {
@@ -301,6 +322,40 @@ func extractStructTagsFromHeaders[T any](target *T, headers http.Header) error {
 		if val == "" {
 			if fi.required {
 				fieldErr := RequiredFieldError(fi.name, "header")
+				return &fieldErr
+			}
+			continue
+		}
+
+		if err := setValueFromString(fieldVal, val); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func extractStructTagsFromCookies[T any](target *T, cookies []*http.Cookie) error {
+	targetVal := reflect.ValueOf(target).Elem()
+	targetType := targetVal.Type()
+
+	fields := getCachedFields(targetType, "cookie")
+
+	cookieMap := make(map[string]string, len(cookies))
+	for _, cookie := range cookies {
+		cookieMap[cookie.Name] = cookie.Value
+	}
+
+	for _, fi := range fields {
+		fieldVal := targetVal.Field(fi.index)
+		if !fieldVal.CanSet() {
+			continue
+		}
+
+		val, ok := cookieMap[fi.name]
+		if !ok {
+			if fi.required {
+				fieldErr := RequiredFieldError(fi.name, "cookie")
 				return &fieldErr
 			}
 			continue

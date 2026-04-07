@@ -110,6 +110,27 @@ func handler(ctx context.Context, req *espresso.Header[AuthHeaders]) (Response, 
 router.Get("/protected", espresso.Doppio(handler))
 ```
 
+### Cookie
+
+Extract HTTP cookies:
+
+```go
+type SessionCookies struct {
+    SessionID string `cookie:"session_id,required"`
+    UserID    string `cookie:"user_id"`
+    Theme     string `cookie:"theme"`
+}
+
+func handler(ctx context.Context, req *extractor.Cookie[SessionCookies]) (Response, error) {
+    sessionID := req.Data.SessionID
+    userID := req.Data.UserID
+    theme := req.Data.Theme // Empty string if not set
+    // ...
+}
+
+router.Get("/profile", espresso.Doppio(handler))
+```
+
 ### XML
 
 Extract XML request body:
