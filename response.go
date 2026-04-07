@@ -1,6 +1,7 @@
 package espresso
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/bytedance/sonic"
@@ -127,4 +128,181 @@ func (s Status) WriteResponse(w http.ResponseWriter) error {
 // Reset implements Resettable by resetting the Status to 0.
 func (s *Status) Reset() {
 	*s = 0
+}
+
+// SSEEvent represents a single Server-Sent Event.
+// Server-Sent Events allow the server to push updates to the client in real-time.
+//
+// Example:
+//
+//	event := SSEEvent{
+//	    ID:    "123",
+//	    Event: "message",
+//	    Data:  "Hello, World!",
+//	}
+type SSEEvent struct {
+	ID    string // Optional event ID for client reconnect
+	Event string // Optional event type (default: "message")
+	Data  string // Event data
+	Retry int    // Optional retry duration in milliseconds
+}
+
+// SSE is a response type for Server-Sent Events streaming.
+// Use this for real-time server-to-client updates.
+//
+// Example:
+//
+//	func handler(w http.ResponseWriter, r *http.Request) {
+//	    sse := SSE{}
+//	    sse.WriteEvent(w, SSEEvent{Event: "message", Data: "Hello"})
+//	    sse.WriteEvent(w, SSEEvent{Event: "update", Data: `{"count": 42}`})
+//	    return sse, nil
+//	}
+type SSE struct {
+	StatusCode int // Optional status code (default: 200)
+	flusher    http.Flusher
+}
+
+// WriteResponse implements IntoResponse by setting up SSE streaming.
+// It sets the Content-Type to text/event-stream and necessary headers for SSE.
+func (s *SSE) WriteResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	status := s.StatusCode
+	if status == 0 {
+		status = http.StatusOK
+	}
+	w.WriteHeader(status)
+
+	flusher, ok := w.(http.Flusher)
+	if ok {
+		s.flusher = flusher
+	}
+
+	return nil
+}
+
+// WriteEvent writes a single SSE event to the response writer and flushes it.
+// Use this in a handler to stream events to the client.
+//
+// Example:
+//
+//	func streamHandler(ctx context.Context, req *espresso.JSON[StreamReq]) (espresso.SSE, error) {
+//	    var sse espresso.SSE
+//	    // Events will be written via SSEWriter
+//	    return sse, nil
+//	}
+func (s *SSE) WriteEvent(w http.ResponseWriter, event SSEEvent) {
+	if event.ID != "" {
+		_, _ = fmt.Fprintf(w, "id: %s\n", event.ID)
+	}
+	if event.Event != "" {
+		_, _ = fmt.Fprintf(w, "event: %s\n", event.Event)
+	}
+	if event.Retry > 0 {
+		_, _ = fmt.Fprintf(w, "retry: %d\n", event.Retry)
+	}
+	_, _ = fmt.Fprintf(w, "data: %s\n\n", event.Data)
+
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+}
+
+// WriteKeepAlive writes a keep-alive comment to the SSE stream.
+// This helps prevent connection timeouts during idle periods.
+func (s *SSE) WriteKeepAlive(w http.ResponseWriter) {
+	_, _ = w.Write([]byte(": keep-alive\n\n"))
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+}
+
+// SSEWriter is a helper for writing SSE events with a fluent API.
+// It wraps an http.ResponseWriter and provides convenient methods for streaming.
+//
+// Example:
+//
+//	func handler(w http.ResponseWriter, r *http.Request) {
+//	    writer := NewSSEWriter(w)
+//	    writer.Event("message", "Hello, World!")
+//	    writer.EventJSON("data", map[string]any{"count": 42})
+//	    writer.KeepAlive()
+//	}
+type SSEWriter struct {
+	w       http.ResponseWriter
+	flusher http.Flusher
+}
+
+// NewSSEWriter creates a new SSE writer wrapping the http.ResponseWriter.
+// It automatically sets up SSE headers and flusher.
+func NewSSEWriter(w http.ResponseWriter) *SSEWriter {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+
+	flusher, _ := w.(http.Flusher)
+
+	return &SSEWriter{
+		w:       w,
+		flusher: flusher,
+	}
+}
+
+// Event writes an SSE event with the given event type and data.
+func (s *SSEWriter) Event(event, data string) {
+	_, _ = fmt.Fprintf(s.w, "event: %s\ndata: %s\n\n", event, data)
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+}
+
+// EventWithID writes an SSE event with ID, event type, and data.
+func (s *SSEWriter) EventWithID(id, event, data string) {
+	_, _ = fmt.Fprintf(s.w, "id: %s\nevent: %s\ndata: %s\n\n", id, event, data)
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+}
+
+// Data writes a simple SSE data message (no event type).
+func (s *SSEWriter) Data(data string) {
+	_, _ = fmt.Fprintf(s.w, "data: %s\n\n", data)
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+}
+
+// EventJSON writes an SSE event with JSON-encoded data.
+func (s *SSEWriter) EventJSON(event string, data any) error {
+	_, _ = fmt.Fprintf(s.w, "event: %s\n", event)
+	_, _ = fmt.Fprint(s.w, "data: ")
+	if err := sonic.ConfigDefault.NewEncoder(s.w).Encode(data); err != nil {
+		return err
+	}
+	_, _ = s.w.Write([]byte{'\n'})
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+	return nil
+}
+
+// KeepAlive writes a keep-alive comment to prevent connection timeout.
+func (s *SSEWriter) KeepAlive() {
+	_, _ = s.w.Write([]byte(": keep-alive\n\n"))
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
+}
+
+// Retry sets the reconnection time in milliseconds for the client.
+func (s *SSEWriter) Retry(ms int) {
+	_, _ = fmt.Fprintf(s.w, "retry: %d\n\n", ms)
+	if s.flusher != nil {
+		s.flusher.Flush()
+	}
 }
