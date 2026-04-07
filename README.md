@@ -363,6 +363,117 @@ limiter := httpmiddleware.NewSlidingWindowLimiter(time.Minute, 100)
 router.Use(httpmiddleware.RateLimitMiddleware(limiter))
 ```
 
+### Authentication
+
+#### JWT Middleware
+
+```go
+import "github.com/golang-jwt/jwt/v5"
+
+config := httpmiddleware.JWTConfig{
+    Secret: "your-secret-key",
+    SigningMethod: "HS256",
+    TokenLookup: "header:Authorization",
+    TokenHeader: "Bearer",
+    ContextKey: "user",
+    ClaimsExtractor: func(token string) (map[string]any, error) {
+        // Parse and validate JWT token
+        parsed, err := jwt.Parse(token, func(t *jwt.Token) (any, error) {
+            return []byte("your-secret-key"), nil
+        })
+        if err != nil {
+            return nil, err
+        }
+        return parsed.Claims.(jwt.MapClaims), nil
+    },
+}
+
+router.Use(httpmiddleware.JWTMiddleware(config))
+
+// Access claims in handler
+func handler(ctx context.Context, req *espresso.JSON[Req]) (espresso.JSON[Res], error) {
+    claims := httpmiddleware.GetClaims(ctx, "user")
+    userID := claims["sub"].(string)
+    // ...
+}
+```
+
+#### Basic Auth Middleware
+
+```go
+config := httpmiddleware.BasicAuthConfig{
+    Realm: "API",
+    Users: map[string]string{
+        "admin": "password123",
+        "user":  "password456",
+    },
+}
+
+router.Use(httpmiddleware.BasicAuthMiddleware(config))
+
+// Access username in handler
+func handler(ctx context.Context, req *espresso.JSON[Req]) (espresso.JSON[Res], error) {
+    username := httpmiddleware.GetUsername(ctx)
+    // ...
+}
+```
+
+With custom validator:
+
+```go
+config := httpmiddleware.BasicAuthConfig{
+    Realm: "API",
+    Validator: func(username, password string) bool {
+        // Check against database
+        return validateUser(username, password)
+    },
+}
+```
+
+#### API Key Middleware
+
+```go
+config := httpmiddleware.APIKeyConfig{
+    Keys: []string{"key-123", "key-456"},
+    KeyLookup: "header:X-API-Key",
+    ContextKey: "api_key",
+}
+
+router.Use(httpmiddleware.APIKeyMiddleware(config))
+
+// Access API key in handler
+func handler(ctx context.Context, req *espresso.JSON[Req]) (espresso.JSON[Res], error) {
+    apiKey := httpmiddleware.GetAPIKey(ctx, "api_key")
+    // ...
+}
+```
+
+With custom validator:
+
+```go
+config := httpmiddleware.APIKeyConfig{
+    KeyLookup: "header:X-API-Key",
+    KeyValidator: func(key string) bool {
+        // Check against database
+        return validateAPIKey(key)
+    },
+}
+```
+
+#### Skipping Authentication
+
+Use `Skipper` to skip auth for certain paths:
+
+```go
+config := httpmiddleware.JWTConfig{
+    Secret: "secret",
+    Skipper: func(r *http.Request) bool {
+        return r.URL.Path == "/health" || r.URL.Path == "/login"
+    },
+    ClaimsExtractor: extractClaims,
+}
+```
+
 ---
 
 ## Service Layers
