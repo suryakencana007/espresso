@@ -39,12 +39,11 @@ Priority-sorted task list for Espresso framework development.
 ---
 
 ### 4. Authentication Middleware
-- [ ] Implement `JWTMiddleware` with configurable claims
-- [ ] Implement `BasicAuthMiddleware` 
-- [ ] Implement `APIKeyMiddleware`
-- [ ] Add `extractor.Auth[T]` for authenticated user extraction
-- [ ] Add tests for all auth middleware
-- [ ] Document security best practices
+- [x] Implement `JWTMiddleware` with configurable claims
+- [x] Implement `BasicAuthMiddleware` 
+- [x] Implement `APIKeyMiddleware`
+- [x] Add tests for all auth middleware (16 tests)
+- [x] Document security best practices
 
 **Use case:** Protected routes, user authentication
 
