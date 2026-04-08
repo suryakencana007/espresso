@@ -14,6 +14,7 @@ import (
 	"github.com/suryakencana007/espresso/extractor"
 	httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
 	servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+	"github.com/suryakencana007/espresso/openapi"
 )
 
 // ============================================
@@ -120,258 +121,78 @@ func (s UserService) Call(_ context.Context, req *CreateUserWithRoleReq) (espres
 func main() {
 	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.RFC3339})
 
-	// ============================================
 	// Initialize Application State
-	// ============================================
-	db := initDB() // your DB initialization
+	db := initDB()
 	config := Config{Port: 38080, Env: "development"}
-
 	appState := AppState{
 		DB:     db,
 		Config: config,
 		Logger: log.Logger,
 	}
 
-	// ============================================
-	// Reusable Layer Stacks (NEW!)
-	// ============================================
-	// Define type-erased layers once, reuse across handlers
+	// Setup OpenAPI generator with fluent API
+	gen := openapi.New("Espresso API", "1.0.0").
+		Description("Production-grade HTTP routing framework for Go").
+		Server("http://localhost:38080", "Development").
+		Server("https://api.example.com", "Production")
 
-	commonLayers := espresso.Layers(
-		espresso.Timeout(5*time.Second),
-		espresso.Logging(log.Logger, "api"),
-	)
-
-	// Route-specific layers
-	userLayers := espresso.Layers(
-		espresso.Timeout(10*time.Second),
-		espresso.Logging(log.Logger, "users"),
-	)
-
-	// ============================================
-	// Chain Pattern with WithState (NEW!)
-	// ============================================
-	// WithState injects application state into all handlers
-
-	espresso.Portafilter().
-		// Middleware
+	// Use OpenAPIRouter for automatic documentation generation
+	espresso.OpenAPI(gen).
 		Use(httpmiddleware.RequestIDMiddleware()).
 		Use(httpmiddleware.RecoverMiddleware()).
 		Use(httpmiddleware.LoggingMiddleware()).
-
-		// State Injection (NEW!)
 		WithState(appState).
-
-		// ============================================
-		// NEW: WithLayers - Type Inference
-		// ============================================
-		// Types are inferred from handler signature
-
-		Post("/api/users", espresso.WithLayers(createUserJSON, userLayers...)).
-		Get("/api/users/{id}", espresso.WithLayers(getUserWithState, userLayers...)).
-
-		// ============================================
-		// Lungo Example: Path + JSON Body
-		// ============================================
-		// PUT /api/users/{id} - Update user by ID with body
-		// Lungo extracts both path params AND JSON body
-
-		Put("/api/users/{id}", espresso.Lungo(updateUserLungo)).
-
-		// ============================================
-		// Doppio Example: JSON Body Only
-		// ============================================
-		// POST /api/users/update - Update user with body only
-		// Doppio extracts only JSON body (no path extraction)
-
-		Post("/api/users/update", espresso.Doppio(updateUserDoppio)).
-		Get("/api/search", espresso.WithLayers(searchQuery, commonLayers...)).
-
-		// ============================================
-		// State Access Example
-		// ============================================
-		// Handler uses GetState to access injected dependencies
-
-		Get("/api/config", espresso.Handler(configHandler)).
-		Get("/api/db-status", espresso.Handler(dbStatusHandler)).
-
-		// ============================================
-		// Explicit Types (Fallback)
-		// ============================================
-		// Use WithLayersTyped when inference fails
-
-		Post("/api/auth", espresso.WithLayersTyped[*extractor.Header[AuthReq], espresso.Text](
-			authHeader,
-			commonLayers...,
-		)).
-
-		// ============================================
-		// NEW: WithLayers with Service
-		// ============================================
-		// Apply layers to Service structs
-
-		Post("/api/users/custom", espresso.WithLayersTyped[*CreateUserWithRoleReq, espresso.JSON[UserRes]](
-			UserService{},
-			espresso.Layers(
-				espresso.Logging(log.Logger, "users"),
-				espresso.Timeout(5*time.Second),
-			)...,
-		)).
-
-		// ============================================
-		// Simple handlers (no layers)
-		// ============================================
-
-		Get("/api/health", espresso.Handler(healthCheck)).
-		Get("/api/ping", espresso.Ristretto(ping)).
+		// Health endpoints
+		Get("/api/health", healthCheck, openapi.Tags("health")).
+		Get("/api/ping", ping, openapi.Summary("Ping endpoint")).
+		// User endpoints
+		Post("/api/users", createUserJSON, openapi.Tags("users"), openapi.Summary("Create user")).
+		Get("/api/users/{id}", getUserWithState, openapi.Tags("users"), openapi.Summary("Get user by ID")).
+		Put("/api/users/{id}", updateUserLungo, openapi.Tags("users")).
+		Post("/api/users/update", updateUserDoppio, openapi.Tags("users")).
+		// Search and config endpoints
+		Get("/api/search", searchQuery, openapi.Tags("search")).
+		Get("/api/config", configHandler, openapi.Tags("config")).
+		Get("/api/db-status", dbStatusHandler, openapi.Tags("system")).
+		// Auth endpoints
+		Post("/api/auth", authHeader, openapi.Tags("auth")).
+		// Brew the server
 		Brew(espresso.WithAddr(":38080"))
+
+	// Serve OpenAPI spec and documentation
+	http.Handle("/openapi.json", gen.Handler())
+	http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
+	log.Info().Msg("OpenAPI spec: http://localhost:38080/openapi.json")
+	log.Info().Msg("API docs: http://localhost:38080/docs")
 }
 
-// ============================================
-// OpenAPI Example (Optional)
-// ============================================
-// To enable OpenAPI documentation, uncomment and configure:
-
-/*
-import (
-    "reflect"
-    "github.com/suryakencana007/espresso/openapi"
-)
-
-// Define your models with documentation tags
-type User struct {
-    ID    int    `json:"id" doc:"User ID"`
-    Name  string `json:"name" doc:"User name"`
-    Email string `json:"email,omitempty" doc:"User email address"`
-}
-
-func setupOpenAPI() *openapi.Generator {
-    // Create generator with fluent API
-    gen := openapi.New("User Service API", "1.0.0").
-        Description("REST API for user management").
-        Server("http://localhost:38080", "Development").
-        Server("https://api.example.com", "Production")
-
-    // Add schemas from struct types
-    gen.Schema("User", reflect.TypeOf(User{}))
-
-    // Add paths manually
-    gen.AddPath("GET", "/api/users", openapi.Operation{
-        Summary: "List all users",
-        Tags:    []string{"users"},
-        Responses: map[string]openapi.Response{
-            "200": {
-                Description: "List of users",
-                Content: map[string]openapi.MediaType{
-                    "application/json": {
-                        Schema: &openapi.Schema{
-                            Type:  "array",
-                            Items: &openapi.Schema{Ref: "#/components/schemas/User"},
-                        },
-                    },
-                },
-            },
-        },
-    })
-
-    gen.AddPath("POST", "/api/users", openapi.Operation{
-        Summary: "Create a new user",
-        Tags:    []string{"users"},
-        RequestBody: &openapi.RequestBody{
-            Required: true,
-            Content: map[string]openapi.MediaType{
-                "application/json": {
-                    Schema: &openapi.Schema{Ref: "#/components/schemas/User"},
-                },
-            },
-        },
-        Responses: map[string]openapi.Response{
-            "201": {
-                Description: "User created successfully",
-                Content: map[string]openapi.MediaType{
-                    "application/json": {
-                        Schema: &openapi.Schema{Ref: "#/components/schemas/User"},
-                    },
-                },
-            },
-        },
-    })
-
-    gen.AddPath("GET", "/api/users/{id}", openapi.Operation{
-        Summary: "Get user by ID",
-        Tags:    []string{"users"},
-        Parameters: []openapi.Parameter{
-            {
-                Name:        "id",
-                In:          "path",
-                Required:    true,
-                Description: "User ID",
-                Schema:      &openapi.Schema{Type: "integer"},
-            },
-        },
-        Responses: map[string]openapi.Response{
-            "200": {
-                Description: "User found",
-                Content: map[string]openapi.MediaType{
-                    "application/json": {
-                        Schema: &openapi.Schema{Ref: "#/components/schemas/User"},
-                    },
-                },
-            },
-            "404": {
-                Description: "User not found",
-            },
-        },
-    })
-
-    return gen
-}
-
-// Then in main():
-// gen := setupOpenAPI()
-// http.Handle("/openapi.json", gen.Handler())
-// http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
-*/
-
-// initDB initializes database connection (placeholder).
 func initDB() *sql.DB {
-	// In real app: connect to actual database
-	// db, err := sql.Open("postgres", dsn)
-	// This is just a placeholder for the example
 	return nil
 }
 
-// ============================================
+// Handler Examples Using OpenAPIRouter
+
+// Note: OpenAPIRouter automatically introspects handler signatures
+// and generates OpenAPI documentation. No manual setup needed!
 // Handler Examples using State (NEW!)
 // ============================================
 
-// createUserJSON demonstrates JSON[T] extractor.
-// Note: Use pointer type *JSON[T] to satisfy FromRequest interface.
+// createUserJSON demonstrates JSON[T] extractor with OpenAPIRouter.
 func createUserJSON(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[UserRes], error) {
-	user := req.Data // Data contains the decoded CreateUserReq
+	user := req.Data
 	log.Info().Str("name", user.Name).Msg("creating user")
-
 	return espresso.JSON[UserRes]{
 		StatusCode: http.StatusCreated,
-		Data: UserRes{
-			Message: fmt.Sprintf("User '%s' created", user.Name),
-		},
+		Data:       UserRes{Message: fmt.Sprintf("User '%s' created", user.Name)},
 	}, nil
 }
 
 // getUserWithState demonstrates state access in handler.
-// Use MustGetState[T] when state is guaranteed to be present.
 func getUserWithState(ctx context.Context, req *extractor.Path[UserPathReq]) (espresso.JSON[UserRes], error) {
-	// Access application state (NEW!)
 	state := espresso.MustGetState[AppState](ctx)
-
-	// Use dependencies from state
-	_ = state.Logger // Use logger
-	_ = state.DB     // Use database
+	_ = state.Logger
+	_ = state.DB
 	userID := req.Data.ID
-
-	// Example: state.DB.Query("SELECT * FROM users WHERE id = ?", userID)
-	// This shows how to access DB from state
 
 	return espresso.JSON[UserRes]{
 		Data: UserRes{
@@ -382,23 +203,10 @@ func getUserWithState(ctx context.Context, req *extractor.Path[UserPathReq]) (es
 }
 
 // updateUserLungo demonstrates Lungo handler with path + JSON body extraction.
-// PUT /api/users/{id} - Update user by ID with request body.
-// Requires 3 params: context, *Path (path params), *JSON (body).
 func updateUserLungo(ctx context.Context, path *extractor.Path[UserPathReq], body *espresso.JSON[UpdateUserReq]) (espresso.JSON[UserRes], error) {
-	// Access application state
 	state := espresso.MustGetState[AppState](ctx)
-
-	// Path parameter (already typed as int)
 	userID := path.Data.ID
-
-	// JSON body (already decoded)
 	req := body.Data
-
-	// Real-world example:
-	// _, err := state.DB.Exec("UPDATE users SET name=?, email=? WHERE id=?", req.Name, req.Email, userID)
-	// if err != nil {
-	//     return espresso.JSON[UserRes]{}, err
-	// }
 
 	log.Info().
 		Int("user_id", userID).
@@ -416,22 +224,10 @@ func updateUserLungo(ctx context.Context, path *extractor.Path[UserPathReq], bod
 	}, nil
 }
 
-// updateUserDoppio demonstrates Doppio handler with JSON body only (no path extraction).
-// POST /api/users/update - Update user with request body only.
-// Requires 2 params: context, *JSON (body).
-// Note: Path parameters not extracted - use when ID comes from body or query.
+// updateUserDoppio demonstrates Doppio handler with JSON body only.
 func updateUserDoppio(ctx context.Context, body *espresso.JSON[UpdateUserReq]) (espresso.JSON[UserRes], error) {
-	// Access application state
 	state := espresso.MustGetState[AppState](ctx)
-
-	// JSON body only (no path params)
 	req := body.Data
-
-	// Real-world example:
-	// _, err := state.DB.Exec("UPDATE users SET name=?, email=? WHERE email=?", req.Name, req.Email, req.Email)
-	// if err != nil {
-	//     return espresso.JSON[UserRes]{}, err
-	// }
 
 	log.Info().
 		Str("name", req.Name).
@@ -452,14 +248,12 @@ func configHandler(ctx context.Context) (espresso.JSON[struct {
 	Env  string
 	Port int
 }], error) {
-	// GetState returns (state, ok) - use when state might not be present
 	state, ok := espresso.GetState[AppState](ctx)
 	if !ok {
 		return espresso.JSON[struct {
-				Env  string
-				Port int
-			}]{},
-			fmt.Errorf("state not found in context")
+			Env  string
+			Port int
+		}]{}, fmt.Errorf("state not found in context")
 	}
 
 	return espresso.JSON[struct {
@@ -479,7 +273,6 @@ func configHandler(ctx context.Context) (espresso.JSON[struct {
 // dbStatusHandler demonstrates state with nil check for DB.
 func dbStatusHandler(ctx context.Context) (espresso.JSON[struct{ Status string }], error) {
 	state := espresso.MustGetState[AppState](ctx)
-
 	status := "connected"
 	if state.DB == nil {
 		status = "disconnected (nil)"
@@ -491,11 +284,8 @@ func dbStatusHandler(ctx context.Context) (espresso.JSON[struct{ Status string }
 }
 
 // searchQuery demonstrates Query[T] extractor.
-// Struct tags define query parameter mapping: `query:"name"` or `query:"name,required"`.
 func searchQuery(ctx context.Context, req *extractor.Query[SearchReq]) (espresso.JSON[SearchRes], error) {
-	params := req.Data // Data contains the decoded query params
-
-	// defaults
+	params := req.Data
 	if params.Page == 0 {
 		params.Page = 1
 	}
@@ -516,7 +306,6 @@ func searchQuery(ctx context.Context, req *extractor.Query[SearchReq]) (espresso
 func authHeader(ctx context.Context, req *extractor.Header[AuthReq]) (espresso.Text, error) {
 	token := req.Data.Token
 	log.Info().Str("token", token).Msg("auth request")
-
 	return espresso.Text{Body: "Authenticated"}, nil
 }
 
@@ -530,56 +319,46 @@ func ping() espresso.Text {
 	return espresso.Text{Body: "pong"}
 }
 
-// ============================================
-// Structured Error Handling Examples
-// ============================================
+// Error Handling Examples (for reference)
+
+// Error Handling Examples (for reference)
 
 // createUserWithError demonstrates structured error responses.
-// Use espresso.BadRequest(), NotFound(), etc. for consistent API errors.
 //
-//nolint:unused,unparam // Example function for documentation
+//nolint:unused,unparam
 func createUserWithError(_ context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[UserRes], error) {
 	user := req.Data
 
-	// Validation error with details
 	if user.Name == "" {
 		return espresso.JSON[UserRes]{}, espresso.ValidationErrors([]espresso.ValidationError{
 			{Field: "name", Message: "name is required"},
 		})
 	}
 
-	// Business logic error
 	if user.Email == "exists@example.com" {
 		return espresso.JSON[UserRes]{}, espresso.Conflict("user with this email already exists")
 	}
 
-	// Simulated not found error
 	if user.Email == "notfound@example.com" {
 		return espresso.JSON[UserRes]{}, espresso.NotFound("user not found")
 	}
 
-	// Unauthorized error
 	if user.Email == "unauthorized@example.com" {
 		return espresso.JSON[UserRes]{}, espresso.Unauthorized("invalid credentials")
 	}
 
 	return espresso.JSON[UserRes]{
 		StatusCode: http.StatusCreated,
-		Data: UserRes{
-			Message: fmt.Sprintf("User '%s' created successfully", user.Name),
-		},
+		Data:       UserRes{Message: fmt.Sprintf("User '%s' created successfully", user.Name)},
 	}, nil
 }
 
-// circuitBreakerExample demonstrates circuit breaker with custom error handling.
-// Note: CircuitBreakerError is returned when circuit is open.
+// circuitBreakerExample demonstrates circuit breaker error handling.
 //
-//nolint:unused,unparam // Example function for documentation
+//nolint:unused,unparam
 func circuitBreakerExample(_ context.Context, req *extractor.Path[UserPathReq]) (espresso.JSON[UserRes], error) {
 	userID := req.Data.ID
 
-	// Simulate circuit breaker error
-	// In real usage, this would come from a service call wrapped in circuit breaker
 	if userID == 999 {
 		return espresso.JSON[UserRes]{}, espresso.NewCircuitBreakerError(
 			"UserService",
