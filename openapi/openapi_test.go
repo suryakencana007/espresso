@@ -331,3 +331,212 @@ func TestReplaceString(t *testing.T) {
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr))
 }
+
+func TestNew(t *testing.T) {
+	g := New("Test API", "1.0.0")
+
+	if g.spec.OpenAPI != "3.0.3" {
+		t.Errorf("expected OpenAPI version 3.0.3, got %s", g.spec.OpenAPI)
+	}
+	if g.spec.Info.Title != "Test API" {
+		t.Errorf("expected title 'Test API', got %s", g.spec.Info.Title)
+	}
+	if g.spec.Info.Version != "1.0.0" {
+		t.Errorf("expected version '1.0.0', got %s", g.spec.Info.Version)
+	}
+}
+
+func TestDescription_Method(t *testing.T) {
+	g := New("Test API", "1.0.0")
+	g.Description("Test API Description")
+
+	if g.spec.Info.Description != "Test API Description" {
+		t.Errorf("expected description 'Test API Description', got %s", g.spec.Info.Description)
+	}
+}
+
+func TestDescription_Chaining(t *testing.T) {
+	g := New("Test API", "1.0.0").
+		Description("Test Description")
+
+	if g.spec.Info.Description != "Test Description" {
+		t.Errorf("expected description 'Test Description', got %s", g.spec.Info.Description)
+	}
+}
+
+func TestServer(t *testing.T) {
+	g := New("Test API", "1.0.0")
+	g.Server("http://localhost:8080", "Local development")
+
+	if len(g.spec.Servers) != 1 {
+		t.Errorf("expected 1 server, got %d", len(g.spec.Servers))
+		return
+	}
+	if g.spec.Servers[0].URL != "http://localhost:8080" {
+		t.Errorf("expected URL 'http://localhost:8080', got %s", g.spec.Servers[0].URL)
+	}
+	if g.spec.Servers[0].Description != "Local development" {
+		t.Errorf("expected description 'Local development', got %s", g.spec.Servers[0].Description)
+	}
+}
+
+func TestServer_Chaining(t *testing.T) {
+	g := New("Test API", "1.0.0").
+		Server("http://localhost:8080", "Development").
+		Server("https://api.example.com", "Production")
+
+	if len(g.spec.Servers) != 2 {
+		t.Errorf("expected 2 servers, got %d", len(g.spec.Servers))
+		return
+	}
+	if g.spec.Servers[0].URL != "http://localhost:8080" {
+		t.Errorf("expected first server URL 'http://localhost:8080', got %s", g.spec.Servers[0].URL)
+	}
+	if g.spec.Servers[1].URL != "https://api.example.com" {
+		t.Errorf("expected second server URL 'https://api.example.com', got %s", g.spec.Servers[1].URL)
+	}
+}
+
+func TestSchema(t *testing.T) {
+	type User struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+
+	g := New("Test API", "1.0.0")
+	g.Schema("User", reflect.TypeOf(User{}))
+
+	schemas, ok := g.spec.Components["schemas"].(map[string]*Schema)
+	if !ok {
+		t.Error("expected schemas to be map[string]*Schema")
+		return
+	}
+	if schemas["User"] == nil {
+		t.Error("expected User schema to be added")
+		return
+	}
+	if schemas["User"].Type != "object" {
+		t.Errorf("expected User type 'object', got %s", schemas["User"].Type)
+	}
+	if len(schemas["User"].Properties) != 2 {
+		t.Errorf("expected 2 properties, got %d", len(schemas["User"].Properties))
+	}
+}
+
+func TestSchema_Chaining(t *testing.T) {
+	type User struct {
+		ID   int    `json:"id"`
+		Name string `json:"name"`
+	}
+	type Post struct {
+		ID      int    `json:"id"`
+		Title   string `json:"title"`
+		Content string `json:"content"`
+	}
+
+	g := New("Test API", "1.0.0").
+		Schema("User", reflect.TypeOf(User{})).
+		Schema("Post", reflect.TypeOf(Post{}))
+
+	schemas, ok := g.spec.Components["schemas"].(map[string]*Schema)
+	if !ok {
+		t.Error("expected schemas to be initialized")
+		return
+	}
+	if len(schemas) != 2 {
+		t.Errorf("expected 2 schemas, got %d", len(schemas))
+	}
+}
+
+func TestJSON(t *testing.T) {
+	g := New("Test API", "1.0.0").
+		Description("Test Description").
+		AddPath("GET", "/users", Operation{Summary: "Get users"})
+
+	data, err := g.JSON()
+	if err != nil {
+		t.Errorf("JSON() error = %v", err)
+		return
+	}
+
+	var spec Spec
+	if err := json.Unmarshal(data, &spec); err != nil {
+		t.Errorf("json.Unmarshal() error = %v", err)
+		return
+	}
+
+	if spec.Info.Title != "Test API" {
+		t.Errorf("expected title 'Test API', got %s", spec.Info.Title)
+	}
+	if spec.Info.Description != "Test Description" {
+		t.Errorf("expected description 'Test Description', got %s", spec.Info.Description)
+	}
+}
+
+func TestFluentAPI_Complete(t *testing.T) {
+	type User struct {
+		ID    int    `json:"id" doc:"User ID"`
+		Name  string `json:"name" doc:"User name"`
+		Email string `json:"email,omitempty" doc:"User email"`
+	}
+
+	g := New("My API", "1.0.0").
+		Description("REST API for user management").
+		Server("http://localhost:8080", "Development").
+		Server("https://api.example.com", "Production").
+		Schema("User", reflect.TypeOf(User{})).
+		AddPath("GET", "/users", Operation{
+			Summary: "List users",
+			Tags:    []string{"users"},
+			Responses: map[string]Response{
+				"200": {
+					Description: "List of users",
+				},
+			},
+		}).
+		AddPath("POST", "/users", Operation{
+			Summary: "Create user",
+			Tags:    []string{"users"},
+			RequestBody: &RequestBody{
+				Required: true,
+				Content: map[string]MediaType{
+					"application/json": {
+						Schema: &Schema{Ref: "#/components/schemas/User"},
+					},
+				},
+			},
+			Responses: map[string]Response{
+				"201": {
+					Description: "User created",
+				},
+			},
+		})
+
+	data, err := g.JSON()
+	if err != nil {
+		t.Errorf("JSON() error = %v", err)
+		return
+	}
+
+	var spec Spec
+	if err := json.Unmarshal(data, &spec); err != nil {
+		t.Errorf("json.Unmarshal() error = %v", err)
+		return
+	}
+
+	if spec.Info.Title != "My API" {
+		t.Errorf("expected title 'My API', got %s", spec.Info.Title)
+	}
+	if len(spec.Servers) != 2 {
+		t.Errorf("expected 2 servers, got %d", len(spec.Servers))
+	}
+	if len(spec.Paths) != 1 {
+		t.Errorf("expected 1 path, got %d", len(spec.Paths))
+	}
+	if spec.Paths["/users"].Get == nil {
+		t.Error("expected GET /users to be set")
+	}
+	if spec.Paths["/users"].Post == nil {
+		t.Error("expected POST /users to be set")
+	}
+}

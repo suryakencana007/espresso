@@ -227,6 +227,112 @@ func main() {
 		Brew(espresso.WithAddr(":38080"))
 }
 
+// ============================================
+// OpenAPI Example (Optional)
+// ============================================
+// To enable OpenAPI documentation, uncomment and configure:
+
+/*
+import (
+    "reflect"
+    "github.com/suryakencana007/espresso/openapi"
+)
+
+// Define your models with documentation tags
+type User struct {
+    ID    int    `json:"id" doc:"User ID"`
+    Name  string `json:"name" doc:"User name"`
+    Email string `json:"email,omitempty" doc:"User email address"`
+}
+
+func setupOpenAPI() *openapi.Generator {
+    // Create generator with fluent API
+    gen := openapi.New("User Service API", "1.0.0").
+        Description("REST API for user management").
+        Server("http://localhost:38080", "Development").
+        Server("https://api.example.com", "Production")
+
+    // Add schemas from struct types
+    gen.Schema("User", reflect.TypeOf(User{}))
+
+    // Add paths manually
+    gen.AddPath("GET", "/api/users", openapi.Operation{
+        Summary: "List all users",
+        Tags:    []string{"users"},
+        Responses: map[string]openapi.Response{
+            "200": {
+                Description: "List of users",
+                Content: map[string]openapi.MediaType{
+                    "application/json": {
+                        Schema: &openapi.Schema{
+                            Type:  "array",
+                            Items: &openapi.Schema{Ref: "#/components/schemas/User"},
+                        },
+                    },
+                },
+            },
+        },
+    })
+
+    gen.AddPath("POST", "/api/users", openapi.Operation{
+        Summary: "Create a new user",
+        Tags:    []string{"users"},
+        RequestBody: &openapi.RequestBody{
+            Required: true,
+            Content: map[string]openapi.MediaType{
+                "application/json": {
+                    Schema: &openapi.Schema{Ref: "#/components/schemas/User"},
+                },
+            },
+        },
+        Responses: map[string]openapi.Response{
+            "201": {
+                Description: "User created successfully",
+                Content: map[string]openapi.MediaType{
+                    "application/json": {
+                        Schema: &openapi.Schema{Ref: "#/components/schemas/User"},
+                    },
+                },
+            },
+        },
+    })
+
+    gen.AddPath("GET", "/api/users/{id}", openapi.Operation{
+        Summary: "Get user by ID",
+        Tags:    []string{"users"},
+        Parameters: []openapi.Parameter{
+            {
+                Name:        "id",
+                In:          "path",
+                Required:    true,
+                Description: "User ID",
+                Schema:      &openapi.Schema{Type: "integer"},
+            },
+        },
+        Responses: map[string]openapi.Response{
+            "200": {
+                Description: "User found",
+                Content: map[string]openapi.MediaType{
+                    "application/json": {
+                        Schema: &openapi.Schema{Ref: "#/components/schemas/User"},
+                    },
+                },
+            },
+            "404": {
+                Description: "User not found",
+            },
+        },
+    })
+
+    return gen
+}
+
+// Then in main():
+// gen := setupOpenAPI()
+// http.Handle("/openapi.json", gen.Handler())
+// http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
+*/
+
 // initDB initializes database connection (placeholder).
 func initDB() *sql.DB {
 	// In real app: connect to actual database
