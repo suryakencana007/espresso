@@ -2,6 +2,7 @@ package espresso
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -318,5 +319,94 @@ func TestOpenAPIRouter_Router(t *testing.T) {
 
 	if router.Router() == nil {
 		t.Error("expected Router() to return the underlying router")
+	}
+}
+
+func TestOpenAPIRouter_ServeOpenAPI(t *testing.T) {
+	gen := openapi.New("Test API", "1.0.0")
+	router := OpenAPI(gen)
+
+	handler := func() Text {
+		return Text{Body: "OK"}
+	}
+
+	router.Get("/api/test", handler, openapi.Tags("test")).
+		ServeOpenAPI("/openapi.json")
+
+	// Test that spec is accessible
+	req := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	// Verify it's valid JSON
+	var spec map[string]interface{}
+	if err := json.Unmarshal(rec.Body.Bytes(), &spec); err != nil {
+		t.Errorf("expected valid JSON, got error: %v", err)
+	}
+
+	if spec["openapi"] != "3.0.3" {
+		t.Errorf("expected OpenAPI version 3.0.3, got %v", spec["openapi"])
+	}
+}
+
+func TestOpenAPIRouter_ServeDocs(t *testing.T) {
+	gen := openapi.New("Test API", "1.0.0")
+	router := OpenAPI(gen)
+
+	handler := func() Text {
+		return Text{Body: "OK"}
+	}
+
+	router.Get("/api/test", handler, openapi.Tags("test")).
+		ServeOpenAPI("/openapi.json").
+		ServeDocs("/docs", "/openapi.json")
+
+	// Test that docs endpoint is accessible
+	req := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
+	}
+
+	// Verify it's HTML (Scalar UI)
+	contentType := rec.Header().Get("Content-Type")
+	if contentType != "text/html; charset=utf-8" {
+		t.Errorf("expected Content-Type 'text/html; charset=utf-8', got %v", contentType)
+	}
+}
+
+func TestOpenAPIRouter_ServeOpenAPIWithDocs(t *testing.T) {
+	gen := openapi.New("Test API", "1.0.0")
+	router := OpenAPI(gen)
+
+	handler := func() Text {
+		return Text{Body: "OK"}
+	}
+
+	router.Get("/api/test", handler).
+		ServeOpenAPIWithDocs("/openapi.json", "/docs")
+
+	// Test spec endpoint
+	req1 := httptest.NewRequest(http.MethodGet, "/openapi.json", nil)
+	rec1 := httptest.NewRecorder()
+	router.ServeHTTP(rec1, req1)
+
+	if rec1.Code != http.StatusOK {
+		t.Errorf("spec endpoint: expected status %d, got %d", http.StatusOK, rec1.Code)
+	}
+
+	// Test docs endpoint
+	req2 := httptest.NewRequest(http.MethodGet, "/docs", nil)
+	rec2 := httptest.NewRecorder()
+	router.ServeHTTP(rec2, req2)
+
+	if rec2.Code != http.StatusOK {
+		t.Errorf("docs endpoint: expected status %d, got %d", http.StatusOK, rec2.Code)
 	}
 }

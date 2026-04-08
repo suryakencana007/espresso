@@ -182,6 +182,50 @@ func (r *OpenAPIRouter) Generator() *openapi.Generator {
 	return r.gen
 }
 
+// ServeOpenAPI registers a route to serve the OpenAPI specification as JSON.
+// This is a convenience method to add the spec endpoint to the router.
+//
+// Example:
+//
+//	router := espresso.OpenAPI(gen).
+//		Get("/api/users", getUsers).
+//		ServeOpenAPI("/openapi.json").
+//		Brew(espresso.WithAddr(":8080"))
+func (r *OpenAPIRouter) ServeOpenAPI(path string) *OpenAPIRouter {
+	r.router.Get(path, r.gen.Handler())
+	return r
+}
+
+// ServeDocs registers a route to serve the Scalar UI documentation interface.
+// specPath should be the path where the OpenAPI spec is served (e.g., "/openapi.json").
+//
+// Example:
+//
+//	router := espresso.OpenAPI(gen).
+//		Get("/api/users", getUsers).
+//		ServeOpenAPI("/openapi.json").
+//		ServeDocs("/docs", "/openapi.json").
+//		Brew(espresso.WithAddr(":8080"))
+func (r *OpenAPIRouter) ServeDocs(docsPath, specPath string) *OpenAPIRouter {
+	r.router.Get(docsPath, openapi.ScalarUIHandler(specPath))
+	return r
+}
+
+// ServeOpenAPIWithDocs is a convenience method that serves both the OpenAPI spec
+// and documentation UI in one call.
+//
+// Example:
+//
+//	router := espresso.OpenAPI(gen).
+//		Get("/api/users", getUsers).
+//		ServeOpenAPIWithDocs("/openapi.json", "/docs").
+//		Brew(espresso.WithAddr(":8080"))
+func (r *OpenAPIRouter) ServeOpenAPIWithDocs(specPath, docsPath string) *OpenAPIRouter {
+	r.ServeOpenAPI(specPath)
+	r.ServeDocs(docsPath, specPath)
+	return r
+}
+
 // ServeHTTP implements http.Handler.
 func (r *OpenAPIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.router.ServeHTTP(w, req)

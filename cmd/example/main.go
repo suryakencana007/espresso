@@ -156,12 +156,13 @@ func main() {
 		Get("/api/db-status", dbStatusHandler, openapi.Tags("system")).
 		// Auth endpoints
 		Post("/api/auth", authHeader, openapi.Tags("auth")).
+		// Serve OpenAPI spec and documentation
+		ServeOpenAPI("/openapi.json").
+		ServeDocs("/docs", "/openapi.json").
 		// Brew the server
 		Brew(espresso.WithAddr(":38080"))
 
-	// Serve OpenAPI spec and documentation
-	http.Handle("/openapi.json", gen.Handler())
-	http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
+	log.Info().Msg("API server: http://localhost:38080/api")
 	log.Info().Msg("OpenAPI spec: http://localhost:38080/openapi.json")
 	log.Info().Msg("API docs: http://localhost:38080/docs")
 }
