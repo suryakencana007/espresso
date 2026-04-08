@@ -483,14 +483,13 @@ Generate OpenAPI 3.0 specifications from your routes:
 ```go
 import "github.com/suryakencana007/espresso/openapi"
 
-// Create generator
-gen := openapi.NewGenerator("My API", "1.0.0")
-gen.SetDescription("REST API for my application")
-gen.AddServer("http://localhost:8080", "Development")
+// Create generator with fluent API
+gen := openapi.New("My API", "1.0.0").
+    Description("REST API for my application").
+    Server("http://localhost:8080", "Development")
 
 // Generate schema from Go types
-userSchema := openapi.GenerateSchemaFromType(reflect.TypeOf(User{}))
-gen.AddSchema("User", userSchema)
+gen.Schema("User", reflect.TypeOf(User{}))
 
 // Add paths
 gen.AddPath("GET", "/users", openapi.Operation{

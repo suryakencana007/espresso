@@ -13,40 +13,103 @@ import "github.com/suryakencana007/espresso/openapi"
 
 ## Generator
 
-### NewGenerator
+### New (Recommended)
 
-Create a new OpenAPI generator:
+Create a new OpenAPI generator with fluent API:
 
 ```go
-func NewGenerator(title, version string) *Generator
+func New(title, version string) *Generator
 ```
 
 Example:
 
 ```go
-gen := openapi.NewGenerator("My API", "1.0.0")
+gen := openapi.New("My API", "1.0.0").
+    Description("REST API for my application").
+    Server("http://localhost:8080", "Development")
+```
+
+### NewGenerator (Deprecated)
+
+Legacy function - use `New()` instead:
+
+```go
+func NewGenerator(title, version string) *Generator
 ```
 
 ## Configuration
 
-### SetDescription
+### Description (Recommended)
 
-Set API description:
+Set API description with fluent API:
+
+```go
+gen := openapi.New("My API", "1.0.0").
+    Description("REST API for user management").
+    Server("http://localhost:8080", "Dev")
+```
+
+### SetDescription (Deprecated)
+
+Legacy method - use `Description()` instead:
 
 ```go
 gen.SetDescription("REST API for my application")
 ```
 
-### AddServer
+### Server (Recommended)
 
-Add server to the spec:
+Add server with fluent API:
+
+```go
+gen := openapi.New("My API", "1.0.0").
+    Server("http://localhost:8080", "Development").
+    Server("https://api.example.com", "Production")
+```
+
+### AddServer (Deprecated)
+
+Legacy method - use `Server()` instead:
 
 ```go
 gen.AddServer("http://localhost:8080", "Local development")
-gen.AddServer("https://api.example.com", "Production")
 ```
 
 ## Building Specs
+
+### Schema (Recommended)
+
+Add schema with fluent API:
+
+```go
+type User struct {
+    ID    int    `json:"id" doc:"User ID"`
+    Name  string `json:"name" doc:"User name"`
+    Email string `json:"email" doc:"User email"`
+}
+
+gen := openapi.New("My API", "1.0.0").
+    Schema("User", reflect.TypeOf(User{})).
+    Schema("Post", reflect.TypeOf(Post{}))
+```
+
+### AddSchema
+
+Legacy method for adding schema:
+
+```go
+userSchema := &openapi.Schema{
+    Type: "object",
+    Properties: map[string]*openapi.Schema{
+        "id":    {Type: "integer"},
+        "name":  {Type: "string"},
+        "email": {Type: "string", Format: "email"},
+    },
+    Required: []string{"id", "name"},
+}
+
+gen.AddSchema("User", userSchema)
+```
 
 ### AddPath
 
@@ -77,24 +140,6 @@ op := openapi.Operation{
 }
 
 gen.AddPath("GET", "/users", op)
-```
-
-### AddSchema
-
-Add schema to components:
-
-```go
-userSchema := &openapi.Schema{
-    Type: "object",
-    Properties: map[string]*openapi.Schema{
-        "id":    {Type: "integer"},
-        "name":  {Type: "string"},
-        "email": {Type: "string", Format: "email"},
-    },
-    Required: []string{"id", "name"},
-}
-
-gen.AddSchema("User", userSchema)
 ```
 
 ## Generating Schemas
@@ -129,11 +174,24 @@ schema := openapi.GenerateSchemaFromType(reflect.TypeOf(User{}))
 Serve OpenAPI spec as JSON:
 
 ```go
-gen := openapi.NewGenerator("My API", "1.0.0")
-// ... add paths and schemas
+gen := openapi.New("My API", "1.0.0").
+    Description("REST API").
+    Server("http://localhost:8080", "Dev")
 
 http.Handle("/openapi.json", gen.Handler())
 http.ListenAndServe(":8080", nil)
+```
+
+### JSON (Convenience)
+
+Get spec as JSON bytes:
+
+```go
+data, err := gen.JSON()
+if err != nil {
+    log.Fatal(err)
+}
+os.WriteFile("openapi.json", data, 0644)
 ```
 
 ### ScalarUI
@@ -141,7 +199,7 @@ http.ListenAndServe(":8080", nil)
 Serve Scalar UI:
 
 ```go
-gen := openapi.NewGenerator("My API", "1.0.0")
+gen := openapi.New("My API", "1.0.0")
 
 // Serve spec
 http.Handle("/openapi.json", gen.Handler())
@@ -223,14 +281,13 @@ type User struct {
 }
 
 func main() {
-    // Create OpenAPI generator
-    gen := openapi.NewGenerator("User API", "1.0.0")
-    gen.SetDescription("API for managing users")
-    gen.AddServer("http://localhost:8080", "Development")
+    // Create OpenAPI generator with fluent API
+    gen := openapi.New("User API", "1.0.0").
+        Description("API for managing users").
+        Server("http://localhost:8080", "Development")
     
     // Generate schema from type
-    userSchema := openapi.GenerateSchemaFromType(reflect.TypeOf(User{}))
-    gen.AddSchema("User", userSchema)
+    gen.Schema("User", reflect.TypeOf(User{}))
     
     // Add paths
     gen.AddPath("GET", "/users", openapi.Operation{
@@ -255,7 +312,7 @@ func main() {
     router := espresso.Portafilter()
     router.Get("/users", getUsers)
     
-// Serve OpenAPI spec
+    // Serve OpenAPI spec
     http.Handle("/openapi.json", gen.Handler())
     
     // Serve Scalar UI

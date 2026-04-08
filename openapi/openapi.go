@@ -107,8 +107,15 @@ type Generator struct {
 	spec *Spec
 }
 
-// NewGenerator creates a new OpenAPI generator.
-func NewGenerator(title, version string) *Generator {
+// New creates a new OpenAPI generator with the given title and version.
+// This is the primary entry point for OpenAPI spec generation.
+//
+// Example:
+//
+//	gen := openapi.New("My API", "1.0.0").
+//	    Description("REST API for user management").
+//	    Server("http://localhost:8080", "Development")
+func New(title, version string) *Generator {
 	return &Generator{
 		spec: &Spec{
 			OpenAPI: "3.0.3",
@@ -125,19 +132,40 @@ func NewGenerator(title, version string) *Generator {
 	}
 }
 
-// SetDescription sets the API description.
-func (g *Generator) SetDescription(desc string) *Generator {
+// NewGenerator creates a new OpenAPI generator.
+//
+// Deprecated: Use New() instead.
+func NewGenerator(title, version string) *Generator {
+	return New(title, version)
+}
+
+// Description sets the API description.
+func (g *Generator) Description(desc string) *Generator {
 	g.spec.Info.Description = desc
 	return g
 }
 
-// AddServer adds a server to the spec.
-func (g *Generator) AddServer(url, description string) *Generator {
+// SetDescription sets the API description.
+//
+// Deprecated: Use Description() instead.
+func (g *Generator) SetDescription(desc string) *Generator {
+	return g.Description(desc)
+}
+
+// Server adds a server to the spec.
+func (g *Generator) Server(url, description string) *Generator {
 	g.spec.Servers = append(g.spec.Servers, Server{
 		URL:         url,
 		Description: description,
 	})
 	return g
+}
+
+// AddServer adds a server to the spec.
+//
+// Deprecated: Use Server() instead.
+func (g *Generator) AddServer(url, description string) *Generator {
+	return g.Server(url, description)
 }
 
 // AddPath adds a path to the spec.
@@ -177,6 +205,21 @@ func (g *Generator) AddSchema(name string, schema *Schema) *Generator {
 	}
 	schemas[name] = schema
 	return g
+}
+
+// Schema generates a schema from type and adds it to components.
+// Returns the generator for chaining.
+//
+// Example:
+//
+//	gen.Schema("User", reflect.TypeOf(User{}))
+func (g *Generator) Schema(name string, t reflect.Type) *Generator {
+	return g.AddSchema(name, GenerateSchemaFromType(t))
+}
+
+// JSON returns the spec as JSON.
+func (g *Generator) JSON() ([]byte, error) {
+	return g.ToJSON()
 }
 
 // ToJSON returns the spec as JSON.

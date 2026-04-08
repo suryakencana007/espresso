@@ -572,20 +572,12 @@ import (
 )
 
 func NewGenerator() *openapi.Generator {
-    gen := openapi.NewGenerator("My API", "1.0.0")
-    gen.SetDescription("Production REST API")
-    gen.AddServer("https://api.example.com", "Production")
-    gen.AddServer("http://localhost:8080", "Development")
-    
-    // Add schemas from models
-    gen.AddSchema("User", openapi.GenerateSchemaFromType(
-        reflect.TypeOf(models.User{}),
-    ))
-    gen.AddSchema("Error", openapi.GenerateSchemaFromType(
-        reflect.TypeOf(models.APIError{}),
-    ))
-    
-    return gen
+    return openapi.New("My API", "1.0.0").
+        Description("Production REST API").
+        Server("https://api.example.com", "Production").
+        Server("http://localhost:8080", "Development").
+        Schema("User", reflect.TypeOf(models.User{})).
+        Schema("Error", reflect.TypeOf(models.APIError{}))
 }
 
 func RegisterPaths(gen *openapi.Generator) {
