@@ -27,12 +27,12 @@ markdown: {
     logo: '/logo.png',
     siteTitle: 'Espresso',
 
-    nav: [
+nav: [
       { text: 'Guide', link: '/guide/', activeMatch: '/guide/' },
       { text: 'Examples', link: '/examples/', activeMatch: '/examples/' },
       { text: 'API', link: '/api/', activeMatch: '/api/' },
       {
-        text: 'v1.1.0',
+        text: 'v1.2.0',
         items: [
           { text: 'Changelog', link: 'https://github.com/suryakencana007/espresso/releases' },
           { text: 'Contributing', link: 'https://github.com/suryakencana007/espresso/blob/main/CONTRIBUTING.md' }
@@ -103,6 +103,7 @@ markdown: {
             { text: 'Overview', link: '/api/' },
             { text: 'Espresso (Core)', link: '/api/espresso' },
             { text: 'Extractor', link: '/api/extractor' },
+            { text: 'OpenAPI', link: '/api/openapi' },
             { text: 'Middleware - HTTP', link: '/api/middleware-http' },
             { text: 'Middleware - Service', link: '/api/middleware-service' },
             { text: 'State', link: '/api/state' },

@@ -142,7 +142,23 @@ Current: **77.8%** | Target: **78%+**
 
 ## Completed Items
 
-### v1.0.2 (Current)
+### v1.2.0 (Current)
+- [x] Fluent API for OpenAPI (New, Description, Server, Schema)
+- [x] Handler introspection for automatic type detection
+- [x] Operation options (Tags, Summary, Description, Security)
+- [x] OpenAPIRouter for seamless routing + documentation
+- [x] ServeOpenAPI, ServeDocs methods
+- [x] Comprehensive test coverage (104 new tests)
+
+### v1.1.0
+- [x] Cookie extractor
+- [x] File upload extractors (File, Files, Multipart)
+- [x] SSE streaming response
+- [x] Authentication middleware (JWT, BasicAuth, APIKey)
+- [x] OpenAPI 3.0 generator (initial release)
+- [x] Scalar UI for API documentation
+
+### v1.0.2
 - [x] Lungo handler for dual extractors
 - [x] Handler aliases: Ristretto, Solo, Doppio, Lungo
 - [x] State management: WithState, GetState, MustGetState
