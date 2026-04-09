@@ -182,6 +182,25 @@ http.Handle("/openapi.json", gen.Handler())
 http.ListenAndServe(":8080", nil)
 ```
 
+### ServeOpenAPI (Recommended)
+
+Use OpenAPIRouter for integrated routing and documentation:
+
+```go
+gen := openapi.New("My API", "1.0.0").
+    Description("REST API").
+    Server("http://localhost:8080", "Dev")
+
+espresso.OpenAPI(gen).
+    Get("/api/users", getUsers, openapi.Tags("users")).
+    Post("/api/users", createUser, openapi.Summary("Create user")).
+    ServeOpenAPI("/openapi.json").
+    ServeDocs("/docs", "/openapi.json").
+    Brew(espresso.WithAddr(":8080"))
+```
+
+This integrates the spec into your router - no separate `http.Handle()` calls needed!
+
 ### JSON (Convenience)
 
 Get spec as JSON bytes:
@@ -261,12 +280,13 @@ AdditionalProperties any `json:"additionalProperties,omitempty"`
 
 ## Example
 
-Complete example with Espresso:
+Complete example with OpenAPIRouter integration:
 
 ```go
 package main
 
 import (
+    "context"
     "net/http"
     "reflect"
     
@@ -277,54 +297,89 @@ import (
 type User struct {
     ID    int    `json:"id" doc:"User ID"`
     Name  string `json:"name" doc:"User name"`
-    Email string `json:"email,omitempty" doc:"User email"`
+    Email string `json:"email,omitempty" doc:"User email address"`
+}
+
+type UserPath struct {
+    ID int `path:"id"`
+}
+
+type CreateUserReq struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+func getUsers(ctx context.Context) (espresso.JSON[[]User], error) {
+    return espresso.JSON[[]User]{Data: []User{{ID: 1, Name: "John"}}}, nil
+}
+
+func getUser(ctx context.Context, path *espresso.Path[UserPath]) (espresso.JSON[User], error) {
+    return espresso.JSON[User]{Data: User{ID: path.Data.ID, Name: "John"}}, nil
+}
+
+func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
+    return espresso.JSON[User]{
+        StatusCode: http.StatusCreated,
+        Data:       User{ID: 1, Name: req.Data.Name},
+    }, nil
 }
 
 func main() {
-    // Create OpenAPI generator with fluent API
+    // Create OpenAPI generator
     gen := openapi.New("User API", "1.0.0").
         Description("API for managing users").
-        Server("http://localhost:8080", "Development")
+        Server("http://localhost:8080", "Development").
+        Schema("User", reflect.TypeOf(User{}))
     
-    // Generate schema from type
-    gen.Schema("User", reflect.TypeOf(User{}))
-    
-    // Add paths
-    gen.AddPath("GET", "/users", openapi.Operation{
-        Summary: "List all users",
-        Tags:    []string{"users"},
-        Responses: map[string]openapi.Response{
-            "200": {
-                Description: "List of users",
-                Content: map[string]openapi.MediaType{
-                    "application/json": {
-                        Schema: &openapi.Schema{
-                            Type: "array",
-                            Items: &openapi.Schema{Ref: "#/components/schemas/User"},
-                        },
+    // Use OpenAPIRouter for automatic documentation
+    espresso.OpenAPI(gen).
+        Get("/api/users", getUsers, openapi.Tags("users")).
+        Post("/api/users", createUser, openapi.Tags("users")).
+        Get("/api/users/{id}", getUser, openapi.Tags("users")).
+        ServeOpenAPI("/openapi.json").
+        ServeDocs("/docs", "/openapi.json").
+        Brew(espresso.WithAddr(":8080"))
+}
+```
+
+### Manual Path Registration (Alternative)
+
+If you need manual control over OpenAPI spec:
+
+```go
+gen := openapi.New("User API", "1.0.0").
+    Description("API for managing users")
+
+// Register schemas
+gen.Schema("User", reflect.TypeOf(User{}))
+
+// Manually define paths
+gen.AddPath("GET", "/api/users", openapi.Operation{
+    Summary: "List all users",
+    Tags:    []string{"users"},
+    Responses: map[string]openapi.Response{
+        "200": {
+            Description: "List of users",
+            Content: map[string]openapi.MediaType{
+                "application/json": {
+                    Schema: &openapi.Schema{
+                        Type:  "array",
+                        Items: &openapi.Schema{Ref: "#/components/schemas/User"},
                     },
                 },
             },
         },
-    })
-    
-    // Setup router
-    router := espresso.Portafilter()
-    router.Get("/users", getUsers)
-    
-    // Serve OpenAPI spec
-    http.Handle("/openapi.json", gen.Handler())
-    
-    // Serve Scalar UI
-    http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
-    
-    // Serve API
-    router.Brew(espresso.WithAddr(":8080"))
-}
+    },
+})
 
-func getUsers() ([]User, error) {
-    return []User{{ID: 1, Name: "John", Email: "john@example.com"}}, nil
-}
+// Setup router separately
+router := espresso.Portafilter()
+router.Get("/users", getUsers)
+
+// Serve spec separately (not recommended)
+http.Handle("/openapi.json", gen.Handler())
+http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
+router.Brew(espresso.WithAddr(":8080"))
 ```
 
 ## See Also

@@ -340,3 +340,84 @@ The server will start on `:3000` by default. Use `espresso.WithAddr(":8080")` to
 ```go
 router.Brew(espresso.WithAddr(":8080"))
 ```
+
+## Adding OpenAPI Documentation
+
+Add automatic OpenAPI documentation with `OpenAPIRouter`:
+
+```go
+package main
+
+import (
+    "reflect"
+    
+    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/openapi"
+    "myapp/handlers"
+    "myapp/models"
+)
+
+func main() {
+    // Create OpenAPI generator
+    gen := openapi.New("My API", "1.0.0").
+        Description("Basic REST API with CRUD operations").
+        Server("http://localhost:3000", "Development")
+    
+    // Register schemas
+    gen.Schema("User", reflect.TypeOf(models.User{}))
+    
+    // Use OpenAPIRouter for automatic documentation
+    espresso.OpenAPI(gen).
+        Get("/health", func() string { return "OK" }, openapi.Tags("health")).
+        
+        // User routes with documentation
+        Get("/users", espresso.Doppio(users.List), 
+            openapi.Tags("users"), 
+            openapi.Summary("List all users")).
+        Get("/users/{id}", espresso.Doppio(users.Get), 
+            openapi.Tags("users"), 
+            openapi.Summary("Get user by ID")).
+        Post("/users", espresso.Doppio(users.Create), 
+            openapi.Tags("users"), 
+            openapi.Summary("Create a new user")).
+        Put("/users/{id}", espresso.Lungo(users.Update), 
+            openapi.Tags("users")).
+        Delete("/users/{id}", espresso.Doppio(users.Delete), 
+            openapi.Tags("users")).
+        
+        // Serve OpenAPI spec and documentation
+        ServeOpenAPI("/openapi.json").
+        ServeDocs("/docs", "/openapi.json").
+        
+        Brew(espresso.WithAddr(":3000"))
+}
+```
+
+### Access Documentation
+
+Once running, access:
+
+- **API**: `http://localhost:3000/users`
+- **OpenAPI Spec**: `http://localhost:3000/openapi.json`
+- **Interactive Docs**: `http://localhost:3000/docs`
+
+### Handler Introspection
+
+`OpenAPIRouter` automatically detects parameter types:
+
+```go
+// Path parameter detected from extractor.Path[T]
+func Get(ctx context.Context, path *espresso.Path[UserPath]) (espresso.JSON[User], error)
+
+// Query parameters detected from extractor.Query[T]
+func List(ctx context.Context, query *espresso.Query[ListQuery]) (espresso.JSON[[]User], error)
+
+// Request body detected from espresso.JSON[T]
+func Create(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error)
+```
+
+No manual path registration needed - just tag your handlers:
+
+```go
+.Get("/users/{id}", handler, openapi.Tags("users"))
+```

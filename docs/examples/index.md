@@ -75,8 +75,38 @@ func main() {
 
 ## API Documentation
 
-All examples include optional OpenAPI documentation support:
+All examples support automatic OpenAPI 3.0 documentation:
 
-- **OpenAPI 3.0 Spec**: Auto-generated from your handlers
-- **Scalar UI**: Modern, beautiful API documentation
-- See [Production Setup](/examples/production#openapi-documentation-optional) for full example
+- **Auto-generated spec** from handler types
+- **Scalar UI** for modern, interactive docs
+- **Handler introspection** detects parameters automatically
+- **See [Production Setup](/examples/production#openapi-documentation)** for complete example
+
+### Quick Start with OpenAPIRouter
+
+```go
+import (
+    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/openapi"
+)
+
+// Create generator with fluent API
+gen := openapi.New("My API", "1.0.0").
+    Description("REST API documentation").
+    Server("http://localhost:3000", "Development")
+
+// Use OpenAPIRouter for automatic documentation
+espresso.OpenAPI(gen).
+    Get("/users", getUsers, openapi.Tags("users")).
+    Post("/users", createUser, openapi.Tags("users")).
+    ServeOpenAPI("/openapi.json").
+    ServeDocs("/docs", "/openapi.json").
+    Brew()
+```
+
+### Access Documentation
+
+- OpenAPI spec: `http://localhost:3000/openapi.json`
+- Interactive docs: `http://localhost:3000/docs`
+
+No manual registration needed - types are detected automatically from handlers!

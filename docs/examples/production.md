@@ -554,81 +554,159 @@ scrape_configs:
 9. **Docker**: Multi-stage build, minimal image
 10. **Kubernetes**: Resource limits, probes, secrets
 
-## OpenAPI Documentation (Optional)
+## OpenAPI Documentation
 
-Add auto-generated OpenAPI 3.0 documentation with Scalar UI.
+Automatically generate OpenAPI 3.0 documentation with Scalar UI using Espresso's integrated OpenAPIRouter.
 
-### Setup OpenAPI Generator
+### Setup with OpenAPIRouter (Recommended)
+
+Use `OpenAPIRouter` for seamless integration of routing and documentation:
 
 ```go
-// internal/openapi/openapi.go
-package openapi
+// cmd/server/main.go
+package main
 
 import (
+    "context"
+    "net/http"
     "reflect"
     
+    "github.com/suryakencana007/espresso"
     "github.com/suryakencana007/espresso/openapi"
+    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    
+    "myapp/internal/config"
+    "myapp/internal/handlers"
     "myapp/internal/models"
 )
 
-func NewGenerator() *openapi.Generator {
-    return openapi.New("My API", "1.0.0").
+func main() {
+    cfg := config.Load()
+    
+    // Create OpenAPI generator with fluent API
+    gen := openapi.New("My API", "1.0.0").
         Description("Production REST API").
         Server("https://api.example.com", "Production").
         Server("http://localhost:8080", "Development").
         Schema("User", reflect.TypeOf(models.User{})).
         Schema("Error", reflect.TypeOf(models.APIError{}))
+    
+    // Use OpenAPIRouter for automatic documentation
+    espresso.OpenAPI(gen).
+        Use(httpmiddleware.RequestIDMiddleware()).
+        Use(httpmiddleware.RecoverMiddleware()).
+        Use(httpmiddleware.LoggingMiddleware()).
+        
+        // Health check
+        Get("/health", handlers.HealthCheck, openapi.Tags("health")).
+        
+        // User routes
+        Get("/api/users", handlers.ListUsers, openapi.Tags("users")).
+        Post("/api/users", handlers.CreateUser, 
+            openapi.Tags("users"), 
+            openapi.Summary("Create a new user")).
+        Get("/api/users/{id}", handlers.GetUser, 
+            openapi.Tags("users"), 
+            openapi.Summary("Get user by ID")).
+        Put("/api/users/{id}", handlers.UpdateUser, openapi.Tags("users")).
+        Delete("/api/users/{id}", handlers.DeleteUser, openapi.Tags("users")).
+        
+        // Serve OpenAPI spec and docs
+        ServeOpenAPI("/openapi.json").
+        ServeDocs("/docs", "/openapi.json").
+        
+        // Start server
+        Brew(espresso.WithAddr(":8080"))
+    
+    // Note: OpenAPI spec and docs are integrated into router
+    // No need for separate http.Handle calls!
+}
+```
+
+### Access Documentation
+
+After starting the server:
+
+- **API**: `http://localhost:8080/api/users`
+- **OpenAPI Spec**: `http://localhost:8080/openapi.json`
+- **Scalar UI Docs**: `http://localhost:8080/docs`
+
+### Manual Setup (Alternative)
+
+If you prefer manual registration without `OpenAPIRouter`:
+
+```go
+// Create generator
+gen := openapi.New("My API", "1.0.0").
+    Description("Production REST API").
+    Server("https://api.example.com", "Production")
+
+// Manual path registration
+gen.AddPath("GET", "/api/users", openapi.Operation{
+    Summary: "List users",
+    Tags:    []string{"users"},
+    Responses: map[string]openapi.Response{
+        "200": {Description: "List of users"},
+    },
+})
+
+// Register routes manually
+router := espresso.Portafilter()
+router.Get("/api/users", handlers.ListUsers)
+
+// Serve spec separately (not recommended)
+http.Handle("/openapi.json", gen.Handler())
+http.Handle("/docs", openapi.ScalarUIHandler("/openapi.json"))
+router.Brew()
+```
+
+### OpenAPI Generation Tips
+
+1. **Auto-generate schemas** - Use struct tags for documentation:
+
+```go
+type User struct {
+    ID    int    `json:"id" doc:"User ID"`
+    Name  string `json:"name" doc:"User name"`
+    Email string `json:"email,omitempty" doc:"User email address"`
 }
 
-func RegisterPaths(gen *openapi.Generator) {
-    // Users
-    gen.AddPath("GET", "/api/users", openapi.Operation{
-        Summary: "List users",
-        Tags:    []string{"users"},
-        Responses: map[string]openapi.Response{
-            "200": {
-                Description: "List of users",
-                Content: map[string]openapi.MediaType{
-                    "application/json": {
-                        Schema: &openapi.Schema{
-                            Type: "array",
-                            Items: &openapi.Schema{
-                                Ref: "#/components/schemas/User",
-                            },
-                        },
-                    },
-                },
-            },
-        },
-    })
-    
-    gen.AddPath("POST", "/api/users", openapi.Operation{
-        Summary: "Create user",
-        Tags:    []string{"users"},
-        RequestBody: &openapi.RequestBody{
-            Required: true,
-            Content: map[string]openapi.MediaType{
-                "application/json": {
-                    Schema: &openapi.Schema{
-                        Ref: "#/components/schemas/User",
-                    },
-                },
-            },
-        },
-        Responses: map[string]openapi.Response{
-            "201": {
-                Description: "User created",
-                Content: map[string]openapi.MediaType{
-                    "application/json": {
-                        Schema: &openapi.Schema{
-                            Ref: "#/components/schemas/User",
-                        },
-                    },
-                },
-            },
-        },
-    })
+// Register schema
+gen.Schema("User", reflect.TypeOf(User{}))
+```
+
+2. **Use operation options** - Tag and document endpoints:
+
+```go
+espresso.OpenAPI(gen).
+    Get("/users/{id}", getUser,
+        openapi.Tags("users"),
+        openapi.Summary("Get user by ID"),
+        openapi.Description("Retrieves a user by their unique identifier"),
+    )
+```
+
+3. **Handler introspection** - Types are detected automatically:
+
+```go
+// Path[T] parameters are auto-detected
+func GetUser(ctx context.Context, path *extractor.Path[UserPath]) (espresso.JSON[User], error)
+
+// JSON[T] request body is auto-detected
+func CreateUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error)
+
+// Query[T] parameters are auto-detected
+func ListUsers(ctx context.Context, query *extractor.Query[ListQuery]) (espresso.JSON[[]User], error)
+```
+
+4. **Export spec for CI/CD**:
+
+```go
+data, err := gen.JSON()
+if err != nil {
+    log.Fatal(err)
 }
+os.WriteFile("api/openapi.json", data, 0644)
 ```
 
 ### Add to Router
