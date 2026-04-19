@@ -26,7 +26,23 @@ type handlerInfo struct {
 	reqIndex   int
 }
 
-// handlerCache stores parsed handler information to avoid repeated reflection.
+// handlerCache stores parsed handler information (signatures, pools, extractor
+// metadata) keyed by reflect.Type to avoid re-running reflection for every
+// request.
+//
+// Growth: the cache is process-global and has no eviction. Size is bounded
+// by the number of distinct handler function types (and Service[Req,Res]
+// type pairs) passed to Handler() / router.Handle() / WithLayers*() across
+// the process lifetime. In typical applications this is finite and small —
+// routes are registered at startup and never change.
+//
+// When the cache could grow unboundedly: applications that register
+// dynamically-generated handler types at runtime (plugin systems,
+// per-tenant codegen, reflect.MakeFunc scenarios) will accumulate one
+// cache entry per unique reflect.Type forever. If that describes you,
+// use the typed handler variants (Ristretto/Solo/Doppio/Lungo, or the
+// HandlerCtx* wrappers) which skip this cache entirely, or avoid
+// registering distinct function types per request.
 var handlerCache sync.Map // map[reflect.Type]*handlerInfo
 
 // Handler converts various handler types into http.HandlerFunc using reflection.
