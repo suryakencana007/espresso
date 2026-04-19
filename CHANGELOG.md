@@ -5,6 +5,47 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- **WebSocket handler support** with the new `espresso.WS` type and
+  `espresso.WebSocket[T]()` wrapper. Supports text and binary frames,
+  ping/pong keepalive, state injection, context cancellation on disconnect,
+  and graceful shutdown integration.
+  Uses `github.com/coder/websocket` as the underlying library.
+
+- **Typed SSE streaming** with the new `espresso.SSEStream` type and
+  `espresso.Stream[T]()` / `espresso.StreamSimple()` handlers. Supports
+  typed events, JSON streaming, keepalive pings, Last-Event-ID resumption,
+  state injection, concurrent-safe writes, and graceful shutdown integration.
+  The old `response.SSE`/`SSEWriter` types are deprecated in favor of the new API.
+
+- **Structured error responses** with the new `espresso.Error` type and
+  fluent builder API (`WithCode`, `WithDetail`, `WithDetails`, `Wrap`).
+  Handler errors are now automatically serialized as `{"error": {...}}` JSON.
+  Includes `ErrBadRequest`, `ErrNotFound`, `ErrInternal`, and other constructors.
+  `RecoverMiddleware` now returns structured JSON with `"PANIC"` code.
+  `ErrorResponse` is now a type alias for `Error` (backward compatible).
+
+- **Graceful shutdown hooks** with `router.OnShutdown(hook)` for registering
+  cleanup functions that run before the server stops. Hooks run in registration
+  order, each receiving a context with the shutdown timeout. Hook panics and
+  errors are logged but don't block subsequent hooks. The shutdown sequence is:
+  1) OnShutdown hooks, 2) SSE streams close, 3) WebSockets close (code 1001),
+  4) HTTP server stops accepting connections, 5) in-flight requests drain.
+  Added `BrewContext(ctx, opts)` for programmatic server lifecycle control.
+
+### Changed
+
+- Handler error responses now produce structured JSON (`{"error": {"code": ..., "message": ...}}`)
+  instead of plain text via `http.Error()`. Handlers returning `*espresso.Error` use the error's
+  status code and fields; plain `error` returns produce a generic 500 response.
+- `RecoverMiddleware` now returns structured JSON error responses with stack trace logging
+  and request ID inclusion, instead of plain text.
+  state injection, concurrent-safe writes, and graceful shutdown integration.
+  The old `response.SSE`/`SSEWriter` types are deprecated in favor of the new API.
+
 ## [1.2.0] - 2025-04-09
 
 ### Added

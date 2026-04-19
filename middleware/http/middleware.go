@@ -6,9 +6,11 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -31,7 +33,7 @@ func MiddlewareChain(middleware ...Middleware) Middleware {
 }
 
 // RequestIDKey is the context key type used for request IDs.
-type RequestIDKey = struct{}
+type RequestIDKey struct{}
 
 // RequestIDMiddleware sets or propagates request IDs in context and response headers.
 func RequestIDMiddleware() Middleware {
@@ -63,19 +65,39 @@ func GetRequestID(ctx context.Context) string {
 	return ""
 }
 
-// RecoverMiddleware recovers panics and responds with HTTP 500.
+// RecoverMiddleware recovers panics and responds with a structured JSON error.
 func RecoverMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			defer func() {
-				if err := recover(); err != nil {
+				if rec := recover(); rec != nil {
+					stack := debug.Stack()
+
+					_ = rec // panic value used for logging above
+
 					log.Error().
-						Interface("error", err).
+						Interface("error", rec).
 						Str("path", r.URL.Path).
 						Str("method", r.Method).
+						Str("request_id", GetRequestID(r.Context())).
+						Str("stack", string(stack)).
 						Msg("Panic recovered")
 
-					http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+					requestID := GetRequestID(r.Context())
+					body := struct {
+						Error struct {
+							Code      string `json:"code"`
+							Message   string `json:"message"`
+							RequestID string `json:"request_id,omitempty"`
+						} `json:"error"`
+					}{}
+					body.Error.Code = "PANIC"
+					body.Error.Message = "internal server error"
+					body.Error.RequestID = requestID
+
+					w.Header().Set("Content-Type", "application/json; charset=utf-8")
+					w.WriteHeader(http.StatusInternalServerError)
+					_ = json.NewEncoder(w).Encode(body)
 				}
 			}()
 			next.ServeHTTP(w, r)

@@ -1,6 +1,15 @@
 package espresso
 
-import "net/http"
+import (
+	"context"
+	"net/http"
+)
+
+// ShutdownHook is a function invoked during graceful shutdown.
+// The context respects the configured shutdown timeout.
+// Hooks should return promptly; exceeding the context deadline will cause
+// the shutdown process to proceed to the next hook.
+type ShutdownHook func(ctx context.Context) error
 
 // Router wraps http.ServeMux with fluent API for route registration.
 // Implements http.Handler for use with http.ListenAndServe or Brew.
@@ -27,9 +36,10 @@ import "net/http"
 //		Delete("/users/{id}", DeleteUser).
 //		Brew(espresso.WithAddr(":3000"))
 type Router struct {
-	mux        *http.ServeMux
-	middleware []func(http.Handler) http.Handler
-	state      any
+	mux           *http.ServeMux
+	middleware    []func(http.Handler) http.Handler
+	state         any
+	shutdownHooks []ShutdownHook
 }
 
 // Portafilter creates a new Router with an initialized ServeMux.
@@ -56,6 +66,28 @@ func Portafilter() *Router {
 //	router.Use(httpmiddleware.CORSMiddleware(httpmiddleware.DefaultCORSConfig))
 func (r *Router) Use(mw ...func(http.Handler) http.Handler) *Router {
 	r.middleware = append(r.middleware, mw...)
+	return r
+}
+
+// OnShutdown registers a hook to run during graceful shutdown.
+// Hooks run in the order they were registered, before the HTTP server
+// stops accepting new connections. Each hook receives a context with
+// the configured shutdown timeout.
+//
+// Multiple OnShutdown calls accumulate hooks. This method returns the
+// router for chaining.
+//
+// Example:
+//
+//	router.
+//	    OnShutdown(func(ctx context.Context) error {
+//	        return db.Close()
+//	    }).
+//	    OnShutdown(func(ctx context.Context) error {
+//	        return cache.Flush(ctx)
+//	    })
+func (r *Router) OnShutdown(hook ShutdownHook) *Router {
+	r.shutdownHooks = append(r.shutdownHooks, hook)
 	return r
 }
 

@@ -87,8 +87,8 @@ func TestRecoverMiddleware(t *testing.T) {
 		}
 
 		body := rec.Body.String()
-		if !strings.Contains(body, "Internal Server Error") {
-			t.Errorf("expected error message, got %s", body)
+		if !strings.Contains(body, `"PANIC"`) {
+			t.Errorf("expected PANIC code in response, got %s", body)
 		}
 	})
 

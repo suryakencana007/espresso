@@ -133,18 +133,18 @@ func HandlerCtxReqErr[Req FromRequest, Res IntoResponse](fn func(context.Context
 		}()
 
 		if err := req.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		res, err := fn(r.Context(), req)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, err)
 			return
 		}
 
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -187,23 +187,23 @@ func HandlerCtxReq1Req2Err[Req1 FromRequest, Req2 FromRequest, Res IntoResponse]
 		}()
 
 		if err := req1.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		if err := req2.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		res, err := fn(r.Context(), req1, req2)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, err)
 			return
 		}
 
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -244,18 +244,18 @@ func HandlerCtxReq1Req2[Req1 FromRequest, Req2 FromRequest, Res IntoResponse](
 		}()
 
 		if err := req1.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		if err := req2.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		res := fn(r.Context(), req1, req2)
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -284,13 +284,13 @@ func HandlerCtxReq[Req FromRequest, Res IntoResponse](fn func(context.Context, R
 		}()
 
 		if err := req.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		res := fn(r.Context(), req)
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -319,18 +319,18 @@ func HandlerReqErr[Req FromRequest, Res IntoResponse](fn func(Req) (Res, error))
 		}()
 
 		if err := req.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		res, err := fn(req)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, err)
 			return
 		}
 
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -359,13 +359,13 @@ func HandlerReq[Req FromRequest, Res IntoResponse](fn func(Req) Res) http.Handle
 		}()
 
 		if err := req.Extract(r); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
+			writeExtractError(w, r, err)
 			return
 		}
 
 		res := fn(req)
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -384,12 +384,12 @@ func HandlerCtx[Res IntoResponse](fn func(context.Context) (Res, error)) http.Ha
 	return func(w http.ResponseWriter, r *http.Request) {
 		res, err := fn(r.Context())
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, err)
 			return
 		}
 
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -408,7 +408,7 @@ func HandlerCtxNoErr[Res IntoResponse](fn func(context.Context) Res) http.Handle
 	return func(w http.ResponseWriter, r *http.Request) {
 		res := fn(r.Context())
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -427,12 +427,12 @@ func HandlerNoReq[Res IntoResponse](fn func() (Res, error)) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res, err := fn()
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, err)
 			return
 		}
 
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -451,7 +451,7 @@ func HandlerNoReqNoErr[Res IntoResponse](fn func() Res) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res := fn()
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
@@ -694,7 +694,7 @@ func createHandlerFromInfo(v reflect.Value, _ reflect.Type, info *handlerInfo) h
 
 			if ext, ok := req.(FromRequest); ok {
 				if err := ext.Extract(r); err != nil {
-					http.Error(w, err.Error(), http.StatusBadRequest)
+					writeExtractError(w, r, err)
 					return
 				}
 			}
@@ -732,12 +732,12 @@ func createHandlerFromInfo(v reflect.Value, _ reflect.Type, info *handlerInfo) h
 		}
 
 		if handlerErr != nil {
-			http.Error(w, handlerErr.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, handlerErr)
 			return
 		}
 
 		if err := writeResponse(w, res); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }

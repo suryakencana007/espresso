@@ -67,6 +67,14 @@ func WithShutdownTimeout(d time.Duration) ServerOption {
 // Brew starts the HTTP server with graceful shutdown support.
 // It blocks until the server is stopped by signal (SIGINT, SIGTERM, SIGQUIT).
 //
+// The shutdown sequence is:
+//  1. Registered OnShutdown hooks run in order
+//  2. All open SSE streams close with a final comment
+//  3. All open WebSockets close with code 1001 (going away)
+//  4. The HTTP server stops accepting new connections
+//  5. In-flight HTTP requests complete up to the shutdown timeout
+//  6. Remaining connections are force-closed
+//
 // Options can be used to customize server configuration:
 //
 //	router.Brew(
@@ -107,11 +115,106 @@ func (r *Router) Brew(opts ...ServerOption) {
 		log.Info().Str("signal", sig.String()).Msg("🛑 Shutting down server...")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
+	r.gracefulShutdown(context.Background(), srv, cfg.ShutdownTimeout)
+}
+
+// BrewContext starts the HTTP server with graceful shutdown, using the provided
+// context for cancellation. When the context is canceled, the server begins
+// its graceful shutdown sequence.
+//
+// This is useful for programmatic control of the server lifecycle (e.g., in tests
+// or when embedding Espresso in another application).
+//
+// Example:
+//
+//	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+//	defer cancel()
+//	if err := router.BrewContext(ctx, espresso.WithAddr(":8080")); err != nil {
+//	    slog.Error("server error", "error", err)
+//	}
+func (r *Router) BrewContext(ctx context.Context, opts ...ServerOption) error {
+	cfg := defaultConfig
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	srv := &http.Server{
+		Addr:              cfg.Addr,
+		Handler:           r,
+		ReadTimeout:       cfg.ReadTimeout,
+		WriteTimeout:      cfg.WriteTimeout,
+		IdleTimeout:       cfg.IdleTimeout,
+		ReadHeaderTimeout: cfg.ReadHeaderTimeout,
+	}
+
+	serverErr := make(chan error, 1)
+
+	go func() {
+		log.Info().Str("addr", cfg.Addr).Msg("🚀 Server running")
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			serverErr <- err
+		}
+	}()
+
+	select {
+	case <-ctx.Done():
+		log.Info().Msg("🛑 Context canceled, shutting down server...")
+	case err := <-serverErr:
+		return err
+	}
+
+	r.gracefulShutdown(ctx, srv, cfg.ShutdownTimeout)
+	return nil
+}
+
+// gracefulShutdown performs the full graceful shutdown sequence:
+//  1. Run registered OnShutdown hooks in order
+//  2. Close all SSE streams with a final comment
+//  3. Close all WebSockets with close code 1001
+//  4. Stop accepting new HTTP connections
+//  5. Wait for in-flight requests to complete within timeout
+func (r *Router) gracefulShutdown(parentCtx context.Context, srv *http.Server, timeout time.Duration) {
+	log.Info().Msg("shutdown initiated")
+
+	shutdownCtx, cancel := context.WithTimeout(parentCtx, timeout)
 	defer cancel()
 
-	if err := srv.Shutdown(ctx); err != nil {
-		log.Error().Err(err).Msg("Server shutdown error")
+	// 1. Run user-registered hooks in order
+	for i, hook := range r.shutdownHooks {
+		runHookSafely(shutdownCtx, hook, i)
 	}
+
+	// 2. Close all SSE streams before shutting down HTTP server
+	defaultSSERegistry.closeAll("server shutting down")
+
+	// 3. Close all WebSocket connections before shutting down HTTP server
+	if defaultRegistry != nil {
+		defaultRegistry.closeAll(CloseGoingAway, "server shutting down")
+	}
+
+	// 4-5. Stop accepting new connections and wait for in-flight requests
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Error().Err(err).Msg("server shutdown error")
+	}
+
 	log.Info().Msg("✅ Server stopped")
+}
+
+// runHookSafely executes a shutdown hook with panic recovery and error logging.
+// If the hook panics or returns an error, it is logged and shutdown continues.
+func runHookSafely(ctx context.Context, hook ShutdownHook, index int) {
+	defer func() {
+		if rec := recover(); rec != nil {
+			log.Error().Int("hook", index).Interface("panic", rec).Msg("shutdown hook panicked")
+		}
+	}()
+
+	if err := hook(ctx); err != nil {
+		// Don't log context canceled errors since that's expected during shutdown
+		if ctx.Err() != nil {
+			log.Warn().Int("hook", index).Err(err).Msg("shutdown hook timed out")
+		} else {
+			log.Error().Int("hook", index).Err(err).Msg("shutdown hook failed")
+		}
+	}
 }

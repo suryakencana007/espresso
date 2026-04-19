@@ -4,6 +4,7 @@ go 1.25.6
 
 require (
 	github.com/bytedance/sonic v1.15.0
+	github.com/coder/websocket v1.8.14
 	github.com/rs/zerolog v1.35.0
 )
 

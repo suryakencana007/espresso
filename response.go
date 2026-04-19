@@ -133,6 +133,9 @@ func (s *Status) Reset() {
 // SSEEvent represents a single Server-Sent Event.
 // Server-Sent Events allow the server to push updates to the client in real-time.
 //
+// Deprecated: Use the new SSEStream and Event types in sse.go for typed SSE streaming.
+// SSEEvent is kept for backward compatibility and will be removed in a future version.
+//
 // Example:
 //
 //	event := SSEEvent{
@@ -149,6 +152,9 @@ type SSEEvent struct {
 
 // SSE is a response type for Server-Sent Events streaming.
 // Use this for real-time server-to-client updates.
+//
+// Deprecated: Use the new Stream[T]() and StreamSimple() handlers with SSEStream instead.
+// SSE is kept for backward compatibility and will be removed in a future version.
 //
 // Example:
 //
@@ -223,6 +229,9 @@ func (s *SSE) WriteKeepAlive(w http.ResponseWriter) {
 
 // SSEWriter is a helper for writing SSE events with a fluent API.
 // It wraps an http.ResponseWriter and provides convenient methods for streaming.
+//
+// Deprecated: Use the new SSEStream type with Stream[T]() or StreamSimple() instead.
+// SSEWriter is kept for backward compatibility and will be removed in a future version.
 //
 // Example:
 //
