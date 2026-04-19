@@ -43,8 +43,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   status code and fields; plain `error` returns produce a generic 500 response.
 - `RecoverMiddleware` now returns structured JSON error responses with stack trace logging
   and request ID inclusion, instead of plain text.
-  state injection, concurrent-safe writes, and graceful shutdown integration.
-  The old `response.SSE`/`SSEWriter` types are deprecated in favor of the new API.
+
+### Verified
+
+- Context cancellation propagates to SSE and WebSocket handlers within <1s on client disconnect.
+- No goroutine leaks after 50 connect/disconnect cycles for SSE streams.
+- Long-lived connection integration tests (tagged `integration`) for SSE and WebSocket stability.
 
 ## [1.2.0] - 2025-04-09
 
