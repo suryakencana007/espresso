@@ -292,6 +292,46 @@ func TestSSE_StateInjection(t *testing.T) {
 	}
 }
 
+type stateStreamReq struct {
+	name string
+}
+
+func (s *stateStreamReq) Extract(r *http.Request) error {
+	s.name = r.URL.Query().Get("name")
+	return nil
+}
+
+func TestSSE_Stream_StateInjection(t *testing.T) {
+	type appState struct {
+		Prefix string
+	}
+
+	state := appState{Prefix: "hello"}
+
+	handler := func(ctx context.Context, req *stateStreamReq, stream *SSEStream) error {
+		s := MustGetState[appState](ctx)
+		return stream.Send(Event{Name: "msg", Data: s.Prefix + " " + req.name})
+	}
+
+	router := Portafilter().WithState(state).Get("/stream", Stream(handler))
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/stream?name=world")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	events := parseSSEEvents(t, resp)
+	if len(events) == 0 {
+		t.Fatal("expected at least one event")
+	}
+	if events[0].Data != "hello world" {
+		t.Errorf("expected data 'hello world', got %q", events[0].Data)
+	}
+}
+
 func TestSSE_ConcurrentWrites(t *testing.T) {
 	handler := func(ctx context.Context, stream *SSEStream) error {
 		var wg sync.WaitGroup
@@ -299,7 +339,7 @@ func TestSSE_ConcurrentWrites(t *testing.T) {
 			wg.Add(1)
 			go func(n int) {
 				defer wg.Done()
-				_ = stream.Send(Event{Name: "msg", Data: string(rune('A' + n))})
+				_ = stream.Send(Event{Name: "msg", Data: "ABCDEFGHIJ"[n : n+1]})
 			}(i)
 		}
 		wg.Wait()

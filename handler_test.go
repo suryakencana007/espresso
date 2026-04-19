@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -607,7 +608,7 @@ func TestLungo(t *testing.T) {
 
 func TestLungo_WithValues(t *testing.T) {
 	handler := Lungo(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
-		return testRes{Message: "id=" + string(rune(path.ID)) + ",name=" + body.Name}, nil
+		return testRes{Message: "id=" + strconv.FormatInt(path.ID, 10) + ",name=" + body.Name}, nil
 	})
 
 	body := `{"name":"john","email":"john@example.com"}`

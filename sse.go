@@ -253,12 +253,14 @@ func Stream[Req FromRequest](h StreamHandler[Req], opts ...StreamOption) http.Ha
 		fromReq, ok := any(req).(FromRequest)
 		if ok {
 			if err := fromReq.Extract(r); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				writeExtractError(w, r, err)
 				return
 			}
 		}
 
-		serveStream(w, r, req, h, cfg)
+		serveStream(w, r, cfg, func(ctx context.Context, stream *SSEStream) error {
+			return h(ctx, req, stream)
+		})
 	}
 }
 
@@ -275,12 +277,15 @@ func StreamSimple(h func(ctx context.Context, stream *SSEStream) error, opts ...
 	}
 
 	return func(w http.ResponseWriter, r *http.Request) {
-		serveStreamSimple(w, r, h, cfg)
+		serveStream(w, r, cfg, h)
 	}
 }
 
-func serveStreamSimple(w http.ResponseWriter, r *http.Request, h func(ctx context.Context, stream *SSEStream) error, cfg *streamConfig) {
-	// Set SSE headers
+// serveStream implements the shared SSE transport: headers, flushing, keepalive,
+// disconnect monitoring, handler invocation with panic recovery, and cleanup.
+// Both Stream[Req] and StreamSimple delegate here; Stream[Req] adapts its
+// typed handler into the uniform signature via a closure.
+func serveStream(w http.ResponseWriter, r *http.Request, cfg *streamConfig, h func(ctx context.Context, stream *SSEStream) error) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
@@ -288,11 +293,10 @@ func serveStreamSimple(w http.ResponseWriter, r *http.Request, h func(ctx contex
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
+		writeHandlerError(w, r, ErrInternal("streaming not supported"))
 		return
 	}
 
-	// Flush headers
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
@@ -308,14 +312,12 @@ func serveStreamSimple(w http.ResponseWriter, r *http.Request, h func(ctx contex
 
 	defaultSSERegistry.add(stream)
 
-	// Send initial retry hint if configured
 	if cfg.initialRetryHint > 0 {
 		_ = stream.SetRetry(cfg.initialRetryHint)
 	}
 
-	// Start keepalive goroutine.
 	// keepAliveStop signals the goroutine to shut down.
-	// keepAliveExited is closed by the goroutine when it has fully exited,
+	// keepAliveExited is closed when the goroutine has fully exited,
 	// ensuring no writes to http.ResponseWriter after the handler returns.
 	var keepAliveStop chan struct{}
 	var keepAliveExited chan struct{}
@@ -341,7 +343,7 @@ func serveStreamSimple(w http.ResponseWriter, r *http.Request, h func(ctx contex
 		}()
 	}
 
-	// Monitor client disconnect
+	// Fail-fast Send() calls once the client disconnects.
 	go func() {
 		<-ctx.Done()
 		stream.closed.Store(true)
@@ -357,107 +359,14 @@ func serveStreamSimple(w http.ResponseWriter, r *http.Request, h func(ctx contex
 		_ = h(ctx, stream)
 	}()
 
-	// Signal keepalive to stop and wait for it to fully exit
-	// before returning, so no goroutine writes to w after the handler returns.
+	// Signal keepalive to stop and wait for it to fully exit before
+	// returning, so no goroutine writes to w after the handler returns.
 	if keepAliveStop != nil {
 		close(keepAliveStop)
 		<-keepAliveExited
 	}
 
 	_ = stream.Close()
-
-	defaultSSERegistry.remove(stream)
-}
-
-func serveStream[Req any](w http.ResponseWriter, r *http.Request, req Req, h func(ctx context.Context, req Req, stream *SSEStream) error, cfg *streamConfig) {
-	// Set SSE headers
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.Header().Set("X-Accel-Buffering", "no")
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming not supported", http.StatusInternalServerError)
-		return
-	}
-
-	// Flush headers
-	w.WriteHeader(http.StatusOK)
-	flusher.Flush()
-
-	ctx, cancel := context.WithCancel(r.Context())
-	defer cancel()
-
-	stream := &SSEStream{
-		w:           w,
-		flusher:     flusher,
-		ctx:         ctx,
-		lastEventID: r.Header.Get("Last-Event-ID"),
-	}
-
-	defaultSSERegistry.add(stream)
-
-	// Send initial retry hint if configured
-	if cfg.initialRetryHint > 0 {
-		_ = stream.SetRetry(cfg.initialRetryHint)
-	}
-
-	// Start keepalive goroutine.
-	// keepAliveStop signals the goroutine to shut down.
-	// keepAliveExited is closed by the goroutine when it has fully exited,
-	// ensuring no writes to http.ResponseWriter after the handler returns.
-	var keepAliveStop chan struct{}
-	var keepAliveExited chan struct{}
-	if cfg.keepAliveInterval > 0 {
-		keepAliveStop = make(chan struct{})
-		keepAliveExited = make(chan struct{})
-		go func() {
-			defer close(keepAliveExited)
-			ticker := time.NewTicker(cfg.keepAliveInterval)
-			defer ticker.Stop()
-			for {
-				select {
-				case <-ticker.C:
-					if err := stream.Comment("keepalive"); err != nil {
-						return
-					}
-				case <-ctx.Done():
-					return
-				case <-keepAliveStop:
-					return
-				}
-			}
-		}()
-	}
-
-	// Monitor client disconnect by watching for context cancellation.
-	// When the HTTP connection closes, r.Context() will be canceled,
-	// which propagates to our derived ctx.
-	go func() {
-		<-ctx.Done()
-		stream.closed.Store(true)
-	}()
-
-	func() {
-		defer func() {
-			if rec := recover(); rec != nil {
-				slog.Error("stream handler panic", "panic", rec)
-				_ = stream.Close()
-			}
-		}()
-		_ = h(ctx, req, stream)
-	}()
-
-	// Signal keepalive to stop and wait for it to fully exit
-	// before returning, so no goroutine writes to w after the handler returns.
-	if keepAliveStop != nil {
-		close(keepAliveStop)
-		<-keepAliveExited
-	}
-
-	_ = stream.Close()
-
 	defaultSSERegistry.remove(stream)
 }
 

@@ -4,10 +4,13 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/coder/websocket"
 )
 
 func TestShutdown_HooksRunInOrder(t *testing.T) {
@@ -185,6 +188,57 @@ func TestShutdown_SSEStreamsClosed(t *testing.T) {
 	// The global closeAll is called during gracefulShutdown.
 	// Verify that the stream gets marked as closed (Send returns error).
 	defaultSSERegistry.closeAll("test shutdown")
+}
+
+func TestShutdown_WebSocketsClosed(t *testing.T) {
+	// Mirror TestShutdown_SSEStreamsClosed: verify that closeAll on the global
+	// WebSocket registry terminates registered connections during shutdown.
+
+	handler := func(ctx context.Context, ws *WS) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	router := Portafilter().Get("/ws", WebSocketSimple(handler, WithPingInterval(0)))
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws"
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer dialCancel()
+	conn, resp, err := websocket.Dial(dialCtx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+	deadline := time.Now().Add(time.Second)
+	for defaultRegistry.len() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if defaultRegistry.len() == 0 {
+		t.Fatal("expected WebSocket to be registered")
+	}
+
+	defaultRegistry.closeAll(CloseGoingAway, "test shutdown")
+
+	readCtx, readCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer readCancel()
+	_, _, readErr := conn.Read(readCtx)
+	if readErr == nil {
+		t.Fatal("expected read to fail after server close")
+	}
+	if got := websocket.CloseStatus(readErr); got != websocket.StatusGoingAway {
+		t.Errorf("expected close status %d, got %d (err=%v)", websocket.StatusGoingAway, got, readErr)
+	}
+
+	if defaultRegistry.len() != 0 {
+		t.Errorf("expected registry to be empty after closeAll, got %d", defaultRegistry.len())
+	}
 }
 
 func TestShutdown_InFlightRequestsComplete(t *testing.T) {

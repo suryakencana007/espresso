@@ -492,6 +492,63 @@ func TestWebSocket_ContextCancellation(t *testing.T) {
 	}
 }
 
+func TestWebSocket_GracefulShutdown(t *testing.T) {
+	// End-to-end: verify gracefulShutdown sends close code 1001 to connected
+	// WebSocket clients before shutting the HTTP server down.
+	handler := func(ctx context.Context, ws *WS) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	router := Portafilter().Get("/ws", WebSocketSimple(handler, WithPingInterval(0)))
+
+	httpSrv := httptest.NewServer(router)
+	defer httpSrv.Close()
+
+	wsURL := "ws" + strings.TrimPrefix(httpSrv.URL, "http") + "/ws"
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer dialCancel()
+	conn, resp, err := websocket.Dial(dialCtx, wsURL, nil)
+	if err != nil {
+		t.Fatalf("dial failed: %v", err)
+	}
+	if resp != nil && resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
+
+	deadline := time.Now().Add(time.Second)
+	for defaultRegistry.len() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if defaultRegistry.len() == 0 {
+		t.Fatal("expected WebSocket to be registered")
+	}
+
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
+		router.gracefulShutdown(context.Background(), httpSrv.Config, 2*time.Second)
+	}()
+
+	readCtx, readCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer readCancel()
+	_, _, readErr := conn.Read(readCtx)
+	if readErr == nil {
+		t.Fatal("expected read to fail after graceful shutdown")
+	}
+	if got := websocket.CloseStatus(readErr); got != websocket.StatusGoingAway {
+		t.Errorf("expected close status %d (StatusGoingAway), got %d (err=%v)", websocket.StatusGoingAway, got, readErr)
+	}
+
+	select {
+	case <-shutdownDone:
+	case <-time.After(3 * time.Second):
+		t.Error("gracefulShutdown did not return within timeout")
+	}
+}
+
 func TestWSRegistry_AddRemove(t *testing.T) {
 	reg := newWSRegistry()
 
@@ -499,8 +556,10 @@ func TestWSRegistry_AddRemove(t *testing.T) {
 		t.Errorf("expected 0 connections, got %d", reg.len())
 	}
 
-	ws1 := &WS{closed: true}
-	ws2 := &WS{closed: true}
+	ws1 := &WS{}
+	ws1.closed.Store(true)
+	ws2 := &WS{}
+	ws2.closed.Store(true)
 
 	reg.add(ws1)
 	if reg.len() != 1 {

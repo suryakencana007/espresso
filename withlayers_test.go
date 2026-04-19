@@ -2,6 +2,7 @@ package espresso
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -412,6 +413,47 @@ func TestLayerConfig_ConcurrencyLimit(t *testing.T) {
 	cfg := ConcurrencyLimit(100)
 	if cfg == nil {
 		t.Error("expected non-nil config")
+	}
+}
+
+func TestWithLayers_ExtractorErrorReturnsStructuredJSON(t *testing.T) {
+	// Lock-in: extractor failures go through writeExtractError, producing a
+	// JSON body shaped as errorResponse with code "BAD_REQUEST", not plain text.
+	handler := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		return JSON[UserRes]{Data: UserRes{Message: "ok"}}, nil
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](handler)
+
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader("{not-json"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", rec.Code)
+	}
+
+	ct := rec.Header().Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type, got %q", ct)
+	}
+
+	var body struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response body is not JSON: %v; body=%s", err, rec.Body.String())
+	}
+	if body.Error.Code != "BAD_REQUEST" {
+		t.Errorf("expected code BAD_REQUEST, got %q", body.Error.Code)
+	}
+	if body.Error.Message == "" {
+		t.Error("expected non-empty error message")
 	}
 }
 

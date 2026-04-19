@@ -301,12 +301,12 @@ func createTypedHandler(handler any, reqType reflect.Type, _ reflect.Type, layer
 
 			extractor, ok := reqVal.Interface().(FromRequest)
 			if !ok {
-				http.Error(w, "invalid request extractor type", http.StatusInternalServerError)
+				writeHandlerError(w, r, ErrInternal("invalid request extractor type"))
 				return
 			}
 
 			if err := extractor.Extract(r); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				writeExtractError(w, r, err)
 				return
 			}
 
@@ -319,12 +319,12 @@ func createTypedHandler(handler any, reqType reflect.Type, _ reflect.Type, layer
 
 		res, err := wrapped.Call(r.Context(), req)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, err)
 			return
 		}
 
 		if err := writeResponse(w, res); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}, nil
 }
@@ -411,7 +411,7 @@ func applyLayersAndConvert[Req FromRequest, Res IntoResponse](svc Service[Req, R
 		// Get request from pool
 		req, ok := pool.Get().(Req)
 		if !ok {
-			http.Error(w, "internal server error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("invalid pooled request type"))
 			return
 		}
 		defer func() {
@@ -422,7 +422,7 @@ func applyLayersAndConvert[Req FromRequest, Res IntoResponse](svc Service[Req, R
 		// Extract data from HTTP request
 		if ext, ok := any(req).(FromRequest); ok {
 			if err := ext.Extract(r); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				writeExtractError(w, r, err)
 				return
 			}
 		}
@@ -430,13 +430,13 @@ func applyLayersAndConvert[Req FromRequest, Res IntoResponse](svc Service[Req, R
 		// Call service with layers applied
 		res, err := wrapped.Call(r.Context(), req)
 		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
+			writeHandlerError(w, r, err)
 			return
 		}
 
 		// Write response
 		if err := res.WriteResponse(w); err != nil {
-			http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 		}
 	}
 }
