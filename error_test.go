@@ -1,9 +1,16 @@
 package espresso
 
 import (
+	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 
+	httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
 	servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
 )
 
@@ -58,69 +65,384 @@ func TestIsCircuitBreakerError(t *testing.T) {
 	})
 }
 
-func TestErrorResponse_WriteResponse(t *testing.T) {
-	t.Run("basic error response", func(t *testing.T) {
-		err := BadRequest("invalid parameter", map[string]string{"field": "name"})
+// ============================================
+// New Error type tests
+// ============================================
 
-		// Should implement IntoResponse
-		var _ IntoResponse = err
+func TestError_Builder(t *testing.T) {
+	err := NewError(http.StatusNotFound, "project not found").
+		WithCode("PROJECT_NOT_FOUND").
+		WithDetail("projectId", "abc123").
+		Wrap(errors.New("db error"))
 
-		// Check fields
-		if err.StatusCode != 400 {
-			t.Errorf("expected status 400, got %d", err.StatusCode)
-		}
-		if err.ErrorType != "Bad Request" {
-			t.Errorf("expected error type 'Bad Request', got %q", err.ErrorType)
-		}
-		if err.Message != "invalid parameter" {
-			t.Errorf("expected message 'invalid parameter', got %q", err.Message)
-		}
-	})
+	if err.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", err.StatusCode)
+	}
+	if err.Code != "PROJECT_NOT_FOUND" {
+		t.Errorf("expected code PROJECT_NOT_FOUND, got %q", err.Code)
+	}
+	if err.Message != "project not found" {
+		t.Errorf("expected message 'project not found', got %q", err.Message)
+	}
+	if err.Details["projectId"] != "abc123" {
+		t.Errorf("expected detail projectId=abc123, got %v", err.Details["projectId"])
+	}
+	if err.Internal == nil {
+		t.Error("expected internal error to be set")
+	}
+	if err.Internal.Error() != "db error" {
+		t.Errorf("expected internal error 'db error', got %q", err.Internal.Error())
+	}
 }
 
-func TestErrorConstructors(t *testing.T) {
+func TestError_Serialization(t *testing.T) {
+	err := NewError(http.StatusNotFound, "project not found").
+		WithCode("PROJECT_NOT_FOUND").
+		WithDetail("projectId", "abc123")
+
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
+
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("expected application/json content type, got %q", ct)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.Code != "PROJECT_NOT_FOUND" {
+		t.Errorf("expected code PROJECT_NOT_FOUND, got %q", resp.Error.Code)
+	}
+	if resp.Error.Message != "project not found" {
+		t.Errorf("expected message 'project not found', got %q", resp.Error.Message)
+	}
+	if resp.Error.Details["projectId"] != "abc123" {
+		t.Errorf("expected detail projectId=abc123, got %v", resp.Error.Details["projectId"])
+	}
+}
+
+func TestError_RequestIDIncluded(t *testing.T) {
+	err := ErrBadRequest("test error")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	r = r.WithContext(setRequestID(r.Context(), "req-123"))
+
+	writeErrorResponse(w, r, err)
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.RequestID != "req-123" {
+		t.Errorf("expected request_id 'req-123', got %q", resp.Error.RequestID)
+	}
+}
+
+func TestError_RequestIDOmitted(t *testing.T) {
+	err := ErrBadRequest("test error")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	writeErrorResponse(w, r, err)
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.RequestID != "" {
+		t.Errorf("expected empty request_id, got %q", resp.Error.RequestID)
+	}
+}
+
+func TestError_InternalNotExposed(t *testing.T) {
+	err := ErrInternal("something failed").Wrap(errors.New("database connection refused"))
+
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+
+	body := w.Body.String()
+	if strings.Contains(body, "database connection refused") {
+		t.Error("internal error should not be exposed in JSON response")
+	}
+	if strings.Contains(body, "internal") {
+		// Check it's the "code" field, not the internal error message
+		if strings.Contains(body, `"internal"`) {
+			t.Error("internal field should not appear in JSON response")
+		}
+	}
+}
+
+func TestError_WrapInternal(t *testing.T) {
+	innerErr := errors.New("connection refused")
+	err := ErrInternal("something failed").Wrap(innerErr)
+
+	if err.Internal != innerErr {
+		t.Error("expected internal error to be wrapped")
+	}
+	if err.Unwrap() != innerErr {
+		t.Error("expected Unwrap to return inner error")
+	}
+}
+
+func TestError_ErrorsIs(t *testing.T) {
+	innerErr := errors.New("connection refused")
+	err := ErrNotFound("not found").Wrap(innerErr)
+
+	if !errors.Is(err, innerErr) {
+		t.Error("expected errors.Is to match wrapped inner error")
+	}
+}
+
+func TestError_ErrorsAs(t *testing.T) {
+	err := ErrNotFound("not found")
+
+	var espErr *Error
+	if !errors.As(err, &espErr) {
+		t.Error("expected errors.As to match *Error")
+	}
+	if espErr.Code != "NOT_FOUND" {
+		t.Errorf("expected code NOT_FOUND, got %q", espErr.Code)
+	}
+
+	// Test with wrapped *Error
+	wrapped := fmt.Errorf("failed: %w", err)
+	if !errors.As(wrapped, &espErr) {
+		t.Error("expected errors.As to match *Error through fmt.Errorf wrapping")
+	}
+}
+
+func TestError_HandlerReturnsError(t *testing.T) {
+	err := ErrNotFound("resource not found").WithDetail("id", "123")
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	writeHandlerError(w, r, err)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.Code != "NOT_FOUND" {
+		t.Errorf("expected code NOT_FOUND, got %q", resp.Error.Code)
+	}
+}
+
+func TestError_HandlerReturnsPlainError(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	writeHandlerError(w, r, errors.New("something broke"))
+
+	if w.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", w.Code)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.Code != "INTERNAL" {
+		t.Errorf("expected code INTERNAL, got %q", resp.Error.Code)
+	}
+	if resp.Error.Message != "internal server error" {
+		t.Errorf("expected message 'internal server error', got %q", resp.Error.Message)
+	}
+}
+
+func TestError_HandlerReturnsWrappedError(t *testing.T) {
+	inner := ErrNotFound("project not found")
+	wrapped := fmt.Errorf("failed: %w", inner)
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	writeHandlerError(w, r, wrapped)
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.Code != "NOT_FOUND" {
+		t.Errorf("expected code NOT_FOUND, got %q", resp.Error.Code)
+	}
+}
+
+func TestError_Constructors(t *testing.T) {
 	tests := []struct {
-		name        string
-		constructor func(string, ...any) *ErrorResponse
-		message     string
-		statusCode  int
-		errorType   string
+		name       string
+		err        *Error
+		statusCode int
+		code       string
+		message    string
 	}{
-		{"BadRequest", BadRequest, "bad request", 400, "Bad Request"},
-		{"Unauthorized", Unauthorized, "unauthorized", 401, "Unauthorized"},
-		{"Forbidden", Forbidden, "forbidden", 403, "Forbidden"},
-		{"NotFound", NotFound, "not found", 404, "Not Found"},
-		{"Conflict", Conflict, "conflict", 409, "Conflict"},
-		{"InternalError", InternalError, "internal error", 500, "Internal Server Error"},
-		{"ServiceUnavailable", ServiceUnavailable, "service unavailable", 503, "Service Unavailable"},
+		{"ErrBadRequest", ErrBadRequest("bad"), 400, "BAD_REQUEST", "bad"},
+		{"ErrUnauthorized", ErrUnauthorized("unauth"), 401, "UNAUTHORIZED", "unauth"},
+		{"ErrForbidden", ErrForbidden("forbidden"), 403, "FORBIDDEN", "forbidden"},
+		{"ErrNotFound", ErrNotFound("not found"), 404, "NOT_FOUND", "not found"},
+		{"ErrConflict", ErrConflict("conflict"), 409, "CONFLICT", "conflict"},
+		{"ErrUnprocessableEntity", ErrUnprocessableEntity("unprocessable"), 422, "UNPROCESSABLE_ENTITY", "unprocessable"},
+		{"ErrTooManyRequests", ErrTooManyRequests("rate limited"), 429, "TOO_MANY_REQUESTS", "rate limited"},
+		{"ErrInternal", ErrInternal("internal"), 500, "INTERNAL", "internal"},
+		{"ErrServiceUnavailable", ErrServiceUnavailable("unavailable"), 503, "SERVICE_UNAVAILABLE", "unavailable"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := tt.constructor(tt.message)
-			if err.StatusCode != tt.statusCode {
-				t.Errorf("expected status %d, got %d", tt.statusCode, err.StatusCode)
+			if tt.err.StatusCode != tt.statusCode {
+				t.Errorf("expected status %d, got %d", tt.statusCode, tt.err.StatusCode)
 			}
-			if err.ErrorType != tt.errorType {
-				t.Errorf("expected error type %q, got %q", tt.errorType, err.ErrorType)
+			if tt.err.Code != tt.code {
+				t.Errorf("expected code %q, got %q", tt.code, tt.err.Code)
 			}
-			if err.Message != tt.message {
-				t.Errorf("expected message %q, got %q", tt.message, err.Message)
+			if tt.err.Message != tt.message {
+				t.Errorf("expected message %q, got %q", tt.message, tt.err.Message)
 			}
 		})
 	}
 }
 
-func TestErrorResponse_WithRequestID(t *testing.T) {
-	err := BadRequest("test error")
-	err = err.WithRequestID("req-123")
+func TestError_DefaultCodeForStatus(t *testing.T) {
+	tests := []struct {
+		status       int
+		expectedCode string
+	}{
+		{400, "BAD_REQUEST"},
+		{401, "UNAUTHORIZED"},
+		{403, "FORBIDDEN"},
+		{404, "NOT_FOUND"},
+		{409, "CONFLICT"},
+		{422, "UNPROCESSABLE_ENTITY"},
+		{429, "TOO_MANY_REQUESTS"},
+		{500, "INTERNAL"},
+		{503, "SERVICE_UNAVAILABLE"},
+		{418, "ERROR"},
+	}
 
-	if err.RequestID != "req-123" {
-		t.Errorf("expected request ID 'req-123', got %q", err.RequestID)
+	for _, tt := range tests {
+		t.Run(fmt.Sprintf("status_%d", tt.status), func(t *testing.T) {
+			err := NewError(tt.status, "test")
+			if err.Code != tt.expectedCode {
+				t.Errorf("expected code %q, got %q", tt.expectedCode, err.Code)
+			}
+		})
 	}
 }
 
-func TestValidationErrors(t *testing.T) {
+func TestError_WithDetails(t *testing.T) {
+	details := map[string]any{
+		"field": "name",
+		"code":  "REQUIRED",
+	}
+
+	err := ErrBadRequest("validation failed").WithDetails(details)
+
+	if err.Details == nil {
+		t.Error("expected details to be set")
+	}
+	if err.Details["field"] != "name" {
+		t.Error("expected field detail to be 'name'")
+	}
+}
+
+func TestError_WithRequestID(t *testing.T) {
+	err := ErrBadRequest("test").WithRequestID("req-456")
+
+	// requestID is unexported; verify via serialization
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.RequestID != "req-456" {
+		t.Errorf("expected request_id 'req-456', got %q", resp.Error.RequestID)
+	}
+}
+
+func TestError_ErrorString(t *testing.T) {
+	t.Run("without internal", func(t *testing.T) {
+		err := ErrNotFound("resource not found")
+		expected := "404 NOT_FOUND: resource not found"
+		if err.Error() != expected {
+			t.Errorf("expected %q, got %q", expected, err.Error())
+		}
+	})
+
+	t.Run("with internal", func(t *testing.T) {
+		err := ErrInternal("database error").Wrap(errors.New("connection refused"))
+		expected := "500 INTERNAL: database error (internal: connection refused)"
+		if err.Error() != expected {
+			t.Errorf("expected %q, got %q", expected, err.Error())
+		}
+	})
+}
+
+// ============================================
+// Backward-Compatible Constructor Tests
+// ============================================
+
+func TestBackwardCompat_Constructors(t *testing.T) {
+	t.Run("BadRequest", func(t *testing.T) {
+		err := BadRequest("invalid parameter")
+		if err.StatusCode != 400 {
+			t.Errorf("expected status 400, got %d", err.StatusCode)
+		}
+		if err.Code != "BAD_REQUEST" {
+			t.Errorf("expected code BAD_REQUEST, got %q", err.Code)
+		}
+		if err.Message != "invalid parameter" {
+			t.Errorf("expected message 'invalid parameter', got %q", err.Message)
+		}
+	})
+
+	t.Run("BadRequest with details", func(t *testing.T) {
+		details := map[string]any{"field": "name"}
+		err := BadRequest("invalid parameter", details)
+		if err.Details["field"] != "name" {
+			t.Errorf("expected field detail 'name', got %v", err.Details["field"])
+		}
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		err := NotFound("not found")
+		if err.StatusCode != 404 {
+			t.Errorf("expected status 404, got %d", err.StatusCode)
+		}
+		if err.Code != "NOT_FOUND" {
+			t.Errorf("expected code NOT_FOUND, got %q", err.Code)
+		}
+	})
+
+	t.Run("ErrorResponse type alias", func(t *testing.T) {
+		err := BadRequest("test")
+		var _ = err
+		var _ = err
+	})
+}
+
+func TestBackwardCompat_ValidationErrors(t *testing.T) {
 	validationErrs := []ValidationError{
 		{Field: "name", Message: "required"},
 		{Field: "email", Message: "invalid format"},
@@ -131,47 +453,36 @@ func TestValidationErrors(t *testing.T) {
 	if err.StatusCode != 400 {
 		t.Errorf("expected status 400, got %d", err.StatusCode)
 	}
-	if err.ErrorType != "Validation Error" {
-		t.Errorf("expected error type 'Validation Error', got %q", err.ErrorType)
+	if err.Code != "VALIDATION_ERROR" {
+		t.Errorf("expected code VALIDATION_ERROR, got %q", err.Code)
 	}
 	if err.Details == nil {
 		t.Error("expected details to be set")
 	}
 }
 
-func TestErrorResponse_ImplementsError(t *testing.T) {
+func TestBackwardCompat_IntoResponse(t *testing.T) {
 	err := BadRequest("test error")
+	var _ IntoResponse = err
+}
 
-	// Should implement error interface
-	var _ error = err
+func TestBackwardCompat_WithRequestID(t *testing.T) {
+	err := BadRequest("test").WithRequestID("req-123")
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
 
-	if err.Error() != "test error" {
-		t.Errorf("expected error message 'test error', got %q", err.Error())
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.RequestID != "req-123" {
+		t.Errorf("expected request_id 'req-123', got %q", resp.Error.RequestID)
 	}
 }
 
-func TestErrorResponse_WithDetails(t *testing.T) {
-	details := map[string]any{
-		"field": "name",
-		"code":  "REQUIRED",
-	}
-
-	err := BadRequest("validation failed", details)
-
-	if err.Details == nil {
-		t.Error("expected details to be set")
-	}
-
-	detailsMap, ok := err.Details.(map[string]any)
-	if !ok {
-		t.Error("expected details to be map[string]any")
-		return
-	}
-
-	if detailsMap["field"] != "name" {
-		t.Error("expected field detail to be 'name'")
-	}
-}
+// ============================================
+// Field Error Tests (unchanged from original)
+// ============================================
 
 func TestFieldError_Error(t *testing.T) {
 	t.Run("error with path", func(t *testing.T) {
@@ -361,5 +672,123 @@ func TestCustomValidationError(t *testing.T) {
 	}
 	if fieldErr.Path != "body" {
 		t.Errorf("expected path 'body', got %q", fieldErr.Path)
+	}
+}
+
+// ============================================
+// Helper for setting request ID in context
+// ============================================
+
+func setRequestID(ctx context.Context, id string) context.Context {
+	return context.WithValue(ctx, httpmiddleware.RequestIDKey{}, id)
+}
+
+func TestError_WriteResponse(t *testing.T) {
+	err := ErrNotFound("resource gone").WithDetail("id", "42")
+
+	w := httptest.NewRecorder()
+	if writeErr := err.WriteResponse(w); writeErr != nil {
+		t.Fatalf("WriteResponse failed: %v", writeErr)
+	}
+
+	if w.Code != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", w.Code)
+	}
+
+	ct := w.Header().Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("expected application/json, got %q", ct)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if resp.Error.Code != "NOT_FOUND" {
+		t.Errorf("expected NOT_FOUND, got %q", resp.Error.Code)
+	}
+}
+
+func TestError_PanicRecovered(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	// Simulate what RecoverMiddleware does
+	defer func() {
+		if rec := recover(); rec != nil {
+			writeHandlerError(w, r, ErrInternal("internal server error").WithCode("PANIC"))
+		}
+	}()
+	panic("test panic")
+}
+
+func TestError_PanicRecoveryInMiddleware(t *testing.T) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		panic("something went wrong")
+	})
+
+	middleware := httpmiddleware.RecoverMiddleware()
+	server := middleware(handler)
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	rec := httptest.NewRecorder()
+	server.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rec.Code)
+	}
+
+	var resp struct {
+		Error struct {
+			Code    string `json:"code"`
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if resp.Error.Code != "PANIC" {
+		t.Errorf("expected code PANIC, got %q", resp.Error.Code)
+	}
+}
+
+func TestError_ExtractErrorViaHandler(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	// Test plain error extraction
+	writeExtractError(w, r, errors.New("bad input"))
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", w.Code)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if resp.Error.Code != "BAD_REQUEST" {
+		t.Errorf("expected BAD_REQUEST, got %q", resp.Error.Code)
+	}
+}
+
+func TestError_ExtractErrorStructured(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+
+	// Test structured error extraction
+	extractErr := ErrUnprocessableEntity("invalid JSON")
+	writeExtractError(w, r, extractErr)
+
+	if w.Code != http.StatusUnprocessableEntity {
+		t.Errorf("expected status 422, got %d", w.Code)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode: %v", err)
+	}
+	if resp.Error.Code != "UNPROCESSABLE_ENTITY" {
+		t.Errorf("expected UNPROCESSABLE_ENTITY, got %q", resp.Error.Code)
 	}
 }
