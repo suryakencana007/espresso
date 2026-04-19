@@ -103,10 +103,10 @@ Priority-sorted task list for Espresso framework development.
 ---
 
 ### 10. Performance Benchmarks
-- [ ] Add benchmark suite comparing with gin, echo, fiber
-- [ ] Benchmark handler types
-- [ ] Benchmark extractors
-- [ ] Add results to README
+- [x] Add benchmark suite comparing with gin, echo, fiber (`bench/` module)
+- [x] Benchmark handler types
+- [x] Benchmark extractors
+- [x] Add results to README
 
 ---
 
