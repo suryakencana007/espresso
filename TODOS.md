@@ -142,7 +142,17 @@ Current: **77.8%** | Target: **78%+**
 
 ## Completed Items
 
-### v1.3.0 (Current)
+### v1.4.0 (Current)
+
+- [x] Struct-tag validator package (`validator/`) — TODOS #7 closed
+- [x] Framework benchmarks vs gin/echo/fiber (`bench/`) — TODOS #10 closed
+- [x] Streaming concurrency hardening (race fix, registry leak, readLoop
+  guard, serveStream unified)
+- [x] Structured JSON error responses for extractor failures
+- [x] Handler-cache growth documentation
+- [x] v2.0 roadmap (`roadmaps/v2.0/`)
+
+### v1.3.0
 - [x] WebSocket handler support (espresso.WS, WebSocket[T])
 - [x] Typed SSE streaming (espresso.SSEStream, Stream[T])
 - [x] Structured error responses (*espresso.Error, ErrBadRequest, etc.)

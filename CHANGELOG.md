@@ -7,6 +7,120 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-04-20
+
+### Added
+
+- **`validator/` subpackage** — struct-tag-driven validation via
+  `validator.Struct(v any) error`. Returns `espresso.FieldErrors` that flow
+  into the existing structured-error pipeline. Built-in rules: `required`,
+  `min`, `max` (numeric value or string/slice/map length), `email`, `url`,
+  `regex`, `oneof`. Recurses into nested structs, pointers to structs, and
+  slices of structs with path tracking. See `docs/guide/validation.md` and
+  `docs/api/validator.md`. 16 unit tests.
+
+- **`bench/` framework-comparison module** — separate Go module (replace
+  directive back to the parent) so comparison deps don't leak into the main
+  module. Head-to-head benchmarks against Gin, Echo, and Fiber on three
+  scenarios (static text, JSON round-trip, path parameter). Results tabled
+  in `README.md` under "Framework Comparison".
+
+- **`TestWebSocket_GracefulShutdown`** — end-to-end test verifying
+  connected WebSocket clients receive close code 1001 via
+  `router.gracefulShutdown`.
+
+- **`TestShutdown_WebSocketsClosed`** — mirrors the existing SSE shutdown
+  test; covers registry close-all on shutdown.
+
+- **`TestSSE_Stream_StateInjection`** — covers state injection through the
+  `Stream[Req]` variant (previously only `StreamSimple` had a state test).
+
+- **`TestWithLayers_ExtractorErrorReturnsStructuredJSON`** — locks the JSON
+  error shape so regressing back to `http.Error` text/plain would fail CI.
+
+- **v2.0 roadmap** — `roadmaps/v2.0/` mirroring the v1.3 layout. Scopes
+  per-Router registries, deprecated-API removal, handler-cache eviction,
+  typed `Validation[Req]`, opt-in auto-validate, migration guide, release.
+
+- **Handler-cache growth documentation** — `handler.go` now explains the
+  cache's growth semantics; `docs/performance.md` carries the same under
+  "Known Limitations".
+
+### Changed
+
+- **Extractor failures now produce structured JSON error responses**
+  instead of `text/plain` via `http.Error()`. Paths affected: `withlayers.go`
+  extractor and service-call failures, `sse.go` extract/flusher failures,
+  `websocket.go` extract and upgrade failures. Response now uses the same
+  shape as handler errors: `{"error":{"code":"BAD_REQUEST",...}}`. Clients
+  parsing 4xx bodies as text will need to update — most treat 4xx as error
+  regardless of body shape.
+- **Unified `serveStream` / `serveStreamSimple`** — the ~90% duplicated
+  transport code in `sse.go` is now a single helper that both `Stream[Req]`
+  and `StreamSimple` delegate to via a closure.
+- **`WS.closed` is now `atomic.Bool`** — previously a plain `bool` read
+  without the mutex in two call sites (handler wrapper end-of-func guards).
+  `Close` is idempotent via CAS.
+- **`WS.Close` is idempotent and always removes from the registry** —
+  previously a leaked registry entry when the client disconnected before
+  the handler explicitly closed.
+- **`WS.readLoop` channel sends guarded by `ctx.Done()`** — previously
+  could block indefinitely if the handler already returned and nothing was
+  reading `msgCh`.
+- **`go.mod` go directive lowered from 1.25.6 to 1.23** — verified
+  codebase + full test suite + lint pass under 1.23. Widens supported
+  toolchain range.
+
+### Fixed
+
+- **Data race on `WS.closed`** caught by `go test -race`. The two
+  plain-bool reads in the handler wrappers now go through the atomic API.
+- **Gosec G115** — two test-only `int → rune` overflow conversions in
+  `handler_test.go` and `sse_test.go` replaced with `strconv.FormatInt`
+  and a slice lookup.
+
+### Removed
+
+- **`(*Router).Routes() []Route` and the `Route` type** — the method
+  always returned `nil` (documented as "ServeMux doesn't expose routes").
+  No caller inside the repo; any external caller was getting no data.
+  Migration: delete the call. If you need route introspection, track it
+  yourself at registration time.
+- **`closeErr` field on `*WS`** — was set in `readLoop` but never read.
+  Unexported, no migration needed.
+
+### Migration Notes
+
+v1.4 is **mostly** backward compatible with v1.3:
+
+- The one wire-format change is extractor failures returning JSON instead
+  of text/plain. Handler-returned errors already produced JSON in v1.3;
+  this change just brings the extractor path into line. Most clients treat
+  4xx as an error regardless of body shape, so no action is usually needed.
+
+- `Routes()` is gone. It returned `nil` in v1.x so no working code
+  depended on its output — just remove the call.
+
+To adopt the new validator:
+
+```go
+import "github.com/suryakencana007/espresso/validator"
+
+type CreateUserReq struct {
+    Name  string `json:"name"  validate:"required,min=3,max=50"`
+    Email string `json:"email" validate:"required,email"`
+}
+
+// In your handler:
+if err := validator.Struct(req.Data); err != nil {
+    fe := err.(espresso.FieldErrors)
+    return zero, espresso.ValidationErrors(fe.ToValidationErrors())
+}
+```
+
+See `docs/guide/validation.md` for the full pattern, including service-layer
+integration and custom-rule composition.
+
 ## [1.3.0] - 2026-04-19
 
 ### Added
@@ -87,7 +201,8 @@ To adopt new features:
 - Use `router.BrewContext(ctx, opts)` for programmatic server lifecycle control
   (useful in tests or embedding).
 
-[Unreleased]: https://github.com/suryakencana007/espresso/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/suryakencana007/espresso/compare/v1.4.0...HEAD
+[1.4.0]: https://github.com/suryakencana007/espresso/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/suryakencana007/espresso/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/suryakencana007/espresso/compare/v1.1.0...v1.2.0
 
