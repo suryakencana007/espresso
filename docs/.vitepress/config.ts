@@ -57,7 +57,7 @@ export default defineConfig({
       { text: "Examples", link: "/examples/", activeMatch: "/examples/" },
       { text: "API", link: "/api/", activeMatch: "/api/" },
       {
-        text: "v1.3.0",
+        text: "v1.4.0",
         items: [
           {
             text: "Changelog",

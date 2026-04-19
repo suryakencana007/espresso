@@ -95,7 +95,7 @@ module your-project
 go 1.23
 
 require (
-    github.com/suryakencana007/espresso v1.3.0
+    github.com/suryakencana007/espresso v1.4.0
     github.com/bytedance/sonic v1.11.0
     github.com/rs/zerolog v1.32.0
 )
