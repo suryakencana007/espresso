@@ -83,6 +83,19 @@ Espresso uses `sync.Pool` for request object pooling in handler wrappers (`Ristr
 
 - **Multipart upload buffering**: `MultipartExtractor` buffers up to 32 MB in memory. For very large uploads (>1 GB), consider using `io.Reader` directly or implementing a streaming extractor.
 - **SSE keepalive**: Keepalive comments are sent on a timer; there may be a brief window between a client disconnect and the server detecting it.
+- **Handler-reflection cache growth**: `espresso.Handler()` caches per-handler reflection metadata in a process-global `sync.Map` keyed by handler function type. The cache has no eviction: its size is bounded by the number of distinct handler types registered across the process lifetime. This is effectively constant for typical apps (routes are wired at startup). Applications that register dynamically-generated handler types at runtime (plugin hosts, per-tenant codegen, `reflect.MakeFunc` scenarios) will accumulate entries indefinitely — prefer the typed variants (`Ristretto`, `Solo`, `Doppio`, `Lungo`) or reuse a small set of handler types to stay out of the reflection path.
+
+## Framework Comparison
+
+A Gin / Echo / Fiber comparison lives in [`bench/`](https://github.com/suryakencana007/espresso/tree/main/bench) as a separate Go module (so the comparison deps don't pollute the main module). It covers three scenarios (static text, JSON round-trip, path param) and reports ns/op + B/op + allocs/op.
+
+Summary on an Intel Core Ultra 7 155H, Go 1.23 (`go test -bench . -benchmem -benchtime=3s`):
+
+- Espresso is within ~12% of Gin on static text and within ~35% on path parameters.
+- On JSON round-trip, Espresso (979 ns/op) beats Gin (1412 ns/op) but trails Echo (774 ns/op).
+- Fiber's numbers in that harness include fasthttp wire-format overhead and are directional only.
+
+See the full table and methodology in [the main README](../README.md#framework-comparison) and [`bench/README.md`](https://github.com/suryakencana007/espresso/tree/main/bench/README.md).
 
 ## See Also
 
