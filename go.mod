@@ -1,6 +1,6 @@
 module github.com/suryakencana007/espresso
 
-go 1.25.6
+go 1.23
 
 require (
 	github.com/bytedance/sonic v1.15.0
