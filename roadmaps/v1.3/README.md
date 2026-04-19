@@ -76,7 +76,7 @@ See [AGENT_GUIDELINES.md](./AGENT_GUIDELINES.md) for rules and conventions that 
 ## Project Information
 
 - **Repository:** `github.com/suryakencana007/espresso`
-- **Current Version:** v1.2.0
+- **Current Version:** v1.3.0
 - **Target Version:** v1.3.0
 - **Downstream Project:** Barista (self-hosted PaaS, using Espresso as HTTP framework)
 

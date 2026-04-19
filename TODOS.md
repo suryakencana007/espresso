@@ -142,7 +142,15 @@ Current: **77.8%** | Target: **78%+**
 
 ## Completed Items
 
-### v1.2.0 (Current)
+### v1.3.0 (Current)
+- [x] WebSocket handler support (espresso.WS, WebSocket[T])
+- [x] Typed SSE streaming (espresso.SSEStream, Stream[T])
+- [x] Structured error responses (*espresso.Error, ErrBadRequest, etc.)
+- [x] Graceful shutdown hooks (router.OnShutdown, BrewContext)
+- [x] Context cancellation tests
+- [x] Integration tests for long-lived connections
+
+### v1.2.0
 - [x] Fluent API for OpenAPI (New, Description, Server, Schema)
 - [x] Handler introspection for automatic type detection
 - [x] Operation options (Tags, Summary, Description, Security)
