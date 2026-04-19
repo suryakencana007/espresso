@@ -35,6 +35,11 @@ Like a perfectly pulled espresso shot, this framework delivers:
 - [Middleware](#middleware)
 - [Service Layers](#service-layers)
 - [Object Pooling](#object-pooling)
+- [WebSocket](#websocket)
+- [Streaming (SSE)](#streaming-sse)
+- [Error Handling](#error-handling)
+- [Graceful Shutdown](#graceful-shutdown)
+- [Dependency Injection (State Management)](#dependency-injection-state-management)
 - [Complete Example](#complete-example)
 - [Benchmarks](#benchmarks)
 - [API Reference](#api-reference)
@@ -859,23 +864,32 @@ return espresso.Status(http.StatusNoContent) // 204
 
 ### Server-Sent Events (SSE)
 
-For real-time streaming from server to client:
+For real-time streaming from server to client. Prefer the new `SSEStream` API over `SSEWriter`:
 
 ```go
-func streamHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
-    // Stream events
-    writer.Event("message", "Hello, World!")
-    writer.EventJSON("data", map[string]any{"count": 42})
-    writer.KeepAlive()
+// Modern typed SSE handler (recommended)
+func timeStream(ctx context.Context, stream *espresso.SSEStream) error {
+    ticker := time.NewTicker(time.Second)
+    defer ticker.Stop()
+    for {
+        select {
+        case <-ctx.Done():
+            return nil
+        case <-ticker.C:
+            if err := stream.SendText("time", time.Now().Format(time.RFC3339)); err != nil {
+                return err
+            }
+        }
+    }
 }
 
-// Or use with handler pattern
-func sseHandler(ctx context.Context, req *espresso.JSON[StreamReq]) (*espresso.SSE, error) {
-    return &espresso.SSE{}, nil
-}
+router.Get("/stream", espresso.StreamSimple(timeStream,
+    espresso.WithKeepAlive(30*time.Second),
+    espresso.WithRetryHint(5*time.Second),
+))
 ```
+
+The old `SSEWriter` API still works but is deprecated. See [docs/streaming.md](docs/streaming.md) for details.
 
 ### Custom Response
 
@@ -890,6 +904,124 @@ func (h HTML) WriteResponse(w http.ResponseWriter) error {
     return err
 }
 ```
+
+---
+
+## WebSocket
+
+Espresso supports WebSocket handlers with the same type-safety and state injection as JSON handlers.
+
+```go
+func echoHandler(ctx context.Context, ws *espresso.WS) error {
+    for {
+        _, msg, err := ws.Read(ctx)
+        if err != nil {
+            return nil // client disconnected
+        }
+        if err := ws.WriteText(ctx, "Echo: "+string(msg)); err != nil {
+            return err
+        }
+    }
+}
+
+router.Get("/ws/echo", espresso.WebSocketSimple(echoHandler))
+```
+
+**Features:** text/binary frames, ping/pong keepalive, state injection via `MustGetState[T]`, context cancellation on disconnect, graceful close on server shutdown.
+
+See [docs/websocket.md](docs/websocket.md) for advanced configuration, authentication patterns, and testing.
+
+---
+
+## Streaming (SSE)
+
+Typed SSE streaming replaces the low-level `SSEWriter` with a first-class handler pattern:
+
+```go
+func logStream(ctx context.Context, stream *espresso.SSEStream) error {
+    for {
+        select {
+        case <-ctx.Done():
+            return nil
+        case event := <-someChannel:
+            if err := stream.SendJSON("log", event); err != nil {
+                return err
+            }
+        }
+    }
+}
+
+router.Get("/logs", espresso.StreamSimple(logStream,
+    espresso.WithKeepAlive(30*time.Second),
+))
+```
+
+**Features:** typed events, JSON streaming, keepalive pings, Last-Event-ID resumption, concurrent-safe writes, graceful shutdown.
+
+See [docs/streaming.md](docs/streaming.md) for configuration, reconnection patterns, and performance tips.
+
+---
+
+## Error Handling
+
+Handlers can return structured errors using `*espresso.Error`:
+
+```go
+func getUser(ctx context.Context, req *espresso.JSON[GetUserReq]) (espresso.JSON[User], error) {
+    user, err := db.FindUser(req.Data.ID)
+    if err != nil {
+        return espresso.JSON[User]{}, espresso.ErrNotFound("user not found").
+            WithCode("USER_NOT_FOUND").
+            WithDetail("userId", req.Data.ID)
+    }
+    return espresso.JSON[User]{Data: user}, nil
+}
+```
+
+Response format:
+
+```json
+{
+  "error": {
+    "code": "USER_NOT_FOUND",
+    "message": "user not found",
+    "details": { "userId": "abc123" },
+    "request_id": "req-456"
+  }
+}
+```
+
+Constructors: `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`, `ErrUnprocessableEntity`, `ErrTooManyRequests`, `ErrInternal`, `ErrServiceUnavailable`.
+
+See [docs/error-handling.md](docs/error-handling.md) for custom error codes, validation errors, and migration from plain `error`.
+
+---
+
+## Graceful Shutdown
+
+Register cleanup hooks that run before the server stops:
+
+```go
+router := espresso.Portafilter().
+    OnShutdown(func(ctx context.Context) error {
+        slog.Info("closing database")
+        return db.Close()
+    }).
+    OnShutdown(func(ctx context.Context) error {
+        slog.Info("flushing cache")
+        return cache.Flush(ctx)
+    })
+
+// Brew blocks until SIGTERM/SIGINT
+router.Brew(espresso.WithAddr(":8080"))
+
+// Or use BrewContext for programmatic control:
+ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer cancel()
+router.BrewContext(ctx, espresso.WithAddr(":8080"))
+```
+
+**Shutdown sequence:** 1) OnShutdown hooks, 2) SSE streams close, 3) WebSockets close (code 1001), 4) HTTP server stops accepting connections, 5) in-flight requests drain.
 
 ---
 

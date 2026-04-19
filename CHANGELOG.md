@@ -7,26 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-04-19
+
 ### Added
 
 - **WebSocket handler support** with the new `espresso.WS` type and
-  `espresso.WebSocket[T]()` wrapper. Supports text and binary frames,
-  ping/pong keepalive, state injection, context cancellation on disconnect,
-  and graceful shutdown integration.
+  `espresso.WebSocket[T]()` / `espresso.WebSocketSimple()` wrappers. Supports
+  text and binary frames, ping/pong keepalive, state injection, context
+  cancellation on disconnect, and graceful shutdown integration.
   Uses `github.com/coder/websocket` as the underlying library.
+  Includes `cmd/example/websocket/` example.
 
 - **Typed SSE streaming** with the new `espresso.SSEStream` type and
   `espresso.Stream[T]()` / `espresso.StreamSimple()` handlers. Supports
   typed events, JSON streaming, keepalive pings, Last-Event-ID resumption,
   state injection, concurrent-safe writes, and graceful shutdown integration.
-  The old `response.SSE`/`SSEWriter` types are deprecated in favor of the new API.
+  Includes `cmd/example/sse/` example.
 
 - **Structured error responses** with the new `espresso.Error` type and
   fluent builder API (`WithCode`, `WithDetail`, `WithDetails`, `Wrap`).
-  Handler errors are now automatically serialized as `{"error": {...}}` JSON.
-  Includes `ErrBadRequest`, `ErrNotFound`, `ErrInternal`, and other constructors.
-  `RecoverMiddleware` now returns structured JSON with `"PANIC"` code.
-  `ErrorResponse` is now a type alias for `Error` (backward compatible).
+  Handler errors are now automatically serialized as `{"error": {"code": ..., "message": ..., ...}}`.
+  Includes `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`,
+  `ErrConflict`, `ErrUnprocessableEntity`, `ErrTooManyRequests`, `ErrInternal`,
+  `ErrServiceUnavailable` constructors. Backward-compatible `BadRequest()`,
+  `NotFound()`, etc. constructors now return `*Error`.
+  `ErrorResponse` is now a type alias for `Error`.
+  `RecoverMiddleware` now returns structured JSON with `"PANIC"` code
+  and stack trace logging.
 
 - **Graceful shutdown hooks** with `router.OnShutdown(hook)` for registering
   cleanup functions that run before the server stops. Hooks run in registration
@@ -36,19 +43,53 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   4) HTTP server stops accepting connections, 5) in-flight requests drain.
   Added `BrewContext(ctx, opts)` for programmatic server lifecycle control.
 
+- **CircuitBreakerError** type for circuit breaker integration with
+  `IsCircuitBreakerError()` helper.
+
+- **FieldError/FieldErrors** types for structured validation errors with
+  convenience constructors: `RequiredFieldError`, `InvalidTypeError`,
+  `RangeError`, `LengthError`, `PatternError`, `CustomValidationError`.
+
+- Context cancellation tests verifying propagation to SSE and WebSocket
+  handlers, and goroutine leak detection across 50 connect/disconnect cycles.
+
+- Integration tests (build tag: `integration`) for long-lived SSE and
+  WebSocket connection stability under load.
+
 ### Changed
 
-- Handler error responses now produce structured JSON (`{"error": {"code": ..., "message": ...}}`)
-  instead of plain text via `http.Error()`. Handlers returning `*espresso.Error` use the error's
+- Handler error responses now produce structured JSON
+  (`{"error": {"code": ..., "message": ...}}`) instead of plain text via
+  `http.Error()`. Handlers returning `*espresso.Error` use the error's
   status code and fields; plain `error` returns produce a generic 500 response.
-- `RecoverMiddleware` now returns structured JSON error responses with stack trace logging
-  and request ID inclusion, instead of plain text.
+- `RecoverMiddleware` now returns structured JSON error responses with stack
+  trace logging and request ID inclusion, instead of plain text.
+- SSE keepalive goroutine now properly synchronizes with the handler goroutine
+  to avoid data races.
 
-### Verified
+### Deprecated
 
-- Context cancellation propagates to SSE and WebSocket handlers within <1s on client disconnect.
-- No goroutine leaks after 50 connect/disconnect cycles for SSE streams.
-- Long-lived connection integration tests (tagged `integration`) for SSE and WebSocket stability.
+- `SSEWriter` low-level API is deprecated in favor of `SSEStream`.
+  Will be removed in v2.0. No removal in v1.x.
+- `SSE` and `SSEEvent` types in `response.go` are deprecated in favor of
+  `SSEStream` and `Event` types in `sse.go`.
+
+### Migration Notes
+
+v1.3 is backward compatible with v1.2. No code changes required to upgrade.
+
+To adopt new features:
+
+- Replace manual SSE handling with `espresso.Stream[T]()` or `espresso.StreamSimple()`
+  for better integration, concurrency safety, and graceful shutdown support.
+- Use `*espresso.Error` in handlers for consistent JSON error responses.
+- Register cleanup hooks with `router.OnShutdown(fn)` for graceful resource cleanup.
+- Use `router.BrewContext(ctx, opts)` for programmatic server lifecycle control
+  (useful in tests or embedding).
+
+[Unreleased]: https://github.com/suryakencana007/espresso/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/suryakencana007/espresso/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/suryakencana007/espresso/compare/v1.1.0...v1.2.0
 
 ## [1.2.0] - 2025-04-09
 
