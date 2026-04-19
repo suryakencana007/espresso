@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/coder/websocket"
@@ -118,14 +119,13 @@ func WithCompression(mode websocket.CompressionMode) WSOption {
 // The connection's context is canceled when the client disconnects, which
 // enables handlers to detect disconnect via ctx.Done().
 type WS struct {
-	conn     *websocket.Conn
-	ctx      context.Context
-	cancel   context.CancelFunc
-	config   WSConfig
-	mu       sync.Mutex
-	closed   bool
-	msgCh    chan wsMessage
-	closeErr error
+	conn   *websocket.Conn
+	ctx    context.Context
+	cancel context.CancelFunc
+	config WSConfig
+	mu     sync.Mutex
+	closed atomic.Bool
+	msgCh  chan wsMessage
 }
 
 func newWS(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, cfg WSConfig) *WS {
@@ -146,17 +146,20 @@ func (w *WS) readLoop() {
 	for {
 		msgType, data, err := w.conn.Read(w.ctx)
 		if err != nil {
-			w.mu.Lock()
-			if !w.closed {
-				w.closeErr = err
-				w.closed = true
+			if w.closed.CompareAndSwap(false, true) {
 				w.cancel()
 			}
-			w.mu.Unlock()
-			w.msgCh <- wsMessage{err: err}
+			select {
+			case w.msgCh <- wsMessage{err: err}:
+			case <-w.ctx.Done():
+			}
 			return
 		}
-		w.msgCh <- wsMessage{msgType: MessageType(msgType), data: data}
+		select {
+		case w.msgCh <- wsMessage{msgType: MessageType(msgType), data: data}:
+		case <-w.ctx.Done():
+			return
+		}
 	}
 }
 
@@ -182,7 +185,7 @@ func (w *WS) Read(ctx context.Context) (MessageType, []byte, error) {
 func (w *WS) Write(ctx context.Context, msgType MessageType, data []byte) error {
 	w.mu.Lock()
 	defer w.mu.Unlock()
-	if w.closed {
+	if w.closed.Load() {
 		return io.ErrClosedPipe
 	}
 	writeCtx := ctx
@@ -226,12 +229,11 @@ func (w *WS) ReadJSON(ctx context.Context, v any) error {
 // Close closes the WebSocket connection with the given status code and reason.
 // If the connection is already closed, Close returns nil.
 func (w *WS) Close(code CloseCode, reason string) error {
-	w.mu.Lock()
-	if w.closed {
-		w.mu.Unlock()
+	defer defaultRegistry.remove(w)
+	if !w.closed.CompareAndSwap(false, true) {
 		return nil
 	}
-	w.closed = true
+	w.mu.Lock()
 	err := w.conn.Close(websocket.StatusCode(code), reason)
 	cancel := w.cancel
 	w.mu.Unlock()
@@ -239,7 +241,6 @@ func (w *WS) Close(code CloseCode, reason string) error {
 	if cancel != nil {
 		cancel()
 	}
-	defaultRegistry.remove(w)
 	return err
 }
 
@@ -367,7 +368,7 @@ func WebSocket[Req FromRequest](h func(ctx context.Context, req Req, ws *WS) err
 		fromReq, ok := any(req).(FromRequest)
 		if ok {
 			if err := fromReq.Extract(r); err != nil {
-				http.Error(w, err.Error(), http.StatusBadRequest)
+				writeExtractError(w, r, err)
 				return
 			}
 		}
@@ -380,7 +381,7 @@ func WebSocket[Req FromRequest](h func(ctx context.Context, req Req, ws *WS) err
 
 		conn, err := websocket.Accept(w, r, acceptOpts)
 		if err != nil {
-			http.Error(w, "websocket upgrade failed", http.StatusUpgradeRequired)
+			writeHandlerError(w, r, NewError(http.StatusUpgradeRequired, "websocket upgrade failed").WithCode("UPGRADE_REQUIRED"))
 			return
 		}
 
@@ -411,7 +412,7 @@ func WebSocket[Req FromRequest](h func(ctx context.Context, req Req, ws *WS) err
 
 		if handlerErr != nil {
 			_ = ws.Close(CloseInternalError, handlerErr.Error())
-		} else if !ws.closed {
+		} else {
 			_ = ws.Close(CloseNormal, "")
 		}
 	}
@@ -438,7 +439,7 @@ func WebSocketSimple(h func(ctx context.Context, ws *WS) error, opts ...WSOption
 
 		conn, err := websocket.Accept(w, r, acceptOpts)
 		if err != nil {
-			http.Error(w, "websocket upgrade failed", http.StatusUpgradeRequired)
+			writeHandlerError(w, r, NewError(http.StatusUpgradeRequired, "websocket upgrade failed").WithCode("UPGRADE_REQUIRED"))
 			return
 		}
 
@@ -469,7 +470,7 @@ func WebSocketSimple(h func(ctx context.Context, ws *WS) error, opts ...WSOption
 
 		if handlerErr != nil {
 			_ = ws.Close(CloseInternalError, handlerErr.Error())
-		} else if !ws.closed {
+		} else {
 			_ = ws.Close(CloseNormal, "")
 		}
 	}
