@@ -16,6 +16,7 @@ Complete API reference for all Espresso packages.
 | [middleware/http](/api/middleware-http) | HTTP middleware |
 | [middleware/service](/api/middleware-service) | Service layers |
 | [openapi](/api/openapi) | OpenAPI 3.0 specification generator |
+| [validator](/api/validator) | Struct-tag-driven request validation |
 | [pool](/api/pool) | Object pooling |
 
 ## Import Paths
@@ -27,6 +28,7 @@ import (
     httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
     servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
     "github.com/suryakencana007/espresso/openapi"
+    "github.com/suryakencana007/espresso/validator"
     "github.com/suryakencana007/espresso/pool"
 )
 ```

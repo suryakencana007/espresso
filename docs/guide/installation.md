@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- **Go 1.22+** — Required for path parameter support (`r.PathValue()`)
+- **Go 1.23+** — Required for path parameter support (`r.PathValue()`) and the generic-type tooling Espresso depends on
 - **CGO enabled** — Required for Sonic JSON library (`github.com/bytedance/sonic`)
 
 ## Install
@@ -73,6 +73,7 @@ import (
 | `middleware/http` | HTTP-level middleware | `CORS`, `RateLimit`, `Compress`, `RequestID` |
 | `middleware/service` | Service-level layers | `Timeout`, `Retry`, `CircuitBreaker`, `Validation` |
 | `extractor` | Request extractors | `JSON`, `Query`, `Path`, `Header`, `Form`, `XML` |
+| `validator` | Struct-tag validation | `Struct`, returns `FieldErrors` |
 | `pool` | Object pooling | `BufferPool`, `ByteSlicePool`, `StringSlicePool` |
 
 ## Dependencies
@@ -91,7 +92,7 @@ If you're using Go modules (recommended), your `go.mod` will include:
 ```go
 module your-project
 
-go 1.22
+go 1.23
 
 require (
     github.com/suryakencana007/espresso v1.3.0
@@ -120,7 +121,7 @@ export CGO_ENABLED=1
 # Check your Go version
 go version
 
-# Should be 1.22 or higher
+# Should be 1.23 or higher
 ```
 
 ## Next Steps
