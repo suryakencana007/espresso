@@ -116,18 +116,25 @@ func updateUser(ctx context.Context, path *espresso.Path[UserPath], req *espress
 
 ### JSON
 
-JSON response:
+JSON response. Doubles as a request extractor (`Extract` decodes the body into `Data`).
+The `Cookies` field, if non-empty, writes `Set-Cookie` headers via `http.SetCookie`
+before the status header is committed — required so cookies land in the response head.
 
 ```go
 type JSON[T any] struct {
     StatusCode int
     Data       T
+    Cookies    []*http.Cookie  // since v1.5.0
 }
 
 func (j JSON[T]) WriteResponse(w http.ResponseWriter) error
 func (j *JSON[T]) Extract(r *http.Request) error
 func (j *JSON[T]) Reset()
 ```
+
+Zero-value (`nil`) `Cookies` produces byte-identical output to v1.4 — no
+`Set-Cookie` header is emitted. See [Setting Cookies on JSON Responses](../guide/response.md#setting-cookies-on-json-responses)
+for the refresh-token pattern.
 
 ### Text
 

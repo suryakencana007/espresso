@@ -64,6 +64,7 @@ Functions:
 type JSON[T any] struct {
     StatusCode int
     Data       T
+    Cookies    []*http.Cookie  // since v1.5.0
 }
 ```
 
