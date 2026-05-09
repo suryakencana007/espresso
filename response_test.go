@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/bytedance/sonic"
 )
@@ -53,6 +54,142 @@ func TestJSON_WriteResponse(t *testing.T) {
 				t.Errorf("WriteResponse() Content-Type = %v, want application/json", ct)
 			}
 		})
+	}
+}
+
+// TestJSON_NoCookies_ByteIdentical locks the v1.4 behavior: a JSON[T] response
+// with a nil Cookies field must produce no Set-Cookie headers and the same body
+// as before the field existed. Regression guard against accidental coupling.
+func TestJSON_NoCookies_ByteIdentical(t *testing.T) {
+	res := JSON[map[string]string]{Data: map[string]string{"hello": "world"}}
+	rec := httptest.NewRecorder()
+
+	if err := res.WriteResponse(rec); err != nil {
+		t.Fatalf("WriteResponse() error = %v", err)
+	}
+
+	if got := rec.Header().Values("Set-Cookie"); len(got) != 0 {
+		t.Errorf("unexpected Set-Cookie header(s): %v", got)
+	}
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200", rec.Code)
+	}
+	const wantBody = `{"hello":"world"}` + "\n"
+	if got := rec.Body.String(); got != wantBody {
+		t.Errorf("body = %q, want %q", got, wantBody)
+	}
+}
+
+func TestJSON_WithCookie_Single(t *testing.T) {
+	res := JSON[map[string]string]{
+		Data: map[string]string{"ok": "true"},
+		Cookies: []*http.Cookie{
+			{Name: "session", Value: "abc", HttpOnly: true, Path: "/"},
+		},
+	}
+	rec := httptest.NewRecorder()
+	if err := res.WriteResponse(rec); err != nil {
+		t.Fatalf("WriteResponse() error = %v", err)
+	}
+
+	got := rec.Header().Values("Set-Cookie")
+	if len(got) != 1 {
+		t.Fatalf("Set-Cookie count = %d, want 1 (got: %v)", len(got), got)
+	}
+	if !strings.Contains(got[0], "session=abc") {
+		t.Errorf("Set-Cookie = %q, want it to contain session=abc", got[0])
+	}
+	if !strings.Contains(got[0], "HttpOnly") {
+		t.Errorf("Set-Cookie = %q, want it to contain HttpOnly", got[0])
+	}
+}
+
+func TestJSON_WithCookie_Multiple(t *testing.T) {
+	res := JSON[struct{}]{
+		Cookies: []*http.Cookie{
+			{Name: "a", Value: "1"},
+			{Name: "b", Value: "2"},
+			{Name: "c", Value: "3"},
+		},
+	}
+	rec := httptest.NewRecorder()
+	if err := res.WriteResponse(rec); err != nil {
+		t.Fatalf("WriteResponse() error = %v", err)
+	}
+
+	got := rec.Header().Values("Set-Cookie")
+	if len(got) != 3 {
+		t.Fatalf("Set-Cookie count = %d, want 3 (got: %v)", len(got), got)
+	}
+	for i, want := range []string{"a=1", "b=2", "c=3"} {
+		if !strings.Contains(got[i], want) {
+			t.Errorf("Set-Cookie[%d] = %q, want it to contain %q", i, got[i], want)
+		}
+	}
+}
+
+func TestJSON_WithCookie_Expires(t *testing.T) {
+	expires := time.Date(2030, 1, 1, 0, 0, 0, 0, time.UTC)
+	res := JSON[struct{}]{
+		Cookies: []*http.Cookie{
+			{Name: "k", Value: "v", Expires: expires},
+		},
+	}
+	rec := httptest.NewRecorder()
+	if err := res.WriteResponse(rec); err != nil {
+		t.Fatalf("WriteResponse() error = %v", err)
+	}
+
+	got := rec.Header().Get("Set-Cookie")
+	if !strings.Contains(got, "Expires=") {
+		t.Errorf("Set-Cookie = %q, want it to include Expires=", got)
+	}
+}
+
+func TestJSON_WithCookie_SecureHTTPOnlySameSite(t *testing.T) {
+	res := JSON[struct{}]{
+		Cookies: []*http.Cookie{{
+			Name:     "refresh",
+			Value:    "tok",
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		}},
+	}
+	rec := httptest.NewRecorder()
+	if err := res.WriteResponse(rec); err != nil {
+		t.Fatalf("WriteResponse() error = %v", err)
+	}
+
+	got := rec.Header().Get("Set-Cookie")
+	for _, want := range []string{"refresh=tok", "HttpOnly", "Secure", "SameSite=Lax", "Path=/"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("Set-Cookie = %q, want it to contain %q", got, want)
+		}
+	}
+}
+
+// TestJSON_WithCookie_BeforeStatus verifies Set-Cookie is committed to the
+// response head, not added after the body has been written. The httptest
+// recorder finalizes headers on first Write; once status is set, Set-Cookie
+// added later won't surface — so a missing header here means the order is wrong.
+func TestJSON_WithCookie_BeforeStatus(t *testing.T) {
+	res := JSON[map[string]string]{
+		StatusCode: http.StatusCreated,
+		Data:       map[string]string{"k": "v"},
+		Cookies:    []*http.Cookie{{Name: "session", Value: "abc"}},
+	}
+	rec := httptest.NewRecorder()
+	if err := res.WriteResponse(rec); err != nil {
+		t.Fatalf("WriteResponse() error = %v", err)
+	}
+
+	if rec.Code != http.StatusCreated {
+		t.Errorf("status = %d, want 201", rec.Code)
+	}
+	if got := rec.Header().Get("Set-Cookie"); !strings.Contains(got, "session=abc") {
+		t.Errorf("Set-Cookie missing or wrong: %q", got)
 	}
 }
 
@@ -124,6 +261,7 @@ func TestJSON_Reset(t *testing.T) {
 	j := JSON[TestReq]{
 		StatusCode: http.StatusCreated,
 		Data:       TestReq{Name: "test"},
+		Cookies:    []*http.Cookie{{Name: "a", Value: "1"}},
 	}
 
 	j.Reset()
@@ -133,6 +271,9 @@ func TestJSON_Reset(t *testing.T) {
 	}
 	if j.Data.Name != "" {
 		t.Errorf("expected empty Data after reset, got '%s'", j.Data.Name)
+	}
+	if len(j.Cookies) != 0 {
+		t.Errorf("expected empty Cookies after reset, got %v", j.Cookies)
 	}
 }
 

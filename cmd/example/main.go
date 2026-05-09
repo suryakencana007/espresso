@@ -2,10 +2,14 @@ package main
 
 import (
 	"context"
+	"crypto/hmac"
+	"crypto/sha256"
 	"database/sql"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -69,6 +73,26 @@ type UserPathReq struct {
 // AuthReq demonstrates header extraction.
 type AuthReq struct {
 	Token string `header:"Authorization,required"`
+}
+
+// LoginReq demonstrates the refresh-token cookie pattern.
+type LoginReq struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// TokenRes is the JSON body returned alongside the refresh-token cookie.
+type TokenRes struct {
+	Access string `json:"access"`
+}
+
+// GitHubWebhookHeaders is the typed header surface for the GitHub webhook
+// receiver. RawBodyWithHeaders[H] populates Body + Headers in one pass so
+// the handler can verify HMAC against the unparsed payload.
+type GitHubWebhookHeaders struct {
+	Signature string `header:"X-Hub-Signature-256,required"`
+	Event     string `header:"X-GitHub-Event,required"`
+	Delivery  string `header:"X-GitHub-Delivery"`
 }
 
 // CreateUserWithRoleReq demonstrates custom extraction - still works! Combine multiple sources.
@@ -156,6 +180,9 @@ func main() {
 		Get("/api/db-status", dbStatusHandler, openapi.Tags("system")).
 		// Auth endpoints
 		Post("/api/auth", authHeader, openapi.Tags("auth")).
+		Post("/api/login", login, openapi.Tags("auth"), openapi.Summary("Login and set refresh-token cookie")).
+		// Webhook receiver: raw body + typed headers via RawBodyWithHeaders[H].
+		Post("/api/webhook/github", githubWebhook, openapi.Tags("webhook"), openapi.Summary("GitHub webhook receiver")).
 		// Serve OpenAPI spec and documentation
 		ServeOpenAPI("/openapi.json").
 		ServeDocs("/docs", "/openapi.json").
@@ -308,6 +335,57 @@ func authHeader(ctx context.Context, req *extractor.Header[AuthReq]) (espresso.T
 	token := req.Data.Token
 	log.Info().Str("token", token).Msg("auth request")
 	return espresso.Text{Body: "Authenticated"}, nil
+}
+
+// login demonstrates the refresh-token pattern: a JSON access token in the
+// body alongside a long-lived refresh cookie. JSON[T].Cookies writes
+// Set-Cookie before the status header, so the cookie reaches the response head.
+func login(ctx context.Context, req *espresso.JSON[LoginReq]) (espresso.JSON[TokenRes], error) {
+	if req.Data.Email == "" || req.Data.Password == "" {
+		return espresso.JSON[TokenRes]{}, espresso.ErrUnauthorized("invalid credentials")
+	}
+	// In a real app, validate credentials and mint signed JWTs here.
+	accessJWT := "stub-access-jwt-for-" + req.Data.Email
+	refreshJWT := "stub-refresh-jwt-for-" + req.Data.Email
+	return espresso.JSON[TokenRes]{
+		Data: TokenRes{Access: accessJWT},
+		Cookies: []*http.Cookie{{
+			Name:     "refresh",
+			Value:    refreshJWT,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		}},
+	}, nil
+}
+
+// githubWebhook demonstrates RawBodyWithHeaders[H]: verify HMAC against the
+// unparsed payload while pulling provider-specific headers out of the same
+// extraction pass. The framework never decodes the body, so the bytes the
+// sender produced are exactly what feeds the HMAC computation.
+func githubWebhook(ctx context.Context, req *extractor.RawBodyWithHeaders[GitHubWebhookHeaders]) (espresso.Status, error) {
+	const secret = "replace-with-your-real-webhook-secret"
+	if !verifyGitHubSignature(req.Body, req.Headers.Signature, secret) {
+		return 0, espresso.ErrUnauthorized("invalid signature")
+	}
+	log.Info().
+		Str("event", req.Headers.Event).
+		Str("delivery", req.Headers.Delivery).
+		Int("body_bytes", len(req.Body)).
+		Msg("github webhook accepted")
+	return espresso.Status(http.StatusNoContent), nil
+}
+
+func verifyGitHubSignature(body []byte, signature, secret string) bool {
+	const prefix = "sha256="
+	if !strings.HasPrefix(signature, prefix) {
+		return false
+	}
+	mac := hmac.New(sha256.New, []byte(secret))
+	mac.Write(body)
+	expected := hex.EncodeToString(mac.Sum(nil))
+	return hmac.Equal([]byte(strings.TrimPrefix(signature, prefix)), []byte(expected))
 }
 
 // healthCheck demonstrates a handler with context but no request body.

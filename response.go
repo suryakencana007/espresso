@@ -25,6 +25,8 @@ type IntoResponse interface {
 // JSON is a generic response type for JSON responses.
 // The StatusCode field allows customizing the HTTP status code (defaults to 200 if not set).
 // The Data field contains the payload that will be serialized to JSON.
+// The Cookies field, if non-empty, sets HTTP cookies on the response before
+// the status header is written.
 //
 // Example:
 //
@@ -32,15 +34,34 @@ type IntoResponse interface {
 //	    StatusCode: http.StatusCreated, // 201
 //	    Data: UserRes{ID: 1, Name: "John"},
 //	}, nil
+//
+// Setting cookies alongside the body:
+//
+//	return JSON[Token]{
+//	    Data: Token{Access: accessJWT},
+//	    Cookies: []*http.Cookie{{
+//	        Name:     "refresh",
+//	        Value:    refreshJWT,
+//	        HttpOnly: true,
+//	        Secure:   true,
+//	        SameSite: http.SameSiteLaxMode,
+//	        Path:     "/",
+//	    }},
+//	}, nil
 type JSON[T any] struct {
 	StatusCode int
 	Data       T
+	Cookies    []*http.Cookie
 }
 
 // WriteResponse implements IntoResponse by writing JSON to the response.
 // It sets the Content-Type header to application/json and encodes the Data field as JSON.
-// Uses pooled buffers for better performance on high-throughput applications.
+// If Cookies is non-empty, each cookie is written via http.SetCookie before
+// WriteHeader so Set-Cookie lands in the response head.
 func (j JSON[T]) WriteResponse(w http.ResponseWriter) error {
+	for _, c := range j.Cookies {
+		http.SetCookie(w, c)
+	}
 	w.Header().Set("Content-Type", "application/json")
 	status := j.StatusCode
 	if status == 0 {
@@ -60,6 +81,7 @@ func (j *JSON[T]) Reset() {
 	j.StatusCode = 0
 	var zero T
 	j.Data = zero
+	j.Cookies = j.Cookies[:0]
 }
 
 // Extract implements FromRequest by decoding JSON body into Data.

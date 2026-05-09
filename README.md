@@ -849,6 +849,23 @@ return espresso.JSON[UserRes]{
 }
 ```
 
+Set cookies alongside the body via the `Cookies` field — `Set-Cookie` is
+written before the status header, so it lands in the response head:
+
+```go
+return espresso.JSON[Token]{
+    Data: Token{Access: accessJWT},
+    Cookies: []*http.Cookie{{
+        Name:     "refresh",
+        Value:    refreshJWT,
+        HttpOnly: true,
+        Secure:   true,
+        SameSite: http.SameSiteLaxMode,
+        Path:     "/",
+    }},
+}
+```
+
 ### Text
 
 ```go
@@ -991,7 +1008,7 @@ Response format:
 }
 ```
 
-Constructors: `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`, `ErrUnprocessableEntity`, `ErrTooManyRequests`, `ErrInternal`, `ErrServiceUnavailable`.
+Constructors: `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`, `ErrPreconditionFailed`, `ErrUnprocessableEntity`, `ErrTooManyRequests`, `ErrInternal`, `ErrServiceUnavailable`.
 
 See [docs/error-handling.md](docs/error-handling.md) for custom error codes, validation errors, and migration from plain `error`.
 

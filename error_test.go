@@ -301,6 +301,7 @@ func TestError_Constructors(t *testing.T) {
 		{"ErrForbidden", ErrForbidden("forbidden"), 403, "FORBIDDEN", "forbidden"},
 		{"ErrNotFound", ErrNotFound("not found"), 404, "NOT_FOUND", "not found"},
 		{"ErrConflict", ErrConflict("conflict"), 409, "CONFLICT", "conflict"},
+		{"ErrPreconditionFailed", ErrPreconditionFailed("precondition"), 412, "PRECONDITION_FAILED", "precondition"},
 		{"ErrUnprocessableEntity", ErrUnprocessableEntity("unprocessable"), 422, "UNPROCESSABLE_ENTITY", "unprocessable"},
 		{"ErrTooManyRequests", ErrTooManyRequests("rate limited"), 429, "TOO_MANY_REQUESTS", "rate limited"},
 		{"ErrInternal", ErrInternal("internal"), 500, "INTERNAL", "internal"},

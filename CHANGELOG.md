@@ -7,6 +7,66 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-05-10
+
+### Added
+
+- **`JSON[T].Cookies` field** — set HTTP cookies alongside JSON
+  responses. Cookies are written via `http.SetCookie` before the
+  status header, ensuring `Set-Cookie` lands in the response head.
+  Zero-value (`nil`) `Cookies` is byte-identical to v1.4. `Reset()`
+  clears the slice for `sync.Pool` reuse. Closes Barista F-05.
+
+- **`extractor.RawBodyWithHeaders[H]`** — new extractor that reads the
+  raw request body alongside structured headers in a single pass.
+  Designed for webhook receivers that verify HMAC against the
+  unparsed payload (GitHub `X-Hub-Signature-256`, GitLab `X-Gitlab-Token`,
+  Stripe, Slack, etc.). `H` uses the existing `header:"Name,required"`
+  tag convention. `Reset()` releases buffers larger than 64KB to
+  prevent pool memory bloat, mirroring `RawBodyExtractor`.
+  Closes Barista F-06.
+
+- **`ErrPreconditionFailed(message string)`** — 412 Precondition Failed
+  constructor, completing the symmetry with the other status-keyed
+  helpers. Use when a request precondition is not met (missing
+  prerequisite infrastructure, If-Match mismatch, required feature
+  flag disabled). Closes Barista F-07.
+
+- **`/api/login` and `/api/webhook/github` examples** in
+  `cmd/example/main.go` demonstrate the refresh-token cookie pattern
+  and HMAC-SHA256 webhook verification respectively.
+
+### Migration Notes
+
+v1.5 is **strictly additive**. No v1.4 caller is affected — every
+public type, function, and method retains its v1.4 signature and
+behavior.
+
+If you wrote a chart-internal `JSONWithCookies[T]` wrapper (the
+pattern Barista shipped as `httpx.JSONWithCookies[T]`), you can now
+retire it:
+
+```go
+// Before
+return httpx.JSONWithCookies[Token]{
+    Data:    Token{Access: t},
+    Cookies: []*http.Cookie{refreshCookie},
+}
+
+// After
+return espresso.JSON[Token]{
+    Data:    Token{Access: t},
+    Cookies: []*http.Cookie{refreshCookie},
+}
+```
+
+If you wrote a custom `webhookRequest`-style extractor for "raw body +
+provider header", switch to `extractor.RawBodyWithHeaders[H]`. Define
+a struct with `header:"X-Foo,required"` tags and use the generic.
+
+If you used `NewError(http.StatusPreconditionFailed, msg).WithCode(...)`,
+swap for `ErrPreconditionFailed(msg)`.
+
 ## [1.4.0] - 2026-04-20
 
 ### Added
