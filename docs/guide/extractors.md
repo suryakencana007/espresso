@@ -163,6 +163,53 @@ func handler(ctx context.Context, req *espresso.RawBody) (Response, error) {
 router.Post("/raw", espresso.Solo(handler))
 ```
 
+### RawBodyWithHeaders
+
+Get the raw request body **and** typed headers in a single read pass — the
+shape webhook receivers need so they can verify HMAC against the unparsed
+payload. Available since v1.5.0.
+
+```go
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "strings"
+
+    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/extractor"
+)
+
+type GitHubHeaders struct {
+    Signature string `header:"X-Hub-Signature-256,required"`
+    Event     string `header:"X-GitHub-Event,required"`
+}
+
+func githubWebhook(ctx context.Context, req *extractor.RawBodyWithHeaders[GitHubHeaders]) (espresso.Status, error) {
+    if !verifyHMAC(req.Body, req.Headers.Signature, secret) {
+        return 0, espresso.ErrUnauthorized("invalid signature")
+    }
+    // dispatch on req.Headers.Event...
+    return espresso.Status(http.StatusNoContent), nil
+}
+
+func verifyHMAC(body []byte, signature, secret string) bool {
+    expected := strings.TrimPrefix(signature, "sha256=")
+    mac := hmac.New(sha256.New, []byte(secret))
+    mac.Write(body)
+    got := hex.EncodeToString(mac.Sum(nil))
+    return hmac.Equal([]byte(expected), []byte(got))
+}
+
+router.Post("/webhook/github", espresso.Doppio(githubWebhook))
+```
+
+The body is unmodified bytes — the framework never decodes it, so HMAC
+computations operate on exactly what the sender produced. The `H` header
+struct uses the same `header:"Name,required"` tag convention as
+[`Header[T]`](#header). Buffers larger than 64KB are released on `Reset`
+to prevent `sync.Pool` memory bloat, mirroring `RawBody`.
+
 ### Multipart
 
 Handle multipart/form-data with file uploads:
