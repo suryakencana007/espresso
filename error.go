@@ -273,6 +273,15 @@ func ErrConflict(message string) *Error {
 	return NewError(http.StatusConflict, message).WithCode("CONFLICT")
 }
 
+// ErrPreconditionFailed creates a 412 Precondition Failed error.
+// Use when a request precondition is not met — for example, missing
+// prerequisite infrastructure (a Kubernetes CRD not installed), an
+// If-Match header that doesn't match, or a required feature flag
+// that is disabled.
+func ErrPreconditionFailed(message string) *Error {
+	return NewError(http.StatusPreconditionFailed, message).WithCode("PRECONDITION_FAILED")
+}
+
 // ErrUnprocessableEntity creates a 422 Unprocessable Entity error.
 // Typically used for validation failures.
 func ErrUnprocessableEntity(message string) *Error {

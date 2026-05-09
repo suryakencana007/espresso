@@ -27,6 +27,7 @@ Available constructors:
 | `ErrForbidden(msg)` | 403 | `FORBIDDEN` |
 | `ErrNotFound(msg)` | 404 | `NOT_FOUND` |
 | `ErrConflict(msg)` | 409 | `CONFLICT` |
+| `ErrPreconditionFailed(msg)` | 412 | `PRECONDITION_FAILED` |
 | `ErrUnprocessableEntity(msg)` | 422 | `UNPROCESSABLE_ENTITY` |
 | `ErrTooManyRequests(msg)` | 429 | `TOO_MANY_REQUESTS` |
 | `ErrInternal(msg)` | 500 | `INTERNAL` |

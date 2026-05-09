@@ -991,7 +991,7 @@ Response format:
 }
 ```
 
-Constructors: `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`, `ErrUnprocessableEntity`, `ErrTooManyRequests`, `ErrInternal`, `ErrServiceUnavailable`.
+Constructors: `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`, `ErrPreconditionFailed`, `ErrUnprocessableEntity`, `ErrTooManyRequests`, `ErrInternal`, `ErrServiceUnavailable`.
 
 See [docs/error-handling.md](docs/error-handling.md) for custom error codes, validation errors, and migration from plain `error`.
 
