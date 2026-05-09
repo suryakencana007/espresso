@@ -295,6 +295,62 @@ func (rb *RawBodyExtractor) Reset() {
 	}
 }
 
+// RawBodyWithHeadersExtractor extracts the raw request body alongside
+// structured headers in a single read pass. Useful for webhook receivers
+// that verify HMAC against the unparsed payload while reading provider-
+// specific signature headers.
+//
+// The H type uses the same `header:"Name,required"` struct-tag convention
+// as HeaderExtractor[T]. Body is the unmodified request body — the
+// framework never decodes it, so HMAC computations operate on bytes the
+// sender produced.
+//
+// Example:
+//
+//	type GitHubHeaders struct {
+//	    Signature string `header:"X-Hub-Signature-256,required"`
+//	    Event     string `header:"X-GitHub-Event,required"`
+//	}
+//
+//	func handle(ctx context.Context, req *extractor.RawBodyWithHeaders[GitHubHeaders]) (espresso.Status, error) {
+//	    if !verifyHMAC(req.Body, req.Headers.Signature, secret) {
+//	        return 0, espresso.ErrUnauthorized("invalid signature")
+//	    }
+//	    // dispatch on req.Headers.Event...
+//	    return espresso.Status(http.StatusNoContent), nil
+//	}
+type RawBodyWithHeadersExtractor[H any] struct {
+	Body    []byte
+	Headers H
+}
+
+// Extract reads the raw body and populates Headers from the request's
+// HTTP headers. Body is read first so a header-extraction failure still
+// drains the body (matching RawBodyExtractor's drain-and-close behavior).
+func (rb *RawBodyWithHeadersExtractor[H]) Extract(r *http.Request) error {
+	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
+
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		return err
+	}
+	rb.Body = body
+
+	return extractStructTagsFromHeaders(&rb.Headers, r.Header)
+}
+
+// Reset clears both fields for sync.Pool reuse. Releases large body
+// buffers (>64KB) to prevent memory bloat, mirroring RawBodyExtractor.
+func (rb *RawBodyWithHeadersExtractor[H]) Reset() {
+	if cap(rb.Body) > 64*1024 {
+		rb.Body = nil
+	} else {
+		rb.Body = rb.Body[:0]
+	}
+	var zero H
+	rb.Headers = zero
+}
+
 // XMLExtractor extracts and decodes XML request body.
 type XMLExtractor[T any] struct {
 	Data T
@@ -347,6 +403,9 @@ type XML[T any] = XMLExtractor[T]
 
 // RawBody is a type alias for RawBodyExtractor.
 type RawBody = RawBodyExtractor
+
+// RawBodyWithHeaders is a type alias for RawBodyWithHeadersExtractor[H].
+type RawBodyWithHeaders[H any] = RawBodyWithHeadersExtractor[H]
 
 // PathParamsKey is the context key for path parameters.
 type PathParamsKey = struct{}

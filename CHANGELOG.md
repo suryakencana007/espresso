@@ -15,6 +15,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Zero-value (`nil`) `Cookies` is byte-identical to v1.4. `Reset()`
   clears the slice for `sync.Pool` reuse. Closes Barista F-05.
 
+- **`extractor.RawBodyWithHeaders[H]`** — new extractor that reads the
+  raw request body alongside structured headers in a single pass.
+  Designed for webhook receivers that verify HMAC against the
+  unparsed payload (GitHub `X-Hub-Signature-256`, GitLab `X-Gitlab-Token`,
+  Stripe, Slack, etc.). `H` uses the existing `header:"Name,required"`
+  tag convention. `Reset()` releases buffers larger than 64KB to
+  prevent pool memory bloat, mirroring `RawBodyExtractor`.
+  Closes Barista F-06.
+
 - **`ErrPreconditionFailed(message string)`** — 412 Precondition Failed
   constructor, completing the symmetry with the other status-keyed
   helpers. Use when a request precondition is not met (missing

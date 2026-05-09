@@ -238,6 +238,56 @@ type RawBody struct {
 }
 ```
 
+### RawBodyWithHeaders
+
+Extract the raw request body alongside structured headers in a single read pass.
+Useful for webhook receivers that need to verify HMAC against the unparsed
+payload while reading provider-specific signature headers.
+
+```go
+type RawBodyWithHeaders[H any] struct {
+    Body    []byte
+    Headers H
+}
+```
+
+The `H` type parameter uses the same `header:"Name,required"` struct-tag
+convention as `Header[T]`. The framework never decodes the body, so HMAC
+computations operate on bytes the sender produced.
+
+```go
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "strings"
+
+    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/extractor"
+)
+
+type GitHubHeaders struct {
+    Signature string `header:"X-Hub-Signature-256,required"`
+    Event     string `header:"X-GitHub-Event,required"`
+}
+
+func githubWebhook(ctx context.Context, req *extractor.RawBodyWithHeaders[GitHubHeaders]) (espresso.Status, error) {
+    if !verifyHMAC(req.Body, req.Headers.Signature, secret) {
+        return 0, espresso.ErrUnauthorized("invalid signature")
+    }
+    // dispatch on req.Headers.Event...
+    return espresso.Status(http.StatusNoContent), nil
+}
+
+func verifyHMAC(body []byte, signature, secret string) bool {
+    expected := strings.TrimPrefix(signature, "sha256=")
+    mac := hmac.New(sha256.New, []byte(secret))
+    mac.Write(body)
+    got := hex.EncodeToString(mac.Sum(nil))
+    return hmac.Equal([]byte(expected), []byte(got))
+}
+```
+
 ## Error Types
 
 ### FieldError

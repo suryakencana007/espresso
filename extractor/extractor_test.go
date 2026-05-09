@@ -167,6 +167,151 @@ func TestRawBodyExtractor_Reset(t *testing.T) {
 	}
 }
 
+func TestRawBodyWithHeadersExtractor_Basic(t *testing.T) {
+	type GitHubHeaders struct {
+		Signature string `header:"X-Hub-Signature-256,required"`
+		Event     string `header:"X-GitHub-Event,required"`
+	}
+
+	body := `{"action":"opened","number":42}`
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader([]byte(body)))
+	req.Header.Set("X-Hub-Signature-256", "sha256=abc123")
+	req.Header.Set("X-GitHub-Event", "pull_request")
+
+	ext := &RawBodyWithHeadersExtractor[GitHubHeaders]{}
+	if err := ext.Extract(req); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	if string(ext.Body) != body {
+		t.Errorf("Body = %q, want %q", string(ext.Body), body)
+	}
+	if ext.Headers.Signature != "sha256=abc123" {
+		t.Errorf("Headers.Signature = %q, want sha256=abc123", ext.Headers.Signature)
+	}
+	if ext.Headers.Event != "pull_request" {
+		t.Errorf("Headers.Event = %q, want pull_request", ext.Headers.Event)
+	}
+}
+
+func TestRawBodyWithHeadersExtractor_RequiredHeaderMissing(t *testing.T) {
+	type Headers struct {
+		Signature string `header:"X-Signature,required"`
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader([]byte("payload")))
+	// Note: X-Signature deliberately omitted.
+
+	ext := &RawBodyWithHeadersExtractor[Headers]{}
+	err := ext.Extract(req)
+	if err == nil {
+		t.Fatal("expected error for missing required header, got nil")
+	}
+	if !strings.Contains(err.Error(), "X-Signature") {
+		t.Errorf("error = %v, want it to mention X-Signature", err)
+	}
+	// Body should still be read even when header validation fails.
+	if string(ext.Body) != "payload" {
+		t.Errorf("Body = %q, want body to be read despite header failure", string(ext.Body))
+	}
+}
+
+func TestRawBodyWithHeadersExtractor_EmptyBody(t *testing.T) {
+	type Headers struct {
+		Token string `header:"X-Token"`
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/webhook", nil)
+	req.Header.Set("X-Token", "secret")
+
+	ext := &RawBodyWithHeadersExtractor[Headers]{}
+	if err := ext.Extract(req); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	if len(ext.Body) != 0 {
+		t.Errorf("Body = %q, want empty", string(ext.Body))
+	}
+	if ext.Headers.Token != "secret" {
+		t.Errorf("Headers.Token = %q, want secret", ext.Headers.Token)
+	}
+}
+
+func TestRawBodyWithHeadersExtractor_OptionalHeaderAbsent(t *testing.T) {
+	type Headers struct {
+		Required string `header:"X-Required,required"`
+		Optional string `header:"X-Optional"`
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/webhook", bytes.NewReader([]byte("data")))
+	req.Header.Set("X-Required", "yes")
+
+	ext := &RawBodyWithHeadersExtractor[Headers]{}
+	if err := ext.Extract(req); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+
+	if ext.Headers.Required != "yes" {
+		t.Errorf("Required = %q", ext.Headers.Required)
+	}
+	if ext.Headers.Optional != "" {
+		t.Errorf("Optional = %q, want empty", ext.Headers.Optional)
+	}
+}
+
+func TestRawBodyWithHeadersExtractor_Reset(t *testing.T) {
+	type Headers struct {
+		Token string `header:"X-Token"`
+	}
+
+	ext := &RawBodyWithHeadersExtractor[Headers]{
+		Body:    []byte("payload"),
+		Headers: Headers{Token: "secret"},
+	}
+	ext.Reset()
+
+	if len(ext.Body) != 0 {
+		t.Errorf("Body length = %d after reset, want 0", len(ext.Body))
+	}
+	if ext.Headers.Token != "" {
+		t.Errorf("Headers.Token = %q after reset, want empty", ext.Headers.Token)
+	}
+}
+
+// TestRawBodyWithHeadersExtractor_LargeBodyReleased mirrors
+// TestRawBodyExtractor_LargeBody — buffers larger than 64KB are released
+// rather than retained, to avoid memory bloat across pooled reuse.
+func TestRawBodyWithHeadersExtractor_LargeBodyReleased(t *testing.T) {
+	type Headers struct{}
+	ext := &RawBodyWithHeadersExtractor[Headers]{
+		Body: make([]byte, 128*1024),
+	}
+	ext.Reset()
+
+	if ext.Body != nil {
+		t.Errorf("expected Body=nil after reset of >64KB buffer, got len=%d cap=%d", len(ext.Body), cap(ext.Body))
+	}
+}
+
+// TestRawBodyWithHeadersExtractor_TypeAlias verifies the RawBodyWithHeaders
+// alias compiles and behaves identically to the underlying extractor.
+func TestRawBodyWithHeadersExtractor_TypeAlias(t *testing.T) {
+	type Headers struct {
+		Auth string `header:"Authorization"`
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte("body")))
+	req.Header.Set("Authorization", "Bearer x")
+
+	var ext RawBodyWithHeaders[Headers]
+	if err := ext.Extract(req); err != nil {
+		t.Fatalf("Extract() error = %v", err)
+	}
+	if string(ext.Body) != "body" || ext.Headers.Auth != "Bearer x" {
+		t.Errorf("alias dispatch incorrect: body=%q, auth=%q", string(ext.Body), ext.Headers.Auth)
+	}
+}
+
 func TestXMLExtractor_Basic(t *testing.T) {
 	type TestReq struct {
 		Name string `xml:"name"`
