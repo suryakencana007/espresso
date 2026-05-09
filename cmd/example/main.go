@@ -71,6 +71,17 @@ type AuthReq struct {
 	Token string `header:"Authorization,required"`
 }
 
+// LoginReq demonstrates the refresh-token cookie pattern.
+type LoginReq struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// TokenRes is the JSON body returned alongside the refresh-token cookie.
+type TokenRes struct {
+	Access string `json:"access"`
+}
+
 // CreateUserWithRoleReq demonstrates custom extraction - still works! Combine multiple sources.
 type CreateUserWithRoleReq struct {
 	Role    string // extracted from query param
@@ -156,6 +167,7 @@ func main() {
 		Get("/api/db-status", dbStatusHandler, openapi.Tags("system")).
 		// Auth endpoints
 		Post("/api/auth", authHeader, openapi.Tags("auth")).
+		Post("/api/login", login, openapi.Tags("auth"), openapi.Summary("Login and set refresh-token cookie")).
 		// Serve OpenAPI spec and documentation
 		ServeOpenAPI("/openapi.json").
 		ServeDocs("/docs", "/openapi.json").
@@ -308,6 +320,29 @@ func authHeader(ctx context.Context, req *extractor.Header[AuthReq]) (espresso.T
 	token := req.Data.Token
 	log.Info().Str("token", token).Msg("auth request")
 	return espresso.Text{Body: "Authenticated"}, nil
+}
+
+// login demonstrates the refresh-token pattern: a JSON access token in the
+// body alongside a long-lived refresh cookie. JSON[T].Cookies writes
+// Set-Cookie before the status header, so the cookie reaches the response head.
+func login(ctx context.Context, req *espresso.JSON[LoginReq]) (espresso.JSON[TokenRes], error) {
+	if req.Data.Email == "" || req.Data.Password == "" {
+		return espresso.JSON[TokenRes]{}, espresso.ErrUnauthorized("invalid credentials")
+	}
+	// In a real app, validate credentials and mint signed JWTs here.
+	accessJWT := "stub-access-jwt-for-" + req.Data.Email
+	refreshJWT := "stub-refresh-jwt-for-" + req.Data.Email
+	return espresso.JSON[TokenRes]{
+		Data: TokenRes{Access: accessJWT},
+		Cookies: []*http.Cookie{{
+			Name:     "refresh",
+			Value:    refreshJWT,
+			HttpOnly: true,
+			Secure:   true,
+			SameSite: http.SameSiteLaxMode,
+			Path:     "/",
+		}},
+	}, nil
 }
 
 // healthCheck demonstrates a handler with context but no request body.

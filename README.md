@@ -849,6 +849,23 @@ return espresso.JSON[UserRes]{
 }
 ```
 
+Set cookies alongside the body via the `Cookies` field — `Set-Cookie` is
+written before the status header, so it lands in the response head:
+
+```go
+return espresso.JSON[Token]{
+    Data: Token{Access: accessJWT},
+    Cookies: []*http.Cookie{{
+        Name:     "refresh",
+        Value:    refreshJWT,
+        HttpOnly: true,
+        Secure:   true,
+        SameSite: http.SameSiteLaxMode,
+        Path:     "/",
+    }},
+}
+```
+
 ### Text
 
 ```go

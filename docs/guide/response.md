@@ -345,6 +345,43 @@ func (c CachedJSON) WriteResponse(w http.ResponseWriter) error {
 }
 ```
 
+## Setting Cookies on JSON Responses
+
+`JSON[T]` exposes a `Cookies []*http.Cookie` field. Cookies set this way are
+written via `http.SetCookie` **before** the response status is committed, so
+`Set-Cookie` lands in the response head as required by HTTP.
+
+```go
+import "net/http"
+
+func login(ctx context.Context, req *espresso.JSON[LoginReq]) (espresso.JSON[Token], error) {
+    accessJWT, refreshJWT, err := authsvc.Issue(req.Data.Email, req.Data.Password)
+    if err != nil {
+        return espresso.JSON[Token]{}, espresso.ErrUnauthorized("invalid credentials")
+    }
+
+    return espresso.JSON[Token]{
+        Data: Token{Access: accessJWT},
+        Cookies: []*http.Cookie{{
+            Name:     "refresh",
+            Value:    refreshJWT,
+            HttpOnly: true,
+            Secure:   true,
+            SameSite: http.SameSiteLaxMode,
+            Path:     "/",
+        }},
+    }, nil
+}
+```
+
+Multiple cookies emit one `Set-Cookie` header each, in the order they appear
+in the slice. The zero value (`nil` slice) emits no `Set-Cookie` header — a
+v1.4 caller that doesn't set `Cookies` produces byte-identical output to
+before this field existed.
+
+To **read** cookies on the request side, use `extractor.Cookie[T]` with
+`cookie:"name"` struct tags — see [Extractors](./extractors.md#cookie).
+
 ## Best Practices
 
 1. **Use typed responses**: Always return specific response types

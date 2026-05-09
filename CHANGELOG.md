@@ -9,6 +9,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **`JSON[T].Cookies` field** — set HTTP cookies alongside JSON
+  responses. Cookies are written via `http.SetCookie` before the
+  status header, ensuring `Set-Cookie` lands in the response head.
+  Zero-value (`nil`) `Cookies` is byte-identical to v1.4. `Reset()`
+  clears the slice for `sync.Pool` reuse. Closes Barista F-05.
+
 - **`ErrPreconditionFailed(message string)`** — 412 Precondition Failed
   constructor, completing the symmetry with the other status-keyed
   helpers. Use when a request precondition is not met (missing
