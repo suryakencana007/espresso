@@ -42,6 +42,7 @@ Update when a new Espresso-shaped decision lands. Batch entries by milestone hea
 - **Observation:** `Ristretto` is pitched as the lightweight "health check" primitive, but its signature is `func() Res` — no `context.Context`. That means `MustGetState[T]` can't run inside it, so any handler that wants to, say, verify the DB is reachable immediately drops back to `HandlerCtx`. In Barista the only `Ristretto`-shaped handler is `/healthz`, and even that uses `HandlerCtx` today because it asserts state is retrievable.
 - **Evidence:** `internal/api/server.go:41` — `r.Get("/healthz", espresso.HandlerCtx(healthz))`.
 - **Suggested change:** Either (a) deprecate `Ristretto` in favour of `HandlerCtx` as the zero-arg primitive, or (b) give `Ristretto` a `func(ctx) Res` variant. Current `Ristretto` is a foot-gun because the first real health check needs state.
+- **Status (2026-05-10):** Deferred to **Espresso v2.1** — initially routed to v2.0, but v2.0's scope (`roadmaps/v2.0/`) is locked on per-Router registries, deprecated-API removal, handler-cache eviction, typed `Validation[Req]`, and auto-validate. F-01 fix is breaking (signature change) but additive in nature; sliding to a v2.1 follow-up keeps v2.0 cleanly debt-cleanup-only. Barista's `HandlerCtx(healthz)` workaround stays in place; cost is one line per zero-arg handler, no scaling pain.
 
 #### F-02 — `Stream` commits headers before the handler runs
 
@@ -49,6 +50,7 @@ Update when a new Espresso-shaped decision lands. Batch entries by milestone hea
 - **Observation:** `Stream` flushes HTTP headers as part of accepting the request — so a "resource not found" decision the handler would like to surface as an HTTP 404 can only be emitted as an SSE `event: error` frame on a 200-OK stream. Standard REST clients (plus CDNs, proxies, observability tools) don't treat `event: error` on a 200 stream like a real 4xx, and every downstream integrator has to special-case it.
 - **Evidence (workaround):** `internal/api/middleware/preflight.go:43` — `RequireAppAccess` / `RequireDeploymentAccess` run the ownership lookup and return a real 404 before `Stream` is ever invoked. See also `internal/api/server.go:81`.
 - **Suggested change:** Let `Stream` handlers return an `espresso.Error` before the stream opens — e.g. a pre-flight phase that still lets the handler inspect the request context. v0.2 landed a middleware workaround (Task 05), but it's boilerplate per SSE route; first-class support in `Stream` would erase it.
+- **Status (2026-05-10):** Deferred to **Espresso v2.1** — for the same reason as F-01. Note that v2.0 Task 1 (per-Router registries) restructures `serveStream`, so the v2.1 fix lands cleanly on top of that work rather than competing with it. Barista's `RequireAppAccess` / `RequireDeploymentAccess` middlewares stay in place through v2.0; the per-route boilerplate cost is two lines per SSE route plus one middleware per resource kind — annoying but bounded, and unchanged at v0.6 scale.
 
 ## v0.2.0 — additional observations
 
@@ -74,12 +76,24 @@ Update when a new Espresso-shaped decision lands. Batch entries by milestone hea
 
 - Task 05 landed `RequireAppAccess` and `RequireDeploymentAccess` middlewares. Every new SSE route now has to wrap the `Stream(...)` handler in the matching middleware — see `internal/api/server.go:81-84`. That's two extra lines per route, plus a middleware per resource kind, plus a `MustGetApp` / `MustGetDeployment` stash-and-read in each handler. Scales poorly if v0.3 adds web-terminal (`WS`) or more SSE endpoints.
 
-#### F-03 — handler signature sprawl for `Stream` and `WebSocket`
+#### F-03 (closed — wontfix)
 
-- **Surface:** `espresso.Stream` / `espresso.WebSocket`
-- **Observation:** `Stream` handlers take `(ctx, req, stream) error`; `Doppio` takes `(ctx, req) (Res, error)`; `HandlerCtx` takes `(ctx) (Res, error)`. Switching a handler from JSON to SSE requires reshaping the signature *and* changing the `r.Get(...)` registration call. In Barista this is fine — the handlers are distinct — but it's a reason the `logStreamSender` interface-seam pattern (W-03) matters: the signature churn is contained to the outermost adapter.
-- **Evidence:** compare `internal/api/handler/deployment.go:GetDeployment` with `internal/api/handler/logs.go:StreamBuildLogs`.
-- **Suggested change:** None urgent. Flag in case v0.3's `WS` handlers hit the same friction.
+`Stream` and `WebSocket` handler signatures differ from `Doppio` /
+`HandlerCtx` because they're solving different problems (long-lived,
+push-side handlers vs. request/response). The "cost" was always just
+that switching a JSON handler to SSE requires reshaping the function —
+which in practice means rewriting the handler anyway, since the
+streaming logic is fundamentally different.
+
+The W-03 `logStreamSender` interface-seam pattern from v0.1 contained
+the test-side churn for SSE; W-07 confirmed the same shape works for
+WebSocket bridges in v0.3. Three milestones (v0.4, v0.5, v0.6) shipped
+without re-flagging this entry — it hasn't bitten anyone.
+
+Closing as **wontfix**. The signature differences are intentional;
+the interface-seam pattern is the recommended way to keep tests
+decoupled. If a future use case proves this wrong, reopen with
+fresh evidence.
 
 #### W-06 — `Stream` + `WithKeepAlive` survives a 19-minute build under live load
 
@@ -279,5 +293,8 @@ Closing the entry — workaround retired upstream.
 - TD-CONV-01 in [`roadmaps/v0.1.0/TECH_DEBT.md`](roadmaps/v0.1.0/TECH_DEBT.md) — this file closes that finding.
 - TD-ESP-01 through TD-ESP-04 — folded into F-01, F-02, W-03, F-04 / W-07 above.
 - TD-HOT-04 in [`roadmaps/v0.4.0/TECH_DEBT.md`](roadmaps/v0.4.0/TECH_DEBT.md) — F-08 is the framework-side framing of the same observation.
+- F-04 closed by Barista v0.3 sprint 1 (subprotocol-bearer middleware) — no Espresso change required.
 - F-05, F-06, F-07 closed by Espresso v1.5.0 (2026-05-10) — see `roadmaps/v1.5/`.
-- F-01, F-02 deferred to Espresso v2.0 — both require breaking changes (Ristretto signature) or restructuring `serveStream`'s pre-flight phase. Tracked in `roadmaps/v2.0/`.
+- F-03 closed as wontfix (2026-05-10) — handler-signature differences are intentional; interface-seam pattern (W-03 / W-07) is the recommended path.
+- F-01, F-02 deferred to **Espresso v2.1** (2026-05-10) — initially routed to v2.0, but v2.0's scope is locked on debt cleanup (per-Router registries, deprecated removals, handler-cache eviction, typed `Validation[Req]`, auto-validate). F-02's fix lands naturally on top of v2.0 Task 1's `serveStream` restructure. v2.1 roadmap to be scaffolded after v2.0 ships.
+- F-08 remains open — application-layer concern; framework could supply a docs/pattern note on test seams without requiring an API change.
