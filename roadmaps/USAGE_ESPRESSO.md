@@ -110,12 +110,22 @@ Update when a new Espresso-shaped decision lands. Batch entries by milestone hea
 
 `*espresso.WS` was the v0.2 anticipated friction (web terminal). v0.3 sprint 1 landed the implementation; see W-07 above for what we found. The `Read` / `Write` API is straightforward; the WSConfig knobs (`WithSubprotocols`, `WithPingInterval`) were sufficient. Closing the entry — implementation done, no friction emerged that warrants a follow-up.
 
-#### F-05 — `JSON[T]` doesn't expose cookies on the response side
+#### F-05 (closed)
 
-- **Surface:** `espresso.JSON[T]` (response type)
-- **Observation:** Refresh-token rollout (v0.3 task 04) needs the auth handlers to set / clear an `HttpOnly+Secure+SameSite=Lax` cookie alongside the JSON body. `espresso.JSON[T]` only carries `StatusCode` + `Data` — no field for `Cookies` and no surfaced `http.ResponseWriter` from the handler context. Worked around with a tiny chart-internal `httpx.JSONWithCookies[T]` (16-line `IntoResponse` impl that writes `Set-Cookie` headers before delegating to `JSON[T].WriteResponse`). Plus a `middleware.ReadRefreshCookie` shim because the request side has the same gap (no cookie reader in `extractor.*`).
-- **Evidence:** `internal/api/httpx/response.go`, `internal/api/middleware/refresh_cookie.go`, `internal/api/handler/auth.go`.
-- **Suggested change:** First-class cookie support in `espresso.JSON[T]` (a `Cookies []*http.Cookie` field, written as the prefix of `WriteResponse`), and an `extractor.Cookie[T]` parameterised on a cookie name.
+`JSON[T]` was the v0.3 friction (refresh-token cookies). Espresso
+v1.5.0 shipped `JSON[T].Cookies []*http.Cookie` (commit `e986754`,
+roadmaps/v1.5/tasks/task-01-json-response-cookies.md). Cookies are
+written via `http.SetCookie` before `WriteHeader`, so `Set-Cookie`
+lands in the response head. The chart-internal
+`httpx.JSONWithCookies[T]` can be retired in a Barista pin-bump PR.
+
+The cookie **read** side was already covered by
+`extractor.Cookie[T]` (struct-tag based at `extractor/extractor.go:251`);
+that surface predated this entry's "no cookie reader in extractor.*"
+note. The `middleware.ReadRefreshCookie` shim can be retired in
+favor of an `extractor.Cookie[T]` struct with `cookie:"refresh"` tag.
+
+Closing the entry — workaround retired upstream.
 
 ## v0.4.0 — additional observations
 
@@ -144,19 +154,47 @@ Update when a new Espresso-shaped decision lands. Batch entries by milestone hea
 
 ### Friction
 
-#### F-06 — No `RawBodyWithHeaders` extractor
+#### F-06 (closed)
 
-- **Surface:** `extractor.RawBody` + `extractor.JSON[T]`
-- **Observation:** Two of v0.4's six handlers re-derived the same custom-extractor pattern (W-08 above) for "raw body + provider header". Each occurrence is ~35 lines including a struct, an `Extract` method, and a header-name list. A first-class `extractor.RawBodyWithHeaders[H any]` (where `H` is a struct of header-mapped fields) would erase the boilerplate.
-- **Evidence:** `internal/api/handler/webhook.go:24-44` is the canonical occurrence; the membership-invite path could plausibly grow a similar shape if ever ranged over against an external auth service.
-- **Suggested change:** Adapter type in the `extractor` package — `extractor.RawBodyWithHeaders[H]` populating a struct-of-strings keyed by `header:"X-Foo"` tags + a `Body []byte` field. Same shape as `extractor.Path[T]` already follows.
+The "raw body + provider header" boilerplate was the v0.4 friction
+(webhook receivers). Espresso v1.5.0 shipped
+`extractor.RawBodyWithHeaders[H]` (commit `a59f8e1`,
+roadmaps/v1.5/tasks/task-02-rawbody-with-headers-extractor.md). The
+shape matches what was suggested: struct-of-headers keyed by
+`header:"X-Foo,required"` tags + a `Body []byte` field, populated in
+one read pass. Buffers >64KB release on `Reset` to prevent pool
+memory bloat (mirrors `RawBodyExtractor`).
 
-#### F-07 — No `ErrPreconditionFailed` (412) helper
+Barista's `internal/api/handler/webhook.go:24-44` `webhookRequest`
+custom extractor can be retired in favor of:
 
-- **Surface:** `*espresso.Error` constructors
-- **Observation:** Espresso v1.4.0 ships `ErrBadRequest`, `ErrUnauthorized`, `ErrForbidden`, `ErrNotFound`, `ErrConflict`, `ErrUnprocessableEntity`, `ErrTooManyRequests`, `ErrInternal`, `ErrServiceUnavailable` — no `412 Precondition Failed`. Canary's `CANARY_PROVIDER_MISSING` (Flagger CRD not installed) is semantically a 412, so the handler falls back to `espresso.NewError(http.StatusPreconditionFailed, msg).WithCode(...)`. One-line workaround per occurrence; not a blocker, but inconsistent with the rest of the API.
-- **Evidence:** `internal/api/handler/canary.go:88-91`.
-- **Suggested change:** Add `ErrPreconditionFailed(message string) *Error` to the framework — symmetric with the existing helpers.
+```go
+type GitHubHeaders struct {
+    Signature string `header:"X-Hub-Signature-256,required"`
+    Event     string `header:"X-GitHub-Event,required"`
+}
+
+func handle(ctx context.Context, req *extractor.RawBodyWithHeaders[GitHubHeaders]) (espresso.Status, error) {
+    // verify HMAC against req.Body using req.Headers.Signature
+}
+```
+
+Closing the entry — workaround retired upstream.
+
+#### F-07 (closed)
+
+The missing 412 helper was the v0.4 friction (Flagger CRD not
+installed). Espresso v1.5.0 shipped `ErrPreconditionFailed(message
+string)` (commit `cb0cc80`,
+roadmaps/v1.5/tasks/task-03-precondition-failed-error.md). Returns
+status 412 with code `PRECONDITION_FAILED`, matching the convention
+of the other constructors.
+
+Barista's `internal/api/handler/canary.go:88-91`
+`espresso.NewError(http.StatusPreconditionFailed, msg).WithCode(...)`
+fallback can be replaced with `espresso.ErrPreconditionFailed(msg)`.
+
+Closing the entry — workaround retired upstream.
 
 #### F-08 — Test seam patterns accumulate as exported setters
 
@@ -241,3 +279,5 @@ Update when a new Espresso-shaped decision lands. Batch entries by milestone hea
 - TD-CONV-01 in [`roadmaps/v0.1.0/TECH_DEBT.md`](roadmaps/v0.1.0/TECH_DEBT.md) — this file closes that finding.
 - TD-ESP-01 through TD-ESP-04 — folded into F-01, F-02, W-03, F-04 / W-07 above.
 - TD-HOT-04 in [`roadmaps/v0.4.0/TECH_DEBT.md`](roadmaps/v0.4.0/TECH_DEBT.md) — F-08 is the framework-side framing of the same observation.
+- F-05, F-06, F-07 closed by Espresso v1.5.0 (2026-05-10) — see `roadmaps/v1.5/`.
+- F-01, F-02 deferred to Espresso v2.0 — both require breaking changes (Ristretto signature) or restructuring `serveStream`'s pre-flight phase. Tracked in `roadmaps/v2.0/`.
