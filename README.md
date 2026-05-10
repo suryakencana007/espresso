@@ -1176,10 +1176,12 @@ here as a directional signal, not a fair head-to-head. See
 
 | Package | Coverage |
 |---------|----------|
-| Root | 75.9% |
-| middleware/http | 93.0% |
+| Root | 80.8% |
+| middleware/http | 86.9% |
 | middleware/service | 78.3% |
-| extractor | 58.6% |
+| extractor | 85.5% |
+| validator | 80.6% |
+| openapi | 77.3% |
 | pool | 90.0% |
 
 Run tests:
