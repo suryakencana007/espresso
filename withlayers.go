@@ -229,8 +229,12 @@ func createTypedHandler(handler any, reqType reflect.Type, _ reflect.Type, layer
 	}
 
 	for _, layer := range layers {
-		switch layer.(type) {
-		case *validationConfig, *customConfig:
+		// validationConfig is generic — match any *validationConfig[X] via
+		// the marker interface, then customConfig directly.
+		if _, ok := layer.(validationConfigLike); ok {
+			return nil, fmt.Errorf("layer %T requires explicit request type; use WithLayersTyped", layer)
+		}
+		if _, ok := layer.(*customConfig); ok {
 			return nil, fmt.Errorf("layer %T requires explicit request type; use WithLayersTyped", layer)
 		}
 	}

@@ -7,6 +7,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- **`espresso.Validation` is now generic** (v2.0 task-04). Signature
+  changed from `Validation(validator any) LayerConfig` to
+  `Validation[Req any](validator servicemiddleware.Validator[Req]) LayerConfig`.
+  Closes the v1.x footgun where a mismatched validator failed silently
+  (the type assertion in `buildLayer` returned a panic only when the
+  pipeline actually built; before that, the assertion result was
+  invisible). Now: a `Validator[Req1]` applied to a handler with `Req2`
+  panics at registration with a descriptive message naming both types.
+
+  Migration: most callers don't need a syntactic change because Go
+  infers the type parameter from the argument:
+
+  ```go
+  validator := servicemiddleware.ValidatorFunc[*JSON[CreateUserReq]](...)
+  Validation(validator)            // Req inferred as *JSON[CreateUserReq]
+  Validation[*JSON[CreateUserReq]](validator)  // explicit form, optional
+  ```
+
+  The explicit form is recommended for documentation purposes when the
+  validator is constructed elsewhere and the call site benefits from a
+  visible type at the binding point. New regression-locking test:
+  `TestValidation_TypeMismatch_PanicsAtBuild`. Internal `validationConfig`
+  is now `validationConfig[Req]` (unexported, no external migration).
+
 ### Added
 
 - **Handler-reflection cache is now bounded with LRU eviction**

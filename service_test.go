@@ -3,6 +3,7 @@ package espresso
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -297,6 +298,36 @@ func TestValidationLayer_Invalid(t *testing.T) {
 	if err == nil {
 		t.Error("expected validation error")
 	}
+}
+
+// TestValidation_TypeMismatch_PanicsAtBuild locks the v2 contract that a
+// Validator[Req1] applied to a handler with Req2 panics at registration
+// time with a descriptive message — instead of silently skipping
+// validation as the v1 untyped form did when the type assertion failed.
+func TestValidation_TypeMismatch_PanicsAtBuild(t *testing.T) {
+	type otherReq struct{ X string }
+	validator := servicemiddleware.ValidatorFunc[*otherReq](func(ctx context.Context, req *otherReq) error {
+		return nil
+	})
+
+	cfg := Validation(validator) // *validationConfig[*otherReq]
+
+	defer func() {
+		rec := recover()
+		if rec == nil {
+			t.Fatal("expected panic from buildLayer with mismatched validator types")
+		}
+		msg, _ := rec.(string)
+		if !strings.Contains(msg, "validation layer's request type") {
+			t.Errorf("panic message did not describe the mismatch: %v", rec)
+		}
+		if !strings.Contains(msg, "otherReq") || !strings.Contains(msg, "testServiceReq") {
+			t.Errorf("panic message did not name both types: %v", rec)
+		}
+	}()
+
+	// Apply *validationConfig[*otherReq] to a buildLayer expecting *testServiceReq.
+	_ = buildLayer[*testServiceReq, testServiceRes](cfg)
 }
 
 func TestErrValidation(t *testing.T) {

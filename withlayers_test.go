@@ -477,6 +477,9 @@ func (s *testUserService) Call(ctx context.Context, req *JSON[CreateUserReq]) (J
 	return JSON[UserRes]{Data: UserRes{Message: "created"}}, nil
 }
 
+// mockValidator implements servicemiddleware.Validator[any] so it can be
+// passed to Validation in tests where the request type is intentionally
+// not the focus. Real call sites should pass Validator[*JSON[T]] or similar.
 type mockValidator struct{}
 
 func (v *mockValidator) Validate(ctx context.Context, req any) error {
