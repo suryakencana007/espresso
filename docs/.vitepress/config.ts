@@ -56,6 +56,7 @@ export default defineConfig({
       { text: "Guide", link: "/guide/", activeMatch: "/guide/" },
       { text: "Examples", link: "/examples/", activeMatch: "/examples/" },
       { text: "API", link: "/api/", activeMatch: "/api/" },
+      { text: "v1 → v2", link: "/migration-v1-to-v2" },
       {
         text: "v1.5.0",
         items: [
@@ -113,6 +114,13 @@ export default defineConfig({
           items: [
             { text: "Response Types", link: "/guide/response" },
             { text: "Object Pooling", link: "/guide/pooling" },
+          ],
+        },
+        {
+          text: "Upgrading",
+          collapsed: false,
+          items: [
+            { text: "v1 → v2 Migration", link: "/migration-v1-to-v2" },
           ],
         },
       ],
