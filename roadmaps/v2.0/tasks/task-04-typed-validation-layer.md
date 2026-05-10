@@ -4,6 +4,9 @@
 **Estimated Effort:** 2 days
 **Dependencies:** None
 
+
+> **Status: ✅ Shipped 2026-05-10.** Delivered via #23.
+
 ## Context
 
 `layerconfig.go` currently exposes:
@@ -30,11 +33,11 @@ Benefits:
 
 ## Acceptance Criteria
 
-- [ ] `Validation` becomes generic: `Validation[Req any](servicemiddleware.Validator[Req]) LayerConfig`.
-- [ ] `validationConfig` is updated to carry the generic or preserves enough info to dispatch typed at layer-build time.
-- [ ] All internal callers and tests updated to pass the type parameter explicitly (Go infers it in most call sites).
-- [ ] A test demonstrates the compile-time error when a validator is mismatched against a handler's request type.
-- [ ] Existing `servicemiddleware.ValidationLayer` keeps working — we only change the `espresso.Validation` sugar, not the underlying typed primitive.
+- [x] `Validation` becomes generic: `Validation[Req any](servicemiddleware.Validator[Req]) LayerConfig`.
+- [x] `validationConfig` is updated to carry the generic or preserves enough info to dispatch typed at layer-build time.
+- [x] All internal callers and tests updated to pass the type parameter explicitly (Go infers it in most call sites).
+- [x] A test demonstrates the compile-time error when a validator is mismatched against a handler's request type.
+- [x] Existing `servicemiddleware.ValidationLayer` keeps working — we only change the `espresso.Validation` sugar, not the underlying typed primitive.
 
 ## Technical Approach
 

@@ -1,5 +1,9 @@
 # Espresso v2.0.0 — Sharpen the Edges
 
+> **Status: shipped 2026-05-10.** Tag [`v2.0.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.0.0).
+> See [`docs/migration-v1-to-v2.md`](../../docs/migration-v1-to-v2.md) for the upgrade guide.
+> This directory is retained for historical reference; future work has its own roadmap.
+
 This directory contains the roadmap and task specifications for Espresso v2.0.0, a **major** release that bundles the breaking changes we deliberately deferred through the v1.x line.
 
 ## Why v2.0?
@@ -34,25 +38,29 @@ The v1.3 promise "code written for v1.2 must continue to work" is **lifted** for
 
 ### 🔴 P0 — Must Have in v2.0
 
-| # | Task | File | Estimated Effort |
-|---|------|------|------------------|
-| 1 | Per-Router stream registries | [task-01-per-router-registries.md](./tasks/task-01-per-router-registries.md) | 3-4 days |
-| 2 | Remove deprecated APIs | [task-02-remove-deprecated-apis.md](./tasks/task-02-remove-deprecated-apis.md) | 1-2 days |
+| # | Task | File | Status |
+|---|------|------|--------|
+| 1 | Per-Router stream registries | [task-01-per-router-registries.md](./tasks/task-01-per-router-registries.md) | ✅ Merged (#21) |
+| 2 | Remove deprecated APIs | [task-02-remove-deprecated-apis.md](./tasks/task-02-remove-deprecated-apis.md) | ✅ Partial — legacy errors (#19); SSE legacy types deferred to v2.1 |
 
 ### 🟡 P1 — Should Have
 
-| # | Task | File | Estimated Effort |
-|---|------|------|------------------|
-| 3 | Handler-cache eviction + metrics hook | [task-03-handler-cache-eviction.md](./tasks/task-03-handler-cache-eviction.md) | 2 days |
-| 4 | Typed `Validation[T]` layer | [task-04-typed-validation-layer.md](./tasks/task-04-typed-validation-layer.md) | 2 days |
-| 5 | Optional auto-validate on extract | [task-05-auto-validate-on-extract.md](./tasks/task-05-auto-validate-on-extract.md) | 2-3 days |
+| # | Task | File | Status |
+|---|------|------|--------|
+| 3 | Handler-cache eviction + metrics hook | [task-03-handler-cache-eviction.md](./tasks/task-03-handler-cache-eviction.md) | ✅ Merged (#22) |
+| 4 | Typed `Validation[T]` layer | [task-04-typed-validation-layer.md](./tasks/task-04-typed-validation-layer.md) | ✅ Merged (#23) |
+| 5 | Optional auto-validate on extract | [task-05-auto-validate-on-extract.md](./tasks/task-05-auto-validate-on-extract.md) | ✅ Merged (#24) |
 
 ### 📦 Meta
 
-| # | Task | File | Estimated Effort |
-|---|------|------|------------------|
-| 6 | v1→v2 migration guide | [task-06-migration-guide.md](./tasks/task-06-migration-guide.md) | 2 days |
-| 7 | CHANGELOG, version bump, release | [task-07-changelog-release.md](./tasks/task-07-changelog-release.md) | 1 day |
+| # | Task | File | Status |
+|---|------|------|--------|
+| 6 | v1→v2 migration guide | [task-06-migration-guide.md](./tasks/task-06-migration-guide.md) | ✅ Merged (#25) + API reference sync (#26) |
+| 7 | CHANGELOG, version bump, release | [task-07-changelog-release.md](./tasks/task-07-changelog-release.md) | ✅ Merged (#27) — tagged v2.0.0 |
+
+### Out-of-roadmap PRs that landed during v2.0
+
+- **#20 — `Ristretto` ctx-aware** (closes Barista F-01). Not in the original v2.0 task list; folded forward as a breaking change once F-01 was confirmed not deferrable. Documented in the migration guide.
 
 ## Out of Scope for v2.0
 

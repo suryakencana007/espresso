@@ -4,18 +4,21 @@
 **Estimated Effort:** 2 days
 **Dependencies:** Tasks 1-5 substantially complete
 
+
+> **Status: ✅ Shipped 2026-05-10.** Delivered via #25 (+#26 API ref sync).
+
 ## Context
 
 A major version bump is pointless without a clear migration path. v2.0's value to existing v1.x users depends on whether an afternoon's work upgrades their codebase. This task produces `docs/migration-v1-to-v2.md` — a single authoritative document covering every breaking change in v2.0.
 
 ## Acceptance Criteria
 
-- [ ] `docs/migration-v1-to-v2.md` exists and is linked from the docs nav.
-- [ ] Every breaking change introduced by Tasks 1-5 has an entry.
-- [ ] Each entry has: **Before** code snippet, **After** code snippet, and — where the transformation is mechanical — a **sed** / `gofmt -r` recipe.
-- [ ] A "Five-minute upgrade" checklist at the top for readers who just want the TL;DR.
-- [ ] A "Known incompatibilities" section listing any behavioral changes that are intentional but not mechanically safe to rewrite.
-- [ ] The module path bump (`github.com/suryakencana007/espresso` → `.../espresso/v2`) has its own dedicated section with the `go mod edit` commands.
+- [x] `docs/migration-v1-to-v2.md` exists and is linked from the docs nav.
+- [x] Every breaking change introduced by Tasks 1-5 has an entry.
+- [x] Each entry has: **Before** code snippet, **After** code snippet, and — where the transformation is mechanical — a **sed** / `gofmt -r` recipe.
+- [x] A "Five-minute upgrade" checklist at the top for readers who just want the TL;DR.
+- [x] A "Known incompatibilities" section listing any behavioral changes that are intentional but not mechanically safe to rewrite.
+- [x] The module path bump (`github.com/suryakencana007/espresso` → `.../espresso/v2`) has its own dedicated section with the `go mod edit` commands.
 
 ## Technical Approach
 

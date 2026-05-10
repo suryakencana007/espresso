@@ -4,6 +4,9 @@
 **Estimated Effort:** 2-3 days
 **Dependencies:** Task 4 (typed Validation layer) is preferred but not strictly required
 
+
+> **Status: ✅ Shipped 2026-05-10.** Delivered via #24.
+
 ## Context
 
 v1.3 shipped a `validator/` subpackage (`validator.Struct(v any) error`) that reads `validate:"..."` struct tags and returns `espresso.FieldErrors`. To wire it into a route today the user writes:
@@ -72,12 +75,12 @@ This keeps the core free of the validator dependency while making opt-in ergonom
 
 ## Acceptance Criteria
 
-- [ ] `espresso.DefaultValidator` package-level variable exists with the signature `func(v any) error`.
-- [ ] `JSON[T].Extract`, `Query[T].Extract`, `Path[T].Extract`, `Form[T].Extract`, `Header[T].Extract`, `Cookie[T].Extract` each call `DefaultValidator(&.Data)` when set, passing the decoded-but-not-yet-returned value.
-- [ ] If the validator returns a non-nil error, the extractor propagates it — the existing `writeExtractError` path turns it into a structured 400 JSON response.
-- [ ] An example in `cmd/example/` shows the opt-in init() wiring.
-- [ ] Documentation in `docs/guide/extractors.md` (or equivalent) covers the opt-in.
-- [ ] When `DefaultValidator` is nil (the default), extractors behave exactly as today — zero overhead.
+- [x] `espresso.DefaultValidator` package-level variable exists with the signature `func(v any) error`.
+- [x] `JSON[T].Extract`, `Query[T].Extract`, `Path[T].Extract`, `Form[T].Extract`, `Header[T].Extract`, `Cookie[T].Extract` each call `DefaultValidator(&.Data)` when set, passing the decoded-but-not-yet-returned value.
+- [x] If the validator returns a non-nil error, the extractor propagates it — the existing `writeExtractError` path turns it into a structured 400 JSON response.
+- [x] An example in `cmd/example/` shows the opt-in init() wiring.
+- [x] Documentation in `docs/guide/extractors.md` (or equivalent) covers the opt-in.
+- [x] When `DefaultValidator` is nil (the default), extractors behave exactly as today — zero overhead.
 
 ## Technical Approach
 
