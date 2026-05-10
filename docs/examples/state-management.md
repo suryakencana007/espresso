@@ -81,8 +81,8 @@ import (
     "database/sql"
     "log"
     
-    "github.com/suryakencana007/espresso"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
     "github.com/redis/go-redis/v9"
 )
 

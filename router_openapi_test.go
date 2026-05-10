@@ -7,7 +7,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/suryakencana007/espresso/openapi"
+	"github.com/suryakencana007/espresso/v2/openapi"
 )
 
 func TestOpenAPIRouter_Basic(t *testing.T) {

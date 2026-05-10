@@ -14,10 +14,10 @@ import (
 
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"github.com/suryakencana007/espresso"
-	"github.com/suryakencana007/espresso/extractor"
-	httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
-	"github.com/suryakencana007/espresso/openapi"
+	"github.com/suryakencana007/espresso/v2"
+	"github.com/suryakencana007/espresso/v2/extractor"
+	httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
+	"github.com/suryakencana007/espresso/v2/openapi"
 )
 
 // ============================================

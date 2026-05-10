@@ -4,8 +4,8 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/suryakencana007/espresso"
-	"github.com/suryakencana007/espresso/validator"
+	"github.com/suryakencana007/espresso/v2"
+	"github.com/suryakencana007/espresso/v2/validator"
 )
 
 func TestStruct_NilAndNonStruct(t *testing.T) {

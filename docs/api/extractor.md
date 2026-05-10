@@ -8,7 +8,7 @@ description: Request extractor types and functions
 Package `extractor` provides types for extracting data from HTTP requests.
 
 ```go
-import "github.com/suryakencana007/espresso/extractor"
+import "github.com/suryakencana007/espresso/v2/extractor"
 ```
 
 ::: tip Auto-validation since v2.0
@@ -270,8 +270,8 @@ import (
     "encoding/hex"
     "strings"
 
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
 )
 
 type GitHubHeaders struct {

@@ -18,8 +18,8 @@ import (
     "context"
     "net/http"
     
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
 )
 
 func main() {
@@ -245,8 +245,8 @@ import (
     "net/http"
     "path/filepath"
     
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
 )
 
 type UploadResponse struct {

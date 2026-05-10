@@ -8,7 +8,7 @@ description: Object pooling types and functions
 Package `pool` provides object pooling utilities to reduce allocations.
 
 ```go
-import "github.com/suryakencana007/espresso/pool"
+import "github.com/suryakencana007/espresso/v2/pool"
 ```
 
 ## BufferPool

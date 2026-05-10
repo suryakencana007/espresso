@@ -176,8 +176,8 @@ import (
     "encoding/hex"
     "strings"
 
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
 )
 
 type GitHubHeaders struct {

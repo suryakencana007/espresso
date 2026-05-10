@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
-	"github.com/suryakencana007/espresso"
+	"github.com/suryakencana007/espresso/v2"
 )
 
 // TestLongLived_SSE_StableConnection verifies that a single SSE stream runs

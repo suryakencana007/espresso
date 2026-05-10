@@ -197,7 +197,7 @@ func (h HTML) WriteResponse(w http.ResponseWriter) error {
 Apply middleware to handlers:
 
 ```go
-import servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+import servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 
 layers := espresso.Layers(
     espresso.Timeout(5 * time.Second),

@@ -29,7 +29,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/suryakencana007/espresso"
+	"github.com/suryakencana007/espresso/v2"
 )
 
 // Struct validates v against its `validate` struct tags. It returns

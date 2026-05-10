@@ -7,7 +7,7 @@ This example demonstrates a simple REST API with CRUD operations.
 ```bash
 mkdir myapi && cd myapi
 go mod init myapi
-go get github.com/suryakencana007/espresso
+go get github.com/suryakencana007/espresso/v2
 ```
 
 ## Directory Structure
@@ -65,7 +65,7 @@ import (
     "context"
     "net/http"
     
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
     "myapp/models"
 )
 
@@ -172,7 +172,7 @@ func (h *UserHandler) Delete(ctx context.Context, path *espresso.Path[models.Use
 package main
 
 import (
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
     "myapp/handlers"
     "myapp/models"
 )
@@ -303,7 +303,7 @@ import (
     "strings"
     "testing"
     
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
 )
 
 func TestUserHandler_Create(t *testing.T) {
@@ -351,8 +351,8 @@ package main
 import (
     "reflect"
     
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/openapi"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/openapi"
     "myapp/handlers"
     "myapp/models"
 )

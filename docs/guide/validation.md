@@ -37,8 +37,8 @@ type CreateUserReq struct {
 ```go
 import (
     "context"
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/validator"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/validator"
 )
 
 type CreateUserReq struct {
@@ -128,8 +128,8 @@ care of the rest:
 
 ```go
 import (
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/validator"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/validator"
 )
 
 func init() {
@@ -173,7 +173,7 @@ func (r *MyRequest) Extract(req *http.Request) error {
 }
 ```
 
-A complete runnable demo lives at [`cmd/example/validate/main.go`](https://github.com/suryakencana007/espresso/blob/main/cmd/example/validate/main.go).
+A complete runnable demo lives at [`cmd/example/validate/main.go`](https://github.com/suryakencana007/espresso/v2/blob/main/cmd/example/validate/main.go).
 
 ### Auto-validate vs. the `Validation[Req]` layer
 
@@ -197,9 +197,9 @@ If your handlers use Espresso's service layer pipeline (`espresso.WithLayersType
 ```go
 import (
     "context"
-    "github.com/suryakencana007/espresso"
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
-    "github.com/suryakencana007/espresso/validator"
+    "github.com/suryakencana007/espresso/v2"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
+    "github.com/suryakencana007/espresso/v2/validator"
 )
 
 layers := espresso.Layers(

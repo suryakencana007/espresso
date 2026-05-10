@@ -231,7 +231,7 @@ import (
     "database/sql"
     "net/http"
     
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
 )
 
 type AppState struct {

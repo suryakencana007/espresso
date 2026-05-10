@@ -58,7 +58,7 @@ export default defineConfig({
       { text: "API", link: "/api/", activeMatch: "/api/" },
       { text: "v1 → v2", link: "/migration-v1-to-v2" },
       {
-        text: "v1.5.0",
+        text: "v2.0.0",
         items: [
           {
             text: "Changelog",

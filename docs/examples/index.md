@@ -20,7 +20,7 @@ All examples assume you have Go 1.22+ installed and have initialized a Go module
 
 ```bash
 go mod init myapp
-go get github.com/suryakencana007/espresso
+go get github.com/suryakencana007/espresso/v2
 ```
 
 ## Project Structure
@@ -53,7 +53,7 @@ myapp/
 ```go
 package main
 
-import "github.com/suryakencana007/espresso"
+import "github.com/suryakencana007/espresso/v2"
 
 func main() {
     router := espresso.Portafilter()
@@ -86,8 +86,8 @@ All examples support automatic OpenAPI 3.0 documentation:
 
 ```go
 import (
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/openapi"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/openapi"
 )
 
 // Create generator with fluent API

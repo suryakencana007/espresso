@@ -8,7 +8,7 @@ description: HTTP middleware types and functions
 Package `middleware/http` provides HTTP-level middleware.
 
 ```go
-import httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+import httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 ```
 
 ## Middleware Type

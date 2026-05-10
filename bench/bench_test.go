@@ -20,8 +20,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gofiber/fiber/v2"
 	"github.com/labstack/echo/v4"
-	"github.com/suryakencana007/espresso"
-	"github.com/suryakencana007/espresso/extractor"
+	"github.com/suryakencana007/espresso/v2"
+	"github.com/suryakencana007/espresso/v2/extractor"
 )
 
 type echoReq struct {

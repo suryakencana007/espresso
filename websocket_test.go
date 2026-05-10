@@ -13,7 +13,7 @@ import (
 
 	"github.com/coder/websocket"
 
-	"github.com/suryakencana007/espresso/extractor"
+	"github.com/suryakencana007/espresso/v2/extractor"
 )
 
 func dialWS(ctx context.Context, t *testing.T, url string, opts *websocket.DialOptions) *websocket.Conn {

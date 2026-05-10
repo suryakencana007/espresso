@@ -8,7 +8,7 @@ description: Service layer types and functions
 Package `middleware/service` provides service-level middleware (layers).
 
 ```go
-import servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+import servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 ```
 
 ## Core Types
