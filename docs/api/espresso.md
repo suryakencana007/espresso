@@ -169,9 +169,13 @@ func (s Status) WriteResponse(w http.ResponseWriter) error
 func (s *Status) Reset()
 ```
 
-### SSE
+### SSE (deprecated)
 
-Server-Sent Events for real-time streaming:
+::: warning Deprecated since v1.3
+Use `Stream[T]` / `StreamSimple` and `*SSEStream` for typed streaming.
+The legacy `SSE` / `SSEEvent` types remain for backward compatibility
+and will be removed in v2.1. See [Streaming](../streaming.md).
+:::
 
 ```go
 type SSE struct {
@@ -190,9 +194,12 @@ func (s *SSE) WriteEvent(w http.ResponseWriter, event SSEEvent)
 func (s *SSE) WriteKeepAlive(w http.ResponseWriter)
 ```
 
-### SSEWriter
+### SSEWriter (deprecated)
 
-Helper for streaming SSE events:
+::: warning Deprecated since v1.3
+Use `*SSEStream` (`SendText`, `SendJSON`, `SendData`, `Comment`) instead.
+Targeted for removal in v2.1.
+:::
 
 ```go
 type SSEWriter struct { ... }
@@ -206,18 +213,129 @@ func (s *SSEWriter) KeepAlive()
 func (s *SSEWriter) Retry(ms int)
 ```
 
-Example:
+## Error Constructors
+
+Structured errors use `*espresso.Error`. The `Err*` family covers
+common HTTP statuses; use `NewError(status, msg)` for codes not in the
+list. Each constructor seeds a default machine-readable code (e.g.
+`BAD_REQUEST`); override with `.WithCode(...)`.
 
 ```go
-func streamHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
-    // Stream events to client
-    writer.Event("message", "Hello, World!")
-    writer.EventJSON("data", map[string]any{"count": 42})
-    writer.KeepAlive()
+func ErrBadRequest(message string) *Error          // 400 BAD_REQUEST
+func ErrUnauthorized(message string) *Error        // 401 UNAUTHORIZED
+func ErrForbidden(message string) *Error           // 403 FORBIDDEN
+func ErrNotFound(message string) *Error            // 404 NOT_FOUND
+func ErrConflict(message string) *Error            // 409 CONFLICT
+func ErrPreconditionFailed(message string) *Error  // 412 PRECONDITION_FAILED
+func ErrUnprocessableEntity(message string) *Error // 422 UNPROCESSABLE_ENTITY
+func ErrTooManyRequests(message string) *Error     // 429 TOO_MANY_REQUESTS
+func ErrInternal(message string) *Error            // 500 INTERNAL
+func ErrServiceUnavailable(message string) *Error  // 503 SERVICE_UNAVAILABLE
+
+func NewError(statusCode int, message string) *Error
+func ValidationErrors(errs []ValidationError) *Error
+```
+
+Builder methods on `*Error`:
+
+```go
+(*Error) WithCode(code string) *Error
+(*Error) WithDetail(key string, value any) *Error
+(*Error) WithDetails(details map[string]any) *Error
+(*Error) WithRequestID(id string) *Error
+(*Error) Wrap(err error) *Error
+```
+
+::: tip Migrating from v1.x
+The lowercase-prefix forms (`BadRequest`, `Unauthorized`, etc.) and the
+`ErrorResponse` type alias were removed in v2.0. See the
+[v1 → v2 migration guide](../migration-v1-to-v2.md#removed-legacy-error-constructors).
+:::
+
+## Auto-Validation Hook
+
+Opt-in validation that runs after every successful extraction. When set,
+every built-in extractor (`JSON[T]`, `Query[T]`, `Path[T]`, `Form[T]`,
+`Header[T]`, `Cookie[T]`, `XML[T]`, `Multipart[T]`,
+`RawBodyWithHeaders[H]`) calls the hook with a pointer to the decoded
+value; a non-nil error becomes a structured 400 response and the
+handler does not run.
+
+```go
+const DefaultHandlerCacheSize = 1024
+
+func SetDefaultValidator(fn func(v any) error)
+func DefaultValidator() func(v any) error
+func RunDefaultValidator(v any) error
+```
+
+Default is nil — extractors behave identically to v1.x. Hot path is one
+atomic load (~2.24 ns/op, 0 allocations) when the hook is unset. Pair
+with the bundled struct-tag validator:
+
+```go
+import (
+    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/validator"
+)
+
+func init() {
+    espresso.SetDefaultValidator(func(v any) error {
+        if err := validator.Struct(v); err != nil {
+            if fe, ok := err.(espresso.FieldErrors); ok {
+                return espresso.ValidationErrors(fe.ToValidationErrors())
+            }
+            return err
+        }
+        return nil
+    })
 }
 ```
+
+`RunDefaultValidator` is exposed so custom `Extract` implementations can
+opt in to the same hook. See [Auto-Validate on Extract](../guide/validation.md#auto-validate-on-extract-since-v20).
+
+## Handler Cache
+
+Reflection-based handler registration (`Handler()` / `router.Handle()` /
+`WithLayers()`) caches per-handler analysis in a process-global LRU
+cache. Default upper bound is `DefaultHandlerCacheSize` (1024).
+
+```go
+func SetHandlerCacheSize(n int)
+func OnHandlerCacheEvict(fn func(reflect.Type))
+```
+
+`SetHandlerCacheSize(0)` resets to the default. `OnHandlerCacheEvict(nil)`
+clears the hook. Both calls are concurrent-safe; the hook fires
+synchronously per eviction outside the cache mutex.
+
+Hot-path cost on a cache hit is ~24 ns/op (mutex + map lookup + LRU
+promotion). Static apps stay well under the bound and never evict; apps
+that synthesize handler types at runtime (plugin hosts, per-tenant
+codegen, `reflect.MakeFunc`) get a memory ceiling regardless of churn.
+See [Handler-Reflection Cache](../performance.md#handler-reflection-cache).
+
+## Service Layer Configs
+
+Each layer is constructed via a typed config function returning
+`LayerConfig`. Apply via `WithLayers(handler, layers...)`.
+
+```go
+func Timeout(d time.Duration) LayerConfig
+func Logging(logger zerolog.Logger, serviceName string) LayerConfig
+func Retry(maxRetries int, initialBackoff time.Duration, strategy servicemiddleware.BackoffStrategy) LayerConfig
+func CircuitBreaker(cfg servicemiddleware.CircuitBreakerConfig) LayerConfig
+func ConcurrencyLimit(maxConcurrent int) LayerConfig
+func Metrics(collector servicemiddleware.MetricsCollector, serviceName string) LayerConfig
+func Validation[Req any](validator servicemiddleware.Validator[Req]) LayerConfig
+func CustomLayer(buildFunc func() any) LayerConfig
+```
+
+`Validation` is generic since v2.0: a mismatched validator (one whose
+`Req` type doesn't match the handler's request type) panics at
+registration time with a descriptive message. See
+[`Validation` Is Now Generic](../migration-v1-to-v2.md#validation-is-now-generic-validationreq).
 
 ## Server Options
 

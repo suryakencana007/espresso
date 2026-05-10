@@ -13,6 +13,13 @@ Import:
 import "github.com/suryakencana007/espresso/validator"
 ```
 
+::: tip Auto-wiring since v2.0
+Wire `validator.Struct` once via `espresso.SetDefaultValidator` and every
+built-in extractor will validate its decoded value automatically — no
+explicit call from the handler body needed. See
+[Auto-Validate on Extract](../guide/validation.md#auto-validate-on-extract-since-v20).
+:::
+
 ## `Struct`
 
 ```go

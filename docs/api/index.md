@@ -100,8 +100,65 @@ func Doppio(f func(context.Context, *Req) T) http.HandlerFunc  // 2 args
 func Lungo(f func(context.Context, *Req1, *Req2) (T, error)) http.HandlerFunc  // 3 args (context + 2 extractors)
 ```
 
+### Error Constructors
+
+```go
+func ErrBadRequest(message string) *Error          // 400
+func ErrUnauthorized(message string) *Error        // 401
+func ErrForbidden(message string) *Error           // 403
+func ErrNotFound(message string) *Error            // 404
+func ErrConflict(message string) *Error            // 409
+func ErrPreconditionFailed(message string) *Error  // 412
+func ErrUnprocessableEntity(message string) *Error // 422
+func ErrTooManyRequests(message string) *Error     // 429
+func ErrInternal(message string) *Error            // 500
+func ErrServiceUnavailable(message string) *Error  // 503
+func NewError(statusCode int, message string) *Error
+func ValidationErrors(errs []ValidationError) *Error
+```
+
+The lowercase-prefix forms (`BadRequest`, `Unauthorized`, etc.) and the
+`ErrorResponse` alias were removed in v2.0.
+
+### Auto-Validation Hook (since v2.0)
+
+```go
+const DefaultHandlerCacheSize = 1024
+
+func SetDefaultValidator(fn func(v any) error)
+func DefaultValidator() func(v any) error
+func RunDefaultValidator(v any) error
+```
+
+When set, every built-in extractor calls the hook after decode; a
+non-nil return becomes a structured 400. Default is nil → v1.x behavior.
+
+### Handler-Cache Tuning (since v2.0)
+
+```go
+func SetHandlerCacheSize(n int)            // default 1024; pass 0 to reset
+func OnHandlerCacheEvict(fn func(reflect.Type))
+```
+
+The reflection cache is now LRU-bounded. Static apps unaffected; apps
+with dynamic handler registration get an eviction hook for telemetry.
+
+### Service Layer Configs
+
+```go
+func Timeout(d time.Duration) LayerConfig
+func Logging(logger zerolog.Logger, name string) LayerConfig
+func Retry(maxRetries int, backoff time.Duration, strategy BackoffStrategy) LayerConfig
+func CircuitBreaker(cfg CircuitBreakerConfig) LayerConfig
+func ConcurrencyLimit(maxConcurrent int) LayerConfig
+func Metrics(collector MetricsCollector, name string) LayerConfig
+func Validation[Req any](validator Validator[Req]) LayerConfig  // generic since v2.0
+func CustomLayer(buildFunc func() any) LayerConfig
+```
+
 ## See Also
 
 - [Handlers Guide](/guide/handlers) - Handler patterns
 - [Routing Guide](/guide/routing) - Routing patterns
 - [State Guide](/guide/state) - State management
+- [v1 → v2 Migration](/migration-v1-to-v2) - Breaking changes and recipes

@@ -130,16 +130,19 @@ router.Get("/events", http.HandlerFunc(sseHandler))
 
 ## Custom Response Types
 
-Implement `IntoResponse` interface:
+Implement `IntoResponse` interface. The example below defines an
+`APIError` type tailored to a specific application's error envelope —
+for the framework's standard error response, use `*espresso.Error` and
+the `Err*` constructors instead (see [Error Handling](../error-handling.md)).
 
 ```go
-type ErrorResponse struct {
+type APIError struct {
     Error   string `json:"error"`
     Message string `json:"message"`
     Code    int    `json:"code"`
 }
 
-func (e ErrorResponse) WriteResponse(w http.ResponseWriter) error {
+func (e APIError) WriteResponse(w http.ResponseWriter) error {
     w.Header().Set("Content-Type", "application/json")
     w.Header().Set("X-Error-Code", strconv.Itoa(e.Code))
     w.WriteHeader(e.Code)
@@ -147,9 +150,9 @@ func (e ErrorResponse) WriteResponse(w http.ResponseWriter) error {
 }
 
 // Usage
-func handler(ctx context.Context, req *espresso.JSON[Req]) (ErrorResponse, error) {
+func handler(ctx context.Context, req *espresso.JSON[Req]) (APIError, error) {
     if err := validate(req.Data); err != nil {
-        return ErrorResponse{
+        return APIError{
             Error:   "validation_error",
             Message: err.Error(),
             Code:    http.StatusBadRequest,
