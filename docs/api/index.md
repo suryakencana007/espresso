@@ -23,13 +23,13 @@ Complete API reference for all Espresso packages.
 
 ```go
 import (
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
-    "github.com/suryakencana007/espresso/openapi"
-    "github.com/suryakencana007/espresso/validator"
-    "github.com/suryakencana007/espresso/pool"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
+    "github.com/suryakencana007/espresso/v2/openapi"
+    "github.com/suryakencana007/espresso/v2/validator"
+    "github.com/suryakencana007/espresso/v2/pool"
 )
 ```
 

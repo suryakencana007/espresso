@@ -8,7 +8,7 @@
 ## Install
 
 ```bash
-go get github.com/suryakencana007/espresso
+go get github.com/suryakencana007/espresso/v2
 ```
 
 ## Verify Installation
@@ -18,7 +18,7 @@ Create a simple `main.go`:
 ```go
 package main
 
-import "github.com/suryakencana007/espresso"
+import "github.com/suryakencana007/espresso/v2"
 
 func main() {
     espresso.Portafilter().
@@ -49,19 +49,19 @@ Espresso uses a modular package structure:
 ```go
 import (
     // Core - handlers, router, server, response types
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
     
     // HTTP Middleware - CORS, rate limiting, compression, etc.
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
     
     // Service Layers - timeout, retry, circuit breaker, etc.
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
     
     // Request Extractors - JSON, Query, Path, Header, Form, XML
-    "github.com/suryakencana007/espresso/extractor"
+    "github.com/suryakencana007/espresso/v2/extractor"
     
     // Object Pooling - buffer pools for performance
-    "github.com/suryakencana007/espresso/pool"
+    "github.com/suryakencana007/espresso/v2/pool"
 )
 ```
 

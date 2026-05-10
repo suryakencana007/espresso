@@ -13,7 +13,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/suryakencana007/espresso/internal/validatehook"
+	"github.com/suryakencana007/espresso/v2/internal/validatehook"
 )
 
 type fieldInfo struct {

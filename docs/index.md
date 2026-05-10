@@ -16,7 +16,7 @@ hero:
       link: /guide/
     - theme: alt
       text: View on GitHub
-      link: https://github.com/suryakencana007/espresso
+      link: https://github.com/suryakencana007/espresso/v2
 
 features:
   - icon: 🚀
@@ -59,9 +59,9 @@ import (
     "context"
     "net/http"
 
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 type CreateUserReq struct {
@@ -164,4 +164,4 @@ If you find Espresso useful, please consider [sponsoring](https://github.com/spo
 
 ## License
 
-[MIT License](https://github.com/suryakencana007/espresso/blob/main/LICENSE)
+[MIT License](https://github.com/suryakencana007/espresso/v2/blob/main/LICENSE)

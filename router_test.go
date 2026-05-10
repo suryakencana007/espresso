@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/suryakencana007/espresso/extractor"
+	"github.com/suryakencana007/espresso/v2/extractor"
 )
 
 func TestPortafilter(t *testing.T) {

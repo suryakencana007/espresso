@@ -137,7 +137,7 @@ import (
     "context"
     "database/sql"
     
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
     "github.com/redis/go-redis/v9"
     "myapp/internal/config"
 )
@@ -211,9 +211,9 @@ import (
     "time"
     
     "github.com/rs/zerolog"
-    "github.com/suryakencana007/espresso"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+    "github.com/suryakencana007/espresso/v2"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
     
     "myapp/internal/app"
     "myapp/internal/config"
@@ -408,7 +408,7 @@ import (
     "context"
     "net/http"
     
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
     
     "myapp/internal/app"
     "myapp/internal/errors"
@@ -571,9 +571,9 @@ import (
     "net/http"
     "reflect"
     
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/openapi"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/openapi"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
     
     "myapp/internal/config"
     "myapp/internal/handlers"
@@ -716,7 +716,7 @@ os.WriteFile("api/openapi.json", data, 0644)
 import (
     "net/http"
     
-    "github.com/suryakencana007/espresso/openapi"
+    "github.com/suryakencana007/espresso/v2/openapi"
     myopenapi "myapp/internal/openapi"
 )
 

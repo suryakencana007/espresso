@@ -6,8 +6,8 @@
 // Example:
 //
 //	import (
-//	    "github.com/suryakencana007/espresso"
-//	    "github.com/suryakencana007/espresso/middleware/http"
+//	    "github.com/suryakencana007/espresso/v2"
+//	    "github.com/suryakencana007/espresso/v2/middleware/http"
 //	)
 //
 //	app := espresso.Portafilter()

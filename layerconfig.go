@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+	servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
 
 // LayerConfig holds layer configuration without type parameters.

@@ -1,6 +1,6 @@
 package espresso
 
-import "github.com/suryakencana007/espresso/internal/validatehook"
+import "github.com/suryakencana007/espresso/v2/internal/validatehook"
 
 // SetDefaultValidator installs the function called by every built-in
 // extractor (JSON[T], Query[T], Path[T], Form[T], Header[T], Cookie[T],
@@ -15,8 +15,8 @@ import "github.com/suryakencana007/espresso/internal/validatehook"
 // Typical wiring against the bundled struct-tag validator:
 //
 //	import (
-//	    "github.com/suryakencana007/espresso"
-//	    "github.com/suryakencana007/espresso/validator"
+//	    "github.com/suryakencana007/espresso/v2"
+//	    "github.com/suryakencana007/espresso/v2/validator"
 //	)
 //
 //	func init() { espresso.SetDefaultValidator(validator.Struct) }

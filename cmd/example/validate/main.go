@@ -23,8 +23,8 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/suryakencana007/espresso"
-	"github.com/suryakencana007/espresso/validator"
+	"github.com/suryakencana007/espresso/v2"
+	"github.com/suryakencana007/espresso/v2/validator"
 )
 
 // CreateUserReq's `validate:"..."` tags drive the auto-validation. With

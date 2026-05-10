@@ -108,8 +108,8 @@ PostWith("/api", handler,
 
 ```go
 import (
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
 
 func main() {

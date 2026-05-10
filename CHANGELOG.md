@@ -7,7 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-05-10
+
+The first major release since v1.0. Bundles five breaking changes and
+two additive features that v1.x deferred under its strict
+backward-compatibility promise. Every breaking change has a mechanical
+migration recipe in
+[`docs/migration-v1-to-v2.md`](docs/migration-v1-to-v2.md); the full
+upgrade for a typical app fits in one sitting.
+
 ### Changed (BREAKING)
+
+- **Module path changed** to
+  `github.com/suryakencana007/espresso/v2` per Go's major-version
+  module convention. Update imports:
+
+  ```bash
+  gofmt -r '"github.com/suryakencana007/espresso" -> "github.com/suryakencana007/espresso/v2"' -w .
+  # plus the same rewrite for each subpackage (extractor, middleware/http, etc.) — see migration guide.
+  ```
 
 - **`espresso.Validation` is now generic** (v2.0 task-04). Signature
   changed from `Validation(validator any) LayerConfig` to
@@ -167,6 +185,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Test coverage table in `README.md` refreshed** with current numbers
   (Root: 80.8%, extractor: 85.5%, middleware/http: 86.9%, validator:
   80.6%, openapi: 77.3%; the latter two were missing from the table).
+
+### Still present, deprecated
+
+The following types remain in v2.0 with `// Deprecated:` markers and are
+targeted for removal in v2.1. Existing callers continue to work
+unchanged; `staticcheck SA1019` will flag them when you're ready to
+migrate.
+
+- `SSE`, `SSEEvent` — use `Stream[T]` / `StreamSimple` and `*SSEStream`.
+- `SSEWriter`, `NewSSEWriter` — use `*SSEStream`'s `SendText` / `SendJSON`
+  / `SendData` / `Comment`.
 
 ## [1.5.0] - 2026-05-10
 

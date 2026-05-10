@@ -6,8 +6,8 @@
 // Example:
 //
 //	import (
-//	    "github.com/suryakencana007/espresso"
-//	    "github.com/suryakencana007/espresso/middleware/service"
+//	    "github.com/suryakencana007/espresso/v2"
+//	    "github.com/suryakencana007/espresso/v2/middleware/service"
 //	)
 //
 //	layer := servicemiddleware.TimeoutLayer[CreateUserReq, UserRes](5 * time.Second)

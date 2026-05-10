@@ -6,8 +6,8 @@
 // Example:
 //
 //	import (
-//	    "github.com/suryakencana007/espresso"
-//	    "github.com/suryakencana007/espresso/extractor"
+//	    "github.com/suryakencana007/espresso/v2"
+//	    "github.com/suryakencana007/espresso/v2/extractor"
 //	)
 //
 //	func handler(ctx context.Context, req extractor.JSON[CreateUserReq]) (espresso.JSON[UserRes], error) {

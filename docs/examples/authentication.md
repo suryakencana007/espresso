@@ -19,8 +19,8 @@ import (
     "net/http"
     
     "github.com/golang-jwt/jwt/v5"
-    "github.com/suryakencana007/espresso"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 func main() {
@@ -349,8 +349,8 @@ import (
     "time"
     
     "github.com/golang-jwt/jwt/v5"
-    "github.com/suryakencana007/espresso"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 var jwtSecret = []byte("your-secret-key")

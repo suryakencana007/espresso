@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Espresso is a production-grade, Axum/Tower-inspired HTTP routing framework for Go (`github.com/suryakencana007/espresso`). Module declares `go 1.23`; `mise.toml` pins the dev toolchain to Go 1.25.6 + `gh latest`. Path-parameter routing depends on Go 1.22+ `ServeMux`. JSON encoding uses `bytedance/sonic`; logging uses `rs/zerolog`; WebSocket uses `coder/websocket`.
+Espresso is a production-grade, Axum/Tower-inspired HTTP routing framework for Go (`github.com/suryakencana007/espresso/v2`). Module declares `go 1.23`; `mise.toml` pins the dev toolchain to Go 1.25.6 + `gh latest`. Path-parameter routing depends on Go 1.22+ `ServeMux`. JSON encoding uses `bytedance/sonic`; logging uses `rs/zerolog`; WebSocket uses `coder/websocket`.
 
 ## Multi-module layout
 

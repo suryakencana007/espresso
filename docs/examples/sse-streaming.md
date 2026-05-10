@@ -19,7 +19,7 @@ import (
     "net/http"
     "time"
     
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
 )
 
 func main() {
@@ -263,7 +263,7 @@ import (
     "sync"
     "time"
     
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
 )
 
 // Simple message broker

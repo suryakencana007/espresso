@@ -8,7 +8,7 @@ description: OpenAPI specification generator
 Package `openapi` provides OpenAPI 3.0 specification generation.
 
 ```go
-import "github.com/suryakencana007/espresso/openapi"
+import "github.com/suryakencana007/espresso/v2/openapi"
 ```
 
 ## Generator
@@ -290,8 +290,8 @@ import (
     "net/http"
     "reflect"
     
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/openapi"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/openapi"
 )
 
 type User struct {

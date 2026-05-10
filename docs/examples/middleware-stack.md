@@ -17,8 +17,8 @@ package main
 import (
     "time"
     
-    "github.com/suryakencana007/espresso"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
     "github.com/rs/zerolog"
     "github.com/rs/zerolog/log"
 )
@@ -89,7 +89,7 @@ Recommended order:
 For typed request/response handling:
 
 ```go
-import servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+import servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 
 type UserService struct {
     db *sql.DB
@@ -313,9 +313,9 @@ package main
 import (
     "time"
     
-    "github.com/suryakencana007/espresso"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+    "github.com/suryakencana007/espresso/v2"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
 
 func main() {

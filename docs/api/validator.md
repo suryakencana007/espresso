@@ -10,7 +10,7 @@ The `validator` package provides struct-tag-driven request validation. It reads 
 Import:
 
 ```go
-import "github.com/suryakencana007/espresso/validator"
+import "github.com/suryakencana007/espresso/v2/validator"
 ```
 
 ::: tip Auto-wiring since v2.0
@@ -125,9 +125,9 @@ For handlers that use the service-layer pipeline, pair `validator.Struct` with t
 
 ```go
 import (
-    "github.com/suryakencana007/espresso"
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
-    "github.com/suryakencana007/espresso/validator"
+    "github.com/suryakencana007/espresso/v2"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
+    "github.com/suryakencana007/espresso/v2/validator"
 )
 
 layers := espresso.Layers(

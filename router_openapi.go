@@ -4,7 +4,7 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/suryakencana007/espresso/openapi"
+	"github.com/suryakencana007/espresso/v2/openapi"
 )
 
 // OpenAPIOptions configures OpenAPI generation for a route.

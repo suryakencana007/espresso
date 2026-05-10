@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	"github.com/suryakencana007/espresso/extractor"
-	servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+	"github.com/suryakencana007/espresso/v2/extractor"
+	servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
 
 // ============================================

@@ -11,7 +11,7 @@ Object pooling reuses objects instead of creating new ones for each request. Thi
 ### ByteBuffer Pool
 
 ```go
-import "github.com/suryakencana007/espresso/pool"
+import "github.com/suryakencana007/espresso/v2/pool"
 
 func main() {
     // Create pool with initial capacity

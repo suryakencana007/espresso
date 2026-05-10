@@ -21,7 +21,7 @@ type Layer[Req any, Res any] func(Service[Req, Res]) Service[Req, Res]
 Enforce timeouts on service calls:
 
 ```go
-import servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+import servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 
 func main() {
     router := espresso.Portafilter()

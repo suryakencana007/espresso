@@ -6,8 +6,8 @@
 
 > **Production-grade HTTP routing framework for Go** — Brew robust APIs with the precision of a barista.
 
-[![Go Reference](https://pkg.go.dev/badge/github.com/suryakencana007/espresso.svg)](https://pkg.go.dev/github.com/suryakencana007/espresso)
-[![Go Report Card](https://goreportcard.com/badge/github.com/suryakencana007/espresso)](https://goreportcard.com/report/github.com/suryakencana007/espresso)
+[![Go Reference](https://pkg.go.dev/badge/github.com/suryakencana007/espresso/v2.svg)](https://pkg.go.dev/github.com/suryakencana007/espresso/v2)
+[![Go Report Card](https://goreportcard.com/badge/github.com/suryakencana007/espresso/v2)](https://goreportcard.com/report/github.com/suryakencana007/espresso/v2)
 
 ---
 
@@ -50,7 +50,7 @@ Like a perfectly pulled espresso shot, this framework delivers:
 ## Installation
 
 ```bash
-go get github.com/suryakencana007/espresso
+go get github.com/suryakencana007/espresso/v2
 ```
 
 **Requirements:**
@@ -81,9 +81,9 @@ import (
 
     "github.com/rs/zerolog"
     "github.com/rs/zerolog/log"
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 type CreateUserReq struct {
@@ -132,19 +132,19 @@ Espresso uses a modular package structure for better organization:
 ```go
 import (
     // Core - handlers, router, server, response types
-    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/v2"
     
     // HTTP Middleware - CORS, rate limiting, compression, etc.
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
     
     // Service Layers - timeout, retry, circuit breaker, etc.
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
     
     // Request Extractors - JSON, Query, Path, Header, Form, XML
-    "github.com/suryakencana007/espresso/extractor"
+    "github.com/suryakencana007/espresso/v2/extractor"
     
     // Object Pooling - buffer pools for performance
-    "github.com/suryakencana007/espresso/pool"
+    "github.com/suryakencana007/espresso/v2/pool"
 )
 ```
 
@@ -344,7 +344,7 @@ func (r *CreateUserReq) Extract(req *http.Request) error {
 ### HTTP-Level Middleware
 
 ```go
-import httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+import httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 
 espresso.Portafilter().
     Use(httpmiddleware.RequestIDMiddleware()).
@@ -503,7 +503,7 @@ config := httpmiddleware.JWTConfig{
 Generate OpenAPI 3.0 specifications from your routes:
 
 ```go
-import "github.com/suryakencana007/espresso/openapi"
+import "github.com/suryakencana007/espresso/v2/openapi"
 
 // Create generator with fluent API
 gen := openapi.New("My API", "1.0.0").
@@ -557,7 +557,7 @@ schema := openapi.GenerateSchemaFromType(reflect.TypeOf(User{}))
 Service layers run **after extraction** with typed request/response.
 
 ```go
-import servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+import servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 ```
 
 ### Timeout
@@ -774,9 +774,9 @@ import (
     "database/sql"
     "net/http"
     
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 type AppState struct {
@@ -837,7 +837,7 @@ func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espress
 Reduce GC pressure with object pools:
 
 ```go
-import "github.com/suryakencana007/espresso/pool"
+import "github.com/suryakencana007/espresso/v2/pool"
 
 // Get a buffer
 buf := pool.GetBuffer(256)
@@ -1074,10 +1074,10 @@ import (
 
     "github.com/rs/zerolog"
     "github.com/rs/zerolog/log"
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
-    servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
+    servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
 
 type CreateUserReq struct {
@@ -1265,7 +1265,7 @@ servicemiddleware.LoggingLayer[Req, Res](logger, serviceName)
 ## Contributing
 
 ```bash
-git clone https://github.com/suryakencana007/espresso.git
+git clone https://github.com/suryakencana007/espresso/v2.git
 cd espresso
 go mod download
 go test ./...

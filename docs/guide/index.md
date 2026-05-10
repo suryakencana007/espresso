@@ -55,8 +55,8 @@ package main
 
 import (
     "context"
-    "github.com/suryakencana007/espresso"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 type CreateUserReq struct {
@@ -134,5 +134,5 @@ func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espress
 
 ## Community
 
-- [GitHub](https://github.com/suryakencana007/espresso) - Report issues and contribute
-- [License](https://github.com/suryakencana007/espresso/blob/main/LICENSE) - MIT License
+- [GitHub](https://github.com/suryakencana007/espresso/v2) - Report issues and contribute
+- [License](https://github.com/suryakencana007/espresso/v2/blob/main/LICENSE) - MIT License

@@ -12,7 +12,7 @@ Build a complete REST API in 5 minutes.
 ```bash
 mkdir my-api && cd my-api
 go mod init my-api
-go get github.com/suryakencana007/espresso
+go get github.com/suryakencana007/espresso/v2
 ```
 
 ## Step 2: Basic Server
@@ -26,9 +26,9 @@ import (
     "context"
     "net/http"
 
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/extractor"
-    httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
+    httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 func main() {

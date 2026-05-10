@@ -8,7 +8,7 @@ description: Core package types and functions
 Core package provides router, handlers, and response types.
 
 ```go
-import "github.com/suryakencana007/espresso"
+import "github.com/suryakencana007/espresso/v2"
 ```
 
 ## Router
@@ -275,8 +275,8 @@ with the bundled struct-tag validator:
 
 ```go
 import (
-    "github.com/suryakencana007/espresso"
-    "github.com/suryakencana007/espresso/validator"
+    "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/validator"
 )
 
 func init() {

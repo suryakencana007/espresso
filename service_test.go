@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-	servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
+	servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
 
 type testServiceReq struct {
