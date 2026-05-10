@@ -103,6 +103,34 @@ func BenchmarkHandlerCache_SteadyState(b *testing.B) {
 	}
 }
 
+// BenchmarkRunDefaultValidator_NilHook measures the nil-fast path on the
+// per-request hot path. With no validator installed (the v1.x default),
+// every Extract call ends with this — it should be a single atomic load
+// + branch and compile to almost nothing.
+func BenchmarkRunDefaultValidator_NilHook(b *testing.B) {
+	v := struct{ Name string }{Name: "x"}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		_ = RunDefaultValidator(&v)
+	}
+}
+
+// BenchmarkRunDefaultValidator_HookSet measures the cost when a validator
+// IS installed. Difference vs. the nil-hook bench is the call-through
+// overhead.
+func BenchmarkRunDefaultValidator_HookSet(b *testing.B) {
+	SetDefaultValidator(func(any) error { return nil })
+	b.Cleanup(func() { SetDefaultValidator(nil) })
+
+	v := struct{ Name string }{Name: "x"}
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		_ = RunDefaultValidator(&v)
+	}
+}
+
 // BenchmarkHandlerCache_Overflow measures the cost of registering N handler
 // types into a smaller cache, characterizing eviction overhead. Each Store
 // past capacity evicts one entry; the bench reports per-Store cost
