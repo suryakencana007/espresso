@@ -2,6 +2,8 @@ package espresso
 
 import (
 	"context"
+	"fmt"
+	"reflect"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -157,27 +159,53 @@ func Metrics(collector servicemiddleware.MetricsCollector, serviceName string) L
 // Validation Layer Config
 // ============================================
 
-type validationConfig struct {
-	validator any
+// validationConfigLike is a non-generic marker interface implemented by every
+// validationConfig[Req]. It exists so buildLayer can detect a mismatched
+// validation config (one whose Req differs from the handler's Req) in the
+// default case and panic with a descriptive message instead of silently
+// skipping validation.
+type validationConfigLike interface {
+	LayerConfig
+	validatorReqType() reflect.Type
 }
 
-func (c *validationConfig) layerConfig() {}
+type validationConfig[Req any] struct {
+	validator servicemiddleware.Validator[Req]
+}
 
-// Validation creates a validation layer configuration.
-// Validates requests before processing.
+func (c *validationConfig[Req]) layerConfig() {}
+
+// validatorReqType returns the validator's Req type for diagnostic messages.
+func (c *validationConfig[Req]) validatorReqType() reflect.Type {
+	return reflect.TypeFor[Req]()
+}
+
+// Validation creates a validation layer configuration. Validates requests
+// before the handler runs; on validation failure the pipeline returns the
+// validator's error without invoking the handler.
 //
-// The validator must implement servicemiddleware.Validator[Req] interface:
-//
-//	type servicemiddleware.Validator[Req any] interface {
-//	    Validate(ctx context.Context, req Req) error
-//	}
+// Since v2.0 the function is generic: the type parameter is the request
+// type the validator accepts. Go infers it from the validator argument in
+// most call sites, so existing code rarely needs a syntactic change.
 //
 // Example:
 //
-//	validator := MyValidator{}
-//	espresso.Validation(validator)
-func Validation(validator any) LayerConfig {
-	return &validationConfig{validator: validator}
+//	validator := servicemiddleware.ValidatorFunc[*JSON[CreateUserReq]](
+//	    func(ctx context.Context, req *JSON[CreateUserReq]) error {
+//	        return validator.Struct(req.Data)
+//	    },
+//	)
+//	app.Post("/users", WithLayers(createUser, Layers(
+//	    Validation(validator),  // Req inferred as *JSON[CreateUserReq]
+//	)...))
+//
+// Mismatch detection: if the validator's Req does not match the handler's
+// request type at WithLayers binding time, registration panics with a
+// descriptive message naming both types — better than silently skipping
+// validation, which is what the v1.x untyped form did when the type
+// assertion in buildLayer failed.
+func Validation[Req any](validator servicemiddleware.Validator[Req]) LayerConfig {
+	return &validationConfig[Req]{validator: validator}
 }
 
 // ============================================
@@ -220,17 +248,26 @@ func buildLayer[Req any, Res any](cfg LayerConfig) Layer[Req, Res] {
 		return adaptServiceLayer(servicemiddleware.ConcurrencyLimitLayer[Req, Res](c.maxConcurrent))
 	case *metricsConfig:
 		return adaptServiceLayer(servicemiddleware.MetricsLayer[Req, Res](c.collector, c.serviceName))
-	case *validationConfig:
-		if v, ok := c.validator.(servicemiddleware.Validator[Req]); ok {
-			return adaptServiceLayer(servicemiddleware.ValidationLayer[Req, Res](v))
-		}
-		panic("espresso: validator does not implement servicemiddleware.Validator[Req]")
+	case *validationConfig[Req]:
+		return adaptServiceLayer(servicemiddleware.ValidationLayer[Req, Res](c.validator))
 	case *customConfig:
 		if layer, ok := c.build().(Layer[Req, Res]); ok {
 			return layer
 		}
 		panic("espresso: custom layer builder did not return Layer[Req, Res]")
 	default:
+		// Mismatched typed validation config: a *validationConfig[X] applied
+		// to a pipeline whose Req is not X. The case-match above failed
+		// because Go generics types are nominal; surface the mismatch so the
+		// user sees a registration-time panic instead of silently skipping
+		// validation.
+		if vc, ok := cfg.(validationConfigLike); ok {
+			panic(fmt.Sprintf(
+				"espresso: validation layer's request type (%v) does not match handler's request type (%v); "+
+					"either pass a Validator[%v] or remove the validation layer",
+				vc.validatorReqType(), reflect.TypeFor[Req](), reflect.TypeFor[Req](),
+			))
+		}
 		panic("espresso: unknown layer config type")
 	}
 }
