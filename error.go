@@ -101,10 +101,6 @@ type Error struct {
 	requestID string
 }
 
-// ErrorResponse is a type alias for Error, provided for backward compatibility.
-// New code should prefer using Error directly.
-type ErrorResponse = Error
-
 // NewError creates a new Error with the given HTTP status code and message.
 // Use builder methods to add code, details, and internal errors.
 //
@@ -301,94 +297,6 @@ func ErrInternal(message string) *Error {
 // ErrServiceUnavailable creates a 503 Service Unavailable error.
 func ErrServiceUnavailable(message string) *Error {
 	return NewError(http.StatusServiceUnavailable, message).WithCode("SERVICE_UNAVAILABLE")
-}
-
-// ============================================
-// Backward-Compatible Constructors
-// ============================================
-
-// BadRequest creates a 400 Bad Request error.
-// Provided for backward compatibility; prefer ErrBadRequest for new code.
-func BadRequest(message string, details ...any) *Error {
-	err := ErrBadRequest(message)
-	if len(details) > 0 {
-		if m, ok := details[0].(map[string]any); ok {
-			err.Details = m
-		}
-	}
-	return err
-}
-
-// Unauthorized creates a 401 Unauthorized error.
-// Provided for backward compatibility; prefer ErrUnauthorized for new code.
-func Unauthorized(message string, details ...any) *Error {
-	err := ErrUnauthorized(message)
-	if len(details) > 0 {
-		if m, ok := details[0].(map[string]any); ok {
-			err.Details = m
-		}
-	}
-	return err
-}
-
-// Forbidden creates a 403 Forbidden error.
-// Provided for backward compatibility; prefer ErrForbidden for new code.
-func Forbidden(message string, details ...any) *Error {
-	err := ErrForbidden(message)
-	if len(details) > 0 {
-		if m, ok := details[0].(map[string]any); ok {
-			err.Details = m
-		}
-	}
-	return err
-}
-
-// NotFound creates a 404 Not Found error.
-// Provided for backward compatibility; prefer ErrNotFound for new code.
-func NotFound(message string, details ...any) *Error {
-	err := ErrNotFound(message)
-	if len(details) > 0 {
-		if m, ok := details[0].(map[string]any); ok {
-			err.Details = m
-		}
-	}
-	return err
-}
-
-// Conflict creates a 409 Conflict error.
-// Provided for backward compatibility; prefer ErrConflict for new code.
-func Conflict(message string, details ...any) *Error {
-	err := ErrConflict(message)
-	if len(details) > 0 {
-		if m, ok := details[0].(map[string]any); ok {
-			err.Details = m
-		}
-	}
-	return err
-}
-
-// InternalError creates a 500 Internal Server Error.
-// Provided for backward compatibility; prefer ErrInternal for new code.
-func InternalError(message string, details ...any) *Error {
-	err := ErrInternal(message)
-	if len(details) > 0 {
-		if m, ok := details[0].(map[string]any); ok {
-			err.Details = m
-		}
-	}
-	return err
-}
-
-// ServiceUnavailable creates a 503 Service Unavailable error.
-// Provided for backward compatibility; prefer ErrServiceUnavailable for new code.
-func ServiceUnavailable(message string, details ...any) *Error {
-	err := ErrServiceUnavailable(message)
-	if len(details) > 0 {
-		if m, ok := details[0].(map[string]any); ok {
-			err.Details = m
-		}
-	}
-	return err
 }
 
 // ============================================

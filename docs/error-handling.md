@@ -177,18 +177,6 @@ This produces a 500 response:
 }
 ```
 
-## Backward Compatibility
-
-The following old-style constructors still work:
-
-```go
-espresso.BadRequest("invalid request")
-espresso.NotFound("resource not found")
-espresso.InternalError("something failed")
-```
-
-These now return `*espresso.Error` and produce the same JSON format. `ErrorResponse` is a type alias for `Error`.
-
 ## Error Code Naming Convention
 
 Use `UPPER_SNAKE_CASE` for error codes. Group by domain:

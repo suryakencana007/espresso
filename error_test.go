@@ -400,50 +400,7 @@ func TestError_ErrorString(t *testing.T) {
 	})
 }
 
-// ============================================
-// Backward-Compatible Constructor Tests
-// ============================================
-
-func TestBackwardCompat_Constructors(t *testing.T) {
-	t.Run("BadRequest", func(t *testing.T) {
-		err := BadRequest("invalid parameter")
-		if err.StatusCode != 400 {
-			t.Errorf("expected status 400, got %d", err.StatusCode)
-		}
-		if err.Code != "BAD_REQUEST" {
-			t.Errorf("expected code BAD_REQUEST, got %q", err.Code)
-		}
-		if err.Message != "invalid parameter" {
-			t.Errorf("expected message 'invalid parameter', got %q", err.Message)
-		}
-	})
-
-	t.Run("BadRequest with details", func(t *testing.T) {
-		details := map[string]any{"field": "name"}
-		err := BadRequest("invalid parameter", details)
-		if err.Details["field"] != "name" {
-			t.Errorf("expected field detail 'name', got %v", err.Details["field"])
-		}
-	})
-
-	t.Run("NotFound", func(t *testing.T) {
-		err := NotFound("not found")
-		if err.StatusCode != 404 {
-			t.Errorf("expected status 404, got %d", err.StatusCode)
-		}
-		if err.Code != "NOT_FOUND" {
-			t.Errorf("expected code NOT_FOUND, got %q", err.Code)
-		}
-	})
-
-	t.Run("ErrorResponse type alias", func(t *testing.T) {
-		err := BadRequest("test")
-		var _ = err
-		var _ = err
-	})
-}
-
-func TestBackwardCompat_ValidationErrors(t *testing.T) {
+func TestValidationErrors_Constructor(t *testing.T) {
 	validationErrs := []ValidationError{
 		{Field: "name", Message: "required"},
 		{Field: "email", Message: "invalid format"},
@@ -462,13 +419,12 @@ func TestBackwardCompat_ValidationErrors(t *testing.T) {
 	}
 }
 
-func TestBackwardCompat_IntoResponse(t *testing.T) {
-	err := BadRequest("test error")
-	var _ IntoResponse = err
+func TestError_IntoResponseAssertion(t *testing.T) {
+	var _ IntoResponse = ErrBadRequest("test error")
 }
 
-func TestBackwardCompat_WithRequestID(t *testing.T) {
-	err := BadRequest("test").WithRequestID("req-123")
+func TestError_WithRequestID_WriteResponse(t *testing.T) {
+	err := ErrBadRequest("test").WithRequestID("req-123")
 	w := httptest.NewRecorder()
 	writeErrorResponse(w, nil, err)
 
