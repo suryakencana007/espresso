@@ -5,26 +5,33 @@ Handlers process requests and return responses. Espresso provides coffee-themed 
 ## Handler Types
 
 <Mermaid source="graph LR
-    A[Ristretto func Res] -->|0 params| B[Health checks Static responses]
+    A[Ristretto func ctx Res] -->|ctx only, no error| B[Health checks Lightweight reads]
     C[Solo func Req Res] -->|1 param| D[Simple handlers No context needed]
     E[Doppio func ctx Req Res] -->|2 params| F[Production use Full control]" />
 
 | Handler | Signature | Use Case |
 |---------|------------|----------|
-| `Ristretto` | `func() Res` | Health checks, static responses |
+| `Ristretto` | `func(ctx) Res` | Health checks, lightweight ctx-aware reads |
 | `Solo` | `func(*Req) (Res, error)` | Simple handlers, no context |
 | `Doppio` | `func(ctx, *Req) (Res, error)` | Production handlers, full control |
 
-## Ristretto (0 params)
+## Ristretto (ctx only, no error)
 
-Simplest handler for static responses:
+Lightest handler shape — receives only `context.Context`, returns a response,
+no error path. Since v1.6 the signature includes ctx so handlers can reach
+state via `MustGetState[T]`. If your handler must return an error, use
+`Doppio` or `HandlerCtx` instead.
 
 ```go
-func healthCheck() espresso.Text {
+func healthCheck(ctx context.Context) espresso.Text {
+    state := espresso.MustGetState[AppState](ctx)
+    if err := state.DB.PingContext(ctx); err != nil {
+        return espresso.Text{StatusCode: http.StatusServiceUnavailable, Body: "db unreachable"}
+    }
     return espresso.Text{Body: "OK"}
 }
 
-func pong() espresso.Text {
+func pong(_ context.Context) espresso.Text {
     return espresso.Text{Body: "pong"}
 }
 
@@ -33,9 +40,9 @@ app.Get("/ping", espresso.Ristretto(pong))
 ```
 
 **When to use:**
-- Health checks
-- Static responses
-- No request processing needed
+- Health checks (with or without state access)
+- Lightweight context-only reads
+- Static responses (ignore the ctx parameter with `_`)
 
 ## Solo (1 param)
 

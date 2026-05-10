@@ -45,7 +45,7 @@ type userRes struct {
 // ============================================================================
 
 func BenchmarkStaticText_Espresso(b *testing.B) {
-	router := espresso.Portafilter().Get("/ping", espresso.Ristretto(func() espresso.Text {
+	router := espresso.Portafilter().Get("/ping", espresso.Ristretto(func(_ context.Context) espresso.Text {
 		return espresso.Text{Body: "pong"}
 	}))
 

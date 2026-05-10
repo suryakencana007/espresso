@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed (BREAKING)
+
+- **`Ristretto[Res]` signature changed** from `func() Res` to
+  `func(context.Context) Res`. Closes Barista F-01 — `Ristretto` was
+  pitched as the lightweight health-check primitive but couldn't reach
+  state via `MustGetState[T]` since it had no `context.Context`. The new
+  signature delegates to `HandlerCtxNoErr` (instead of `HandlerNoReqNoErr`)
+  and preserves the no-error character that distinguishes `Ristretto`
+  from `Doppio` / `HandlerCtx`.
+  Migration: add a `context.Context` parameter to every Ristretto handler.
+  If you don't need it, name it `_`:
+  ```go
+  // Before
+  func ping() Text { return Text{Body: "pong"} }
+  router.Get("/ping", espresso.Ristretto(ping))
+
+  // After
+  func ping(_ context.Context) Text { return Text{Body: "pong"} }
+  router.Get("/ping", espresso.Ristretto(ping))
+  ```
+  If your handler needs to return an error, use `Doppio` or `HandlerCtx`
+  instead — `Ristretto` keeps its no-error stance.
+  Mechanical search-and-replace isn't safe for this one (function literal
+  parameter signature varies); a one-time `go build` flags the call sites.
+  If you want a 0-arg handler with no error and no context, use
+  `HandlerNoReqNoErr` (still available, unchanged).
+
 ### Removed (BREAKING)
 
 - **Legacy error constructors** removed from `error.go`: `BadRequest`,

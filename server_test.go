@@ -246,7 +246,7 @@ func TestShutdown_InFlightRequestsComplete(t *testing.T) {
 	// an actual test server and calling Shutdown on it.
 	var requestCompleted atomic.Bool
 
-	router := Portafilter().Get("/slow", Ristretto(func() Text {
+	router := Portafilter().Get("/slow", Ristretto(func(_ context.Context) Text {
 		time.Sleep(100 * time.Millisecond)
 		requestCompleted.Store(true)
 		return Text{Body: "done"}
@@ -290,7 +290,7 @@ func TestShutdown_OnShutdownChaining(t *testing.T) {
 			count.Add(1)
 			return nil
 		}).
-		Get("/test", Ristretto(func() Text {
+		Get("/test", Ristretto(func(_ context.Context) Text {
 			return Text{Body: "ok"}
 		})).
 		OnShutdown(func(ctx context.Context) error {
@@ -307,7 +307,7 @@ func TestShutdown_OnShutdownChaining(t *testing.T) {
 }
 
 func TestShutdown_BrewContext(t *testing.T) {
-	router := Portafilter().Get("/health", Ristretto(func() Text {
+	router := Portafilter().Get("/health", Ristretto(func(_ context.Context) Text {
 		return Text{Body: "ok"}
 	}))
 
@@ -328,7 +328,7 @@ func TestShutdown_BrewContextIntegration(t *testing.T) {
 			hookCalled.Store(true)
 			return nil
 		}).
-		Get("/test", Ristretto(func() Text {
+		Get("/test", Ristretto(func(_ context.Context) Text {
 			return Text{Body: "ok"}
 		}))
 
@@ -378,7 +378,7 @@ func TestRouterIntegration(t *testing.T) {
 	t.Run("OnShutdown is chainable", func(t *testing.T) {
 		router := Portafilter().
 			OnShutdown(func(ctx context.Context) error { return nil }).
-			Get("/test", Ristretto(func() Text { return Text{Body: "ok"} }))
+			Get("/test", Ristretto(func(_ context.Context) Text { return Text{Body: "ok"} }))
 
 		req := httptest.NewRequest("GET", "/test", nil)
 		rec := httptest.NewRecorder()

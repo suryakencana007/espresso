@@ -31,7 +31,7 @@ The API uses coffee terminology to make routing intuitive:
 | Term | Purpose |
 |------|---------|
 | **Portafilter** | Creates the router (`espresso.Portafilter()`) |
-| **Ristretto** | 0-param handler (simplest, like a restricted shot) |
+| **Ristretto** | ctx-only handler (lightweight, no error) |
 | **Solo** | 1-param handler (single shot) |
 | **Doppio** | 2-param handler (double shot, full power) |
 | **Brew** | Starts the server |
@@ -70,7 +70,7 @@ func main() {
         Use(httpmiddleware.RecoverMiddleware()).
         
         // Simple health check
-        Get("/health", espresso.Ristretto(func() espresso.Text {
+        Get("/health", espresso.Ristretto(func(ctx context.Context) espresso.Text {
             return espresso.Text{Body: "OK"}
         })).
         

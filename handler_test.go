@@ -186,7 +186,7 @@ func TestHandler_HttpHandler(t *testing.T) {
 }
 
 func TestRistretto(t *testing.T) {
-	handler := Ristretto(func() Text {
+	handler := Ristretto(func(_ context.Context) Text {
 		return Text{Body: "pong"}
 	})
 
