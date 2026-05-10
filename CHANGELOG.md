@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed (BREAKING)
+
+- **Legacy error constructors** removed from `error.go`: `BadRequest`,
+  `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`, `InternalError`,
+  `ServiceUnavailable`. These were marked "prefer `Err*` for new code"
+  in their godoc since v1.0 but lacked the machine-readable
+  `// Deprecated:` tag, so v1.x callers got no migration runway. They
+  were originally scoped for v2.0 (`roadmaps/v2.0/tasks/task-02`); folded
+  forward into pre-v2.0 cleanup. Migration: rename per the table —
+  `BadRequest` → `ErrBadRequest`, etc. The replacement constructors
+  have shipped since v1.0; mechanical rename via
+  `gofmt -r 'espresso.BadRequest(x) -> espresso.ErrBadRequest(x)' -w .`
+  (and similarly for the other six).
+- **`ErrorResponse` type alias** for `Error` removed. Migration:
+  use `*espresso.Error` directly (the alias was a thin pass-through).
+- **Dead handlers in `cmd/example/main.go`** (`createUserWithError`,
+  `circuitBreakerExample`) removed. They were `//nolint:unused`-flagged
+  and used the legacy constructors above.
+- **Backward Compatibility section in `docs/error-handling.md`**
+  removed — the constructors it described are gone.
+
+### Changed
+
+- **Test coverage table in `README.md` refreshed** with current numbers
+  (Root: 80.8%, extractor: 85.5%, middleware/http: 86.9%, validator:
+  80.6%, openapi: 77.3%; the latter two were missing from the table).
+
 ## [1.5.0] - 2026-05-10
 
 ### Added

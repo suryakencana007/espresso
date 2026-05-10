@@ -17,7 +17,6 @@ import (
 	"github.com/suryakencana007/espresso"
 	"github.com/suryakencana007/espresso/extractor"
 	httpmiddleware "github.com/suryakencana007/espresso/middleware/http"
-	servicemiddleware "github.com/suryakencana007/espresso/middleware/service"
 	"github.com/suryakencana007/espresso/openapi"
 )
 
@@ -398,55 +397,3 @@ func ping() espresso.Text {
 	return espresso.Text{Body: "pong"}
 }
 
-// Error Handling Examples (for reference)
-
-// Error Handling Examples (for reference)
-
-// createUserWithError demonstrates structured error responses.
-//
-//nolint:unused,unparam
-func createUserWithError(_ context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[UserRes], error) {
-	user := req.Data
-
-	if user.Name == "" {
-		return espresso.JSON[UserRes]{}, espresso.ValidationErrors([]espresso.ValidationError{
-			{Field: "name", Message: "name is required"},
-		})
-	}
-
-	if user.Email == "exists@example.com" {
-		return espresso.JSON[UserRes]{}, espresso.Conflict("user with this email already exists")
-	}
-
-	if user.Email == "notfound@example.com" {
-		return espresso.JSON[UserRes]{}, espresso.NotFound("user not found")
-	}
-
-	if user.Email == "unauthorized@example.com" {
-		return espresso.JSON[UserRes]{}, espresso.Unauthorized("invalid credentials")
-	}
-
-	return espresso.JSON[UserRes]{
-		StatusCode: http.StatusCreated,
-		Data:       UserRes{Message: fmt.Sprintf("User '%s' created successfully", user.Name)},
-	}, nil
-}
-
-// circuitBreakerExample demonstrates circuit breaker error handling.
-//
-//nolint:unused,unparam
-func circuitBreakerExample(_ context.Context, req *extractor.Path[UserPathReq]) (espresso.JSON[UserRes], error) {
-	userID := req.Data.ID
-
-	if userID == 999 {
-		return espresso.JSON[UserRes]{}, espresso.NewCircuitBreakerError(
-			"UserService",
-			servicemiddleware.StateOpen,
-			"service temporarily unavailable",
-		)
-	}
-
-	return espresso.JSON[UserRes]{
-		Data: UserRes{Message: fmt.Sprintf("User %d processed", userID)},
-	}, nil
-}
