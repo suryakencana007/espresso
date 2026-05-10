@@ -11,6 +11,14 @@ Package `extractor` provides types for extracting data from HTTP requests.
 import "github.com/suryakencana007/espresso/extractor"
 ```
 
+::: tip Auto-validation since v2.0
+Every extractor below calls `espresso.RunDefaultValidator(&data)` at the
+end of `Extract`. When `espresso.SetDefaultValidator` is unset (the
+default), this is a single atomic load — no behavioral change. When set,
+malformed-by-tag inputs are rejected with a structured 400 before the
+handler runs. See [Auto-Validation Hook](espresso.md#auto-validation-hook).
+:::
+
 ## Core Interface
 
 ### FromRequest
