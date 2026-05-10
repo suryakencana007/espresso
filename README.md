@@ -58,6 +58,17 @@ go get github.com/suryakencana007/espresso
 
 ---
 
+## Upgrading from v1 to v2
+
+If you are migrating an existing v1.x app to v2.0, see
+[`docs/migration-v1-to-v2.md`](docs/migration-v1-to-v2.md). It covers
+the module-path bump, the legacy-error-constructor removal, the
+`Ristretto` signature change, and the per-Router stream registries —
+plus mechanical `gofmt -r` recipes for everything that's safe to
+auto-rewrite. Most apps complete the upgrade in one sitting.
+
+---
+
 ## Quick Start
 
 ```go
