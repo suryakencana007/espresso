@@ -96,7 +96,10 @@ func (j *JSON[T]) Reset() {
 //	}
 func (j *JSON[T]) Extract(r *http.Request) error {
 	defer func() { _ = r.Body.Close() }()
-	return sonic.ConfigDefault.NewDecoder(r.Body).Decode(&j.Data)
+	if err := sonic.ConfigDefault.NewDecoder(r.Body).Decode(&j.Data); err != nil {
+		return err
+	}
+	return RunDefaultValidator(&j.Data)
 }
 
 // Text is a response type for plain text responses.

@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+
+	"github.com/suryakencana007/espresso/internal/validatehook"
 )
 
 type fieldInfo struct {
@@ -67,7 +69,10 @@ type QueryExtractor[T any] struct {
 
 // Extract populates the struct from URL query parameters.
 func (q *QueryExtractor[T]) Extract(r *http.Request) error {
-	return extractStructTags(&q.Data, r.URL.Query(), "query")
+	if err := extractStructTags(&q.Data, r.URL.Query(), "query"); err != nil {
+		return err
+	}
+	return validatehook.Run(&q.Data)
 }
 
 // Reset clears the extractor data for reuse.
@@ -88,7 +93,10 @@ func (f *FormExtractor[T]) Extract(r *http.Request) error {
 	if err := r.ParseForm(); err != nil {
 		return err
 	}
-	return extractStructTags(&f.Data, r.Form, "form")
+	if err := extractStructTags(&f.Data, r.Form, "form"); err != nil {
+		return err
+	}
+	return validatehook.Run(&f.Data)
 }
 
 // Reset clears the extractor data for reuse.
@@ -123,7 +131,10 @@ func (m *MultipartExtractor[T]) Extract(r *http.Request) error {
 		return nil
 	}
 
-	return extractStructTagsFromMultipart(&m.Data, r.MultipartForm)
+	if err := extractStructTagsFromMultipart(&m.Data, r.MultipartForm); err != nil {
+		return err
+	}
+	return validatehook.Run(&m.Data)
 }
 
 // Reset clears the extractor data for reuse.
@@ -222,7 +233,10 @@ type PathExtractor[T any] struct{ Data T }
 
 // Extract populates the struct from URL path parameters.
 func (p *PathExtractor[T]) Extract(r *http.Request) error {
-	return extractStructTagsPathParams(&p.Data, r, "path")
+	if err := extractStructTagsPathParams(&p.Data, r, "path"); err != nil {
+		return err
+	}
+	return validatehook.Run(&p.Data)
 }
 
 // Reset clears the extractor data for reuse.
@@ -239,7 +253,10 @@ type HeaderExtractor[T any] struct {
 
 // Extract populates the struct from HTTP headers.
 func (h *HeaderExtractor[T]) Extract(r *http.Request) error {
-	return extractStructTagsFromHeaders(&h.Data, r.Header)
+	if err := extractStructTagsFromHeaders(&h.Data, r.Header); err != nil {
+		return err
+	}
+	return validatehook.Run(&h.Data)
 }
 
 // Reset clears the extractor data for reuse.
@@ -257,7 +274,10 @@ type CookieExtractor[T any] struct {
 
 // Extract populates the struct from HTTP cookies.
 func (c *CookieExtractor[T]) Extract(r *http.Request) error {
-	return extractStructTagsFromCookies(&c.Data, r.Cookies())
+	if err := extractStructTagsFromCookies(&c.Data, r.Cookies()); err != nil {
+		return err
+	}
+	return validatehook.Run(&c.Data)
 }
 
 // Reset clears the extractor data for reuse.
@@ -336,7 +356,11 @@ func (rb *RawBodyWithHeadersExtractor[H]) Extract(r *http.Request) error {
 	}
 	rb.Body = body
 
-	return extractStructTagsFromHeaders(&rb.Headers, r.Header)
+	if err := extractStructTagsFromHeaders(&rb.Headers, r.Header); err != nil {
+		return err
+	}
+	// Auto-validate Headers — Body stays raw bytes for HMAC verification.
+	return validatehook.Run(&rb.Headers)
 }
 
 // Reset clears both fields for sync.Pool reuse. Releases large body
@@ -359,7 +383,10 @@ type XMLExtractor[T any] struct {
 // Extract decodes XML from the request body into Data.
 func (x *XMLExtractor[T]) Extract(r *http.Request) error {
 	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
-	return xml.NewDecoder(r.Body).Decode(&x.Data)
+	if err := xml.NewDecoder(r.Body).Decode(&x.Data); err != nil {
+		return err
+	}
+	return validatehook.Run(&x.Data)
 }
 
 // Reset clears the extractor data for reuse.

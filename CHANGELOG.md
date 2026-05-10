@@ -35,6 +35,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Auto-validate on extract** (v2.0 task-05). New package-level hook
+  `espresso.SetDefaultValidator(fn func(any) error)`. When set, every
+  built-in extractor — `JSON[T]`, `Query[T]`, `Path[T]`, `Form[T]`,
+  `Header[T]`, `Cookie[T]`, `XML[T]`, `Multipart[T]`,
+  `RawBodyWithHeaders[H]` — calls the hook with a pointer to the decoded
+  value at the end of `Extract`. A non-nil error is propagated as an
+  extraction failure, which the existing structured-JSON 400 path handles;
+  the handler does not run.
+  Pair with `validator.Struct` for one-line wiring of struct-tag
+  validation:
+  ```go
+  func init() {
+      espresso.SetDefaultValidator(func(v any) error {
+          if err := validator.Struct(v); err != nil {
+              if fe, ok := err.(espresso.FieldErrors); ok {
+                  return espresso.ValidationErrors(fe.ToValidationErrors())
+              }
+              return err
+          }
+          return nil
+      })
+  }
+  ```
+  Default is nil — v1.x behavior is preserved exactly when the hook is
+  unset. Hot-path overhead measured at **2.24 ns/op, 0 allocs** for the
+  nil-fast path (`BenchmarkRunDefaultValidator_NilHook`) and 2.62 ns/op
+  with a hook installed. `RunDefaultValidator(v any) error` is also
+  exported so custom `Extract` methods can opt into the same hook.
+  New example at `cmd/example/validate/main.go`. Composable with the
+  existing `Validation[Req]` service layer (which runs **after**
+  extraction); the two solve different problems and can be used together.
+
+  Implementation note: the hook lives in `internal/validatehook` so both
+  the root `espresso` package and the `extractor` subpackage can depend
+  on it without forming an import cycle.
+
 - **Handler-reflection cache is now bounded with LRU eviction**
   (v2.0 task-03). Default upper bound is `DefaultHandlerCacheSize`
   (1024). Tuning surface added:

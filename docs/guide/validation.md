@@ -120,6 +120,76 @@ err := validator.Struct(User{})
 
 Nil pointer fields are skipped — if you want to enforce presence of a pointer field, add `required` to the field itself.
 
+## Auto-Validate on Extract (since v2.0)
+
+For the most common case — "validate every JSON/Query/Path/Form/etc. body
+on every route" — wire the validator once globally and let extraction take
+care of the rest:
+
+```go
+import (
+    "github.com/suryakencana007/espresso"
+    "github.com/suryakencana007/espresso/validator"
+)
+
+func init() {
+    espresso.SetDefaultValidator(func(v any) error {
+        if err := validator.Struct(v); err != nil {
+            // Wrap FieldErrors in the standard 400 shape so downstream
+            // gets {"error":{"code":"VALIDATION_ERROR",...}} bodies.
+            if fe, ok := err.(espresso.FieldErrors); ok {
+                return espresso.ValidationErrors(fe.ToValidationErrors())
+            }
+            return err
+        }
+        return nil
+    })
+}
+
+type CreateUserReq struct {
+    Name  string `json:"name"  validate:"required,min=3,max=50"`
+    Email string `json:"email" validate:"required,email"`
+}
+
+// Validation already ran — req.Data is known good.
+func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[Res], error) {
+    return espresso.JSON[Res]{Data: ...}, nil
+}
+```
+
+When `SetDefaultValidator` is unset (the default), extractors behave
+identically to v1.x — the nil-fast path is one atomic load with zero
+allocations (see `BenchmarkRunDefaultValidator_NilHook`).
+
+`RunDefaultValidator(v any) error` is also exported so custom `Extract`
+methods can opt into the same hook:
+
+```go
+func (r *MyRequest) Extract(req *http.Request) error {
+    if err := json.NewDecoder(req.Body).Decode(r); err != nil {
+        return err
+    }
+    return espresso.RunDefaultValidator(r)
+}
+```
+
+A complete runnable demo lives at [`cmd/example/validate/main.go`](https://github.com/suryakencana007/espresso/blob/main/cmd/example/validate/main.go).
+
+### Auto-validate vs. the `Validation[Req]` layer
+
+Both run validation — at different points in the pipeline:
+
+| | Auto-validate | `Validation[Req]` layer |
+|--|--|--|
+| When it runs | During extraction | After extraction, before handler |
+| Sees | The decoded payload only | The full extracted request value |
+| Use it for | Tag-driven, per-field rules (the `validator/` package) | Cross-field, ctx-dependent, I/O-bound checks |
+| Costs | One atomic load per Extract (free if unset) | One layer in the service pipeline per route |
+
+They compose. A typical setup uses auto-validate for tag-driven syntax
+checks and one or two `Validation[Req]` layers for business rules that
+need the surrounding context.
+
 ## Pairing with Service Layers
 
 If your handlers use Espresso's service layer pipeline (`espresso.WithLayersTyped`, `espresso.Layers`), move validation out of the handler body and into a layer so it runs before business logic:
