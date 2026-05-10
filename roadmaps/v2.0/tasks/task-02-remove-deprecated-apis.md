@@ -4,6 +4,12 @@
 **Estimated Effort:** 1-2 days
 **Dependencies:** None (can run in parallel with Task 1)
 
+> **Status: ✅ Partial.** The `error.go` legacy constructors (`BadRequest`, `Unauthorized`, `Forbidden`, `NotFound`, `Conflict`, `InternalError`, `ServiceUnavailable`) and the `ErrorResponse` type alias were removed via [#19](https://github.com/suryakencana007/espresso/pull/19) (folded forward from v1.5).
+>
+> The `response.go` deprecated SSE surface (`SSE`, `SSEEvent`, `SSEWriter`, `NewSSEWriter`) **was not removed in v2.0**. Existing callers continue to work; `staticcheck SA1019` flags them via the `// Deprecated:` markers. Targeted for v2.1.
+>
+> Rationale for the deferral: the SSE removal is purely additive-cost in code (no new functional value to v2.0 itself, just a search-and-replace tax on downstream apps). Skipping it kept v2.0 release timing tight without sacrificing the capabilities the major bump was actually about (per-Router registries, typed validation, bounded handler cache).
+
 ## Context
 
 v1.x accumulated deprecation aliases that cannot be removed under the "no breaking changes" promise. v2.0 is the window to drop them. Each removal below is backed by a `// Deprecated:` marker in v1.3 code or by in-repo grep confirming zero callers.

@@ -4,6 +4,9 @@
 **Estimated Effort:** 3-4 days
 **Dependencies:** None (can start immediately)
 
+
+> **Status: ✅ Shipped 2026-05-10.** Delivered via #21.
+
 ## Context
 
 In v1.3, open WebSocket connections and SSE streams are tracked in package-level globals:
@@ -26,13 +29,13 @@ v1.3's analysis flagged this as v2.0 scope. This task delivers.
 
 ## Acceptance Criteria
 
-- [ ] `defaultRegistry` and `defaultSSERegistry` package variables are **deleted**.
-- [ ] Each `*Router` owns a `*wsRegistry` and `*sseStreamRegistry` at construction time.
-- [ ] WebSocket handler wrappers (`WebSocket[T]`, `WebSocketSimple`) register connections against the owning router's registry.
-- [ ] SSE handler wrappers (`Stream[T]`, `StreamSimple`) register streams against the owning router's registry.
-- [ ] `gracefulShutdown` drains the router's registries, not globals.
-- [ ] Two routers in the same process shut down independently — closing router A does **not** close router B's streams.
-- [ ] All existing v1.3 tests pass unmodified **unless** they directly reached into `defaultRegistry` (those must migrate to the per-router API).
+- [x] `defaultRegistry` and `defaultSSERegistry` package variables are **deleted**.
+- [x] Each `*Router` owns a `*wsRegistry` and `*sseStreamRegistry` at construction time.
+- [x] WebSocket handler wrappers (`WebSocket[T]`, `WebSocketSimple`) register connections against the owning router's registry.
+- [x] SSE handler wrappers (`Stream[T]`, `StreamSimple`) register streams against the owning router's registry.
+- [x] `gracefulShutdown` drains the router's registries, not globals.
+- [x] Two routers in the same process shut down independently — closing router A does **not** close router B's streams.
+- [x] All existing v1.3 tests pass unmodified **unless** they directly reached into `defaultRegistry` (those must migrate to the per-router API).
 
 ## Technical Approach
 

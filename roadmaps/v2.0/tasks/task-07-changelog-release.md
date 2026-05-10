@@ -4,6 +4,9 @@
 **Estimated Effort:** 1 day
 **Dependencies:** All other tasks must be merged
 
+
+> **Status: ✅ Shipped 2026-05-10 — tagged v2.0.0.** Delivered via #27.
+
 ## Context
 
 This task is the final gate before tagging v2.0.0. It is the only task that atomically changes the module path from `github.com/suryakencana007/espresso` to `github.com/suryakencana007/espresso/v2` — per Go's major-version module convention.
@@ -12,15 +15,15 @@ Everything else has been done; this task is pure release engineering.
 
 ## Acceptance Criteria
 
-- [ ] `go.mod` module directive is `module github.com/suryakencana007/espresso/v2`
-- [ ] Every internal import of `github.com/suryakencana007/espresso...` is rewritten to the `/v2` path
-- [ ] `CHANGELOG.md` has a complete `[2.0.0]` section covering every task 1-5 change plus the module-path bump
-- [ ] `bench/go.mod` `replace` directive still points at `../` and the replaced module line matches the new path
-- [ ] `go test ./... -race` passes
-- [ ] `golangci-lint run ./...` is clean
-- [ ] `go build ./...` succeeds from a fresh clone
-- [ ] Git tag `v2.0.0` created and pushed
-- [ ] GitHub release created with release notes summarizing user-visible changes and linking the migration guide
+- [x] `go.mod` module directive is `module github.com/suryakencana007/espresso/v2`
+- [x] Every internal import of `github.com/suryakencana007/espresso...` is rewritten to the `/v2` path
+- [x] `CHANGELOG.md` has a complete `[2.0.0]` section covering every task 1-5 change plus the module-path bump
+- [x] `bench/go.mod` `replace` directive still points at `../` and the replaced module line matches the new path
+- [x] `go test ./... -race` passes
+- [x] `golangci-lint run ./...` is clean
+- [x] `go build ./...` succeeds from a fresh clone
+- [x] Git tag `v2.0.0` created and pushed
+- [x] GitHub release created with release notes summarizing user-visible changes and linking the migration guide
 
 ## Technical Approach
 
@@ -28,12 +31,12 @@ Everything else has been done; this task is pure release engineering.
 
 Before starting, confirm merge state:
 
-- [ ] Task 1: Per-Router stream registries
-- [ ] Task 2: Remove deprecated APIs
-- [ ] Task 3: Handler-cache eviction
-- [ ] Task 4: Typed Validation layer
-- [ ] Task 5: Auto-validate on extract
-- [ ] Task 6: Migration guide
+- [x] Task 1: Per-Router stream registries
+- [x] Task 2: Remove deprecated APIs
+- [x] Task 3: Handler-cache eviction
+- [x] Task 4: Typed Validation layer
+- [x] Task 5: Auto-validate on extract
+- [x] Task 6: Migration guide
 
 If any is outstanding, stop — the release train does not leave with half the cargo.
 

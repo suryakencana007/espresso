@@ -4,6 +4,9 @@
 **Estimated Effort:** 2 days
 **Dependencies:** None
 
+
+> **Status: ✅ Shipped 2026-05-10.** Delivered via #22.
+
 ## Context
 
 `handler.go` keeps a package-level reflection cache:
@@ -26,12 +29,12 @@ v2.0 delivers a bounded cache with an eviction hook so operators can see what's 
 
 ## Acceptance Criteria
 
-- [ ] The cache has a configurable upper bound (default e.g. 1024 entries).
-- [ ] When the bound is hit, an entry is evicted (LRU or similar).
-- [ ] Evicting an entry does not affect in-flight requests (the `*handlerInfo` stays alive while referenced).
-- [ ] A metrics hook `OnCacheEvict(fn func(reflect.Type))` exists and fires per eviction.
-- [ ] `go test -race` passes under concurrent registration + eviction.
-- [ ] Bench shows eviction overhead is not measurable on the static-route hot path (sub-percent).
+- [x] The cache has a configurable upper bound (default e.g. 1024 entries).
+- [x] When the bound is hit, an entry is evicted (LRU or similar).
+- [x] Evicting an entry does not affect in-flight requests (the `*handlerInfo` stays alive while referenced).
+- [x] A metrics hook `OnCacheEvict(fn func(reflect.Type))` exists and fires per eviction.
+- [x] `go test -race` passes under concurrent registration + eviction.
+- [x] Bench shows eviction overhead is not measurable on the static-route hot path (sub-percent).
 
 ## Technical Approach
 

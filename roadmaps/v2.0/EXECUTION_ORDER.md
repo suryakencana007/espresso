@@ -1,14 +1,38 @@
 # Execution Order for v2.0.0
 
-This document provides the recommended execution order for the v2.0 roadmap tasks. The schedule assumes one developer (human or AI agent) working full-time for approximately 3 weeks.
+> **Shipped 2026-05-10** — tag [`v2.0.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.0.0). This document describes the original 3-week plan; below it, "Actual" records what shipped and in what order.
 
-## Overview
+This document originally provided the recommended execution order for the v2.0 roadmap tasks. The schedule assumed one developer (human or AI agent) working full-time for approximately 3 weeks.
+
+## Overview (planned)
 
 ```
 Week 1: Task 1 (per-Router registries) — touches router, server, websocket, sse
 Week 2: Task 2 (deprecated API removal) + Task 3 (cache eviction) + Task 4 (typed Validation)
 Week 3: Task 5 (auto-validate) + Task 6 (migration guide) + Task 7 (CHANGELOG & release)
 ```
+
+## Actual
+
+Delivered 2026-05-10 across nine PRs (eight v2.0 tasks + one Barista F-01 close that wasn't in the original plan). The order differed from the plan: legacy-error removal and Ristretto ctx-aware were folded forward from v1.5 instead of waiting for the v2 release commit, which let the rest of v2.0 land on a clean error surface.
+
+| Order | PR | Subject | Roadmap task |
+|---|---|---|---|
+| 1 | #19 | refactor!: remove legacy error constructors + ErrorResponse alias | task-02 (partial — errors only) |
+| 2 | #20 | refactor!: make Ristretto ctx-aware (closes Barista F-01) | (out of original scope; closed F-01) |
+| 3 | #21 | refactor!: per-Router stream registries | task-01 |
+| 4 | #22 | feat(handler): bounded LRU cache + eviction hook | task-03 |
+| 5 | #23 | refactor!: Validation[Req](Validator[Req]) | task-04 |
+| 6 | #24 | feat: opt-in auto-validate on extract | task-05 |
+| 7 | #25 | docs: v1 → v2 migration guide | task-06 |
+| 8 | #26 | docs: align API reference with v2.0 surfaces | task-06 follow-up |
+| 9 | #27 | chore(release): bump to v2.0.0 | task-07 |
+
+Total elapsed time: one focused day (planning + implementation + review cycles) thanks to most of the legwork being prior v1.5 work that was already merged.
+
+What slipped to v2.1:
+
+- Removal of deprecated SSE types (`SSE`, `SSEEvent`, `SSEWriter`, `NewSSEWriter`) — task-02 was scoped to remove these too but they're additive-cost in code only (still tagged `// Deprecated:`); skipping their removal avoided coupling release timing to a search-and-replace effort that adds no functional value to v2.0 itself. Targeted for v2.1.
 
 ## Week 1 — Per-Router Registries
 
