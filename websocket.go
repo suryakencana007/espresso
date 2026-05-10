@@ -126,15 +126,21 @@ type WS struct {
 	mu     sync.Mutex
 	closed atomic.Bool
 	msgCh  chan wsMessage
+	// reg is the per-Router registry that tracks this connection for graceful
+	// shutdown. May be nil if the handler was invoked outside a Router context
+	// (e.g., wired into a non-Espresso mux); add/remove become no-ops in that
+	// case and the connection still works, but graceful-shutdown won't drain it.
+	reg *wsRegistry
 }
 
-func newWS(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, cfg WSConfig) *WS {
+func newWS(ctx context.Context, cancel context.CancelFunc, conn *websocket.Conn, cfg WSConfig, reg *wsRegistry) *WS {
 	return &WS{
 		conn:   conn,
 		ctx:    ctx,
 		cancel: cancel,
 		config: cfg,
 		msgCh:  make(chan wsMessage, 64),
+		reg:    reg,
 	}
 }
 
@@ -229,7 +235,7 @@ func (w *WS) ReadJSON(ctx context.Context, v any) error {
 // Close closes the WebSocket connection with the given status code and reason.
 // If the connection is already closed, Close returns nil.
 func (w *WS) Close(code CloseCode, reason string) error {
-	defer defaultRegistry.remove(w)
+	defer w.reg.remove(w)
 	if !w.closed.CompareAndSwap(false, true) {
 		return nil
 	}
@@ -292,19 +298,31 @@ func newWSRegistry() *wsRegistry {
 	return &wsRegistry{conns: make(map[*WS]struct{})}
 }
 
+// add registers a connection. Nil-safe: a nil receiver is a no-op so call
+// sites don't need to guard against handlers running outside a Router context.
 func (r *wsRegistry) add(ws *WS) {
+	if r == nil {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.conns[ws] = struct{}{}
 }
 
+// remove unregisters a connection. Nil-safe (see add).
 func (r *wsRegistry) remove(ws *WS) {
+	if r == nil {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.conns, ws)
 }
 
 func (r *wsRegistry) closeAll(code CloseCode, reason string) {
+	if r == nil {
+		return
+	}
 	r.mu.RLock()
 	conns := make([]*WS, 0, len(r.conns))
 	for ws := range r.conns {
@@ -317,7 +335,11 @@ func (r *wsRegistry) closeAll(code CloseCode, reason string) {
 	}
 }
 
+// len returns the number of registered connections. Nil receiver returns 0.
 func (r *wsRegistry) len() int {
+	if r == nil {
+		return 0
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.conns)
@@ -391,8 +413,9 @@ func WebSocket[Req FromRequest](h func(ctx context.Context, req Req, ws *WS) err
 
 		ctx, cancel := context.WithCancel(r.Context())
 
-		ws := newWS(ctx, cancel, conn, cfg)
-		defaultRegistry.add(ws)
+		regs, _ := routerRegistriesFrom(r.Context())
+		ws := newWS(ctx, cancel, conn, cfg, regs.ws)
+		ws.reg.add(ws)
 
 		pingDone := make(chan struct{})
 		go ws.startPing(ctx, pingDone)
@@ -449,8 +472,9 @@ func WebSocketSimple(h func(ctx context.Context, ws *WS) error, opts ...WSOption
 
 		ctx, cancel := context.WithCancel(r.Context())
 
-		ws := newWS(ctx, cancel, conn, cfg)
-		defaultRegistry.add(ws)
+		regs, _ := routerRegistriesFrom(r.Context())
+		ws := newWS(ctx, cancel, conn, cfg, regs.ws)
+		ws.reg.add(ws)
 
 		pingDone := make(chan struct{})
 		go ws.startPing(ctx, pingDone)
@@ -476,6 +500,3 @@ func WebSocketSimple(h func(ctx context.Context, ws *WS) error, opts ...WSOption
 	}
 }
 
-// defaultRegistry is the global WebSocket connection registry used by
-// WebSocket handlers. Initialized on package load.
-var defaultRegistry = newWSRegistry()

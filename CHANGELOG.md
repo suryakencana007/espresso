@@ -9,6 +9,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed (BREAKING)
 
+- **Stream registries are now per-Router instead of process-global**
+  (v2.0 task-01). The package-level `defaultRegistry` (WebSocket) and
+  `defaultSSERegistry` (SSE) are removed; each `*Router` owns a
+  `wsReg` and `sseReg` initialized in `Portafilter()`. `gracefulShutdown`
+  drains the owning Router's registries, so two `Portafilter()` instances
+  in the same process now shut down independently — closing router A
+  does not touch router B's streams.
+  Internally, `*Router.ServeHTTP` injects the registries into the
+  request context; `WebSocketSimple` / `WebSocket[T]` / `StreamSimple` /
+  `Stream[T]` look them up via `routerRegistriesFrom(ctx)` and register
+  the connections they create. If the wrappers are invoked outside a
+  Router context (e.g., wired into a non-Espresso mux), registration is
+  a silent no-op — the connection still works, but graceful-shutdown
+  won't drain it.
+  Migration: external callers of the package-level `defaultRegistry` /
+  `defaultSSERegistry` must reach into `router.wsReg` / `router.sseReg`
+  on a specific `*Router` instance instead. Internal users (handlers
+  created via `router.Get(...)` etc.) need no change. Adds
+  `TestShutdown_MultiRouter_WebSocketIsolation` and
+  `TestShutdown_MultiRouter_SSEIsolation` regression locks.
+
 - **`Ristretto[Res]` signature changed** from `func() Res` to
   `func(context.Context) Res`. Closes Barista F-01 — `Ristretto` was
   pitched as the lightweight health-check primitive but couldn't reach

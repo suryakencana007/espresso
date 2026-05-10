@@ -184,13 +184,11 @@ func (r *Router) gracefulShutdown(parentCtx context.Context, srv *http.Server, t
 		runHookSafely(shutdownCtx, hook, i)
 	}
 
-	// 2. Close all SSE streams before shutting down HTTP server
-	defaultSSERegistry.closeAll("server shutting down")
+	// 2. Close all SSE streams owned by this Router before shutting down.
+	r.sseReg.closeAll("server shutting down")
 
-	// 3. Close all WebSocket connections before shutting down HTTP server
-	if defaultRegistry != nil {
-		defaultRegistry.closeAll(CloseGoingAway, "server shutting down")
-	}
+	// 3. Close all WebSocket connections owned by this Router (close code 1001).
+	r.wsReg.closeAll(CloseGoingAway, "server shutting down")
 
 	// 4-5. Stop accepting new connections and wait for in-flight requests
 	if err := srv.Shutdown(shutdownCtx); err != nil {

@@ -152,9 +152,9 @@ func TestShutdown_NoHooks(t *testing.T) {
 }
 
 func TestShutdown_SSEStreamsClosed(t *testing.T) {
-	// The global defaultSSERegistry is shared, so we just verify that
-	// closeAll sends shutdown comments to registered streams.
-	// Integration with actual HTTP server is tested in sse_test.go.
+	// Verify that the per-Router SSE registry tracks active streams and
+	// closeAll terminates them. Integration with actual HTTP server is
+	// tested in sse_test.go.
 
 	handler := func(ctx context.Context, stream *SSEStream) error {
 		_ = stream.Send(Event{Name: "msg", Data: "hello"})
@@ -180,14 +180,17 @@ func TestShutdown_SSEStreamsClosed(t *testing.T) {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Verify stream is registered
-	if defaultSSERegistry.len() == 0 {
-		t.Error("expected SSE stream to be registered")
+	// Wait for stream to register on the Router (handler runs async).
+	deadline := time.Now().Add(time.Second)
+	for router.sseReg.len() == 0 && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if router.sseReg.len() == 0 {
+		t.Error("expected SSE stream to be registered on router.sseReg")
 	}
 
-	// The global closeAll is called during gracefulShutdown.
-	// Verify that the stream gets marked as closed (Send returns error).
-	defaultSSERegistry.closeAll("test shutdown")
+	// closeAll is what gracefulShutdown calls; verify it terminates the stream.
+	router.sseReg.closeAll("test shutdown")
 }
 
 func TestShutdown_WebSocketsClosed(t *testing.T) {
@@ -217,14 +220,14 @@ func TestShutdown_WebSocketsClosed(t *testing.T) {
 	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	deadline := time.Now().Add(time.Second)
-	for defaultRegistry.len() == 0 && time.Now().Before(deadline) {
+	for router.wsReg.len() == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if defaultRegistry.len() == 0 {
-		t.Fatal("expected WebSocket to be registered")
+	if router.wsReg.len() == 0 {
+		t.Fatal("expected WebSocket to be registered on router.wsReg")
 	}
 
-	defaultRegistry.closeAll(CloseGoingAway, "test shutdown")
+	router.wsReg.closeAll(CloseGoingAway, "test shutdown")
 
 	readCtx, readCancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer readCancel()
@@ -236,8 +239,8 @@ func TestShutdown_WebSocketsClosed(t *testing.T) {
 		t.Errorf("expected close status %d, got %d (err=%v)", websocket.StatusGoingAway, got, readErr)
 	}
 
-	if defaultRegistry.len() != 0 {
-		t.Errorf("expected registry to be empty after closeAll, got %d", defaultRegistry.len())
+	if router.wsReg.len() != 0 {
+		t.Errorf("expected registry to be empty after closeAll, got %d", router.wsReg.len())
 	}
 }
 
@@ -388,6 +391,134 @@ func TestRouterIntegration(t *testing.T) {
 			t.Errorf("expected status 200, got %d", rec.Code)
 		}
 	})
+}
+
+// TestShutdown_MultiRouter_WebSocketIsolation locks the v2 contract that
+// shutting down one Router does not touch sibling Routers running in the
+// same process. Pre-v2 this test would have failed because both routers
+// shared the package-global defaultRegistry.
+func TestShutdown_MultiRouter_WebSocketIsolation(t *testing.T) {
+	wsHandler := func(ctx context.Context, ws *WS) error {
+		<-ctx.Done()
+		return nil
+	}
+
+	routerA := Portafilter().Get("/ws", WebSocketSimple(wsHandler, WithPingInterval(0)))
+	routerB := Portafilter().Get("/ws", WebSocketSimple(wsHandler, WithPingInterval(0)))
+
+	srvA := httptest.NewServer(routerA)
+	defer srvA.Close()
+	srvB := httptest.NewServer(routerB)
+	defer srvB.Close()
+
+	dialCtx, dialCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer dialCancel()
+
+	connA, respA, err := websocket.Dial(dialCtx, "ws"+strings.TrimPrefix(srvA.URL, "http")+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial A failed: %v", err)
+	}
+	if respA != nil && respA.Body != nil {
+		_ = respA.Body.Close()
+	}
+	defer func() { _ = connA.Close(websocket.StatusNormalClosure, "") }()
+
+	connB, respB, err := websocket.Dial(dialCtx, "ws"+strings.TrimPrefix(srvB.URL, "http")+"/ws", nil)
+	if err != nil {
+		t.Fatalf("dial B failed: %v", err)
+	}
+	if respB != nil && respB.Body != nil {
+		_ = respB.Body.Close()
+	}
+	defer func() { _ = connB.Close(websocket.StatusNormalClosure, "") }()
+
+	deadline := time.Now().Add(time.Second)
+	for (routerA.wsReg.len() == 0 || routerB.wsReg.len() == 0) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if routerA.wsReg.len() != 1 || routerB.wsReg.len() != 1 {
+		t.Fatalf("expected 1 connection per router, got A=%d B=%d", routerA.wsReg.len(), routerB.wsReg.len())
+	}
+
+	// Shut down only routerA.
+	routerA.wsReg.closeAll(CloseGoingAway, "test shutdown A")
+
+	readCtx, readCancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer readCancel()
+	_, _, readErrA := connA.Read(readCtx)
+	if got := websocket.CloseStatus(readErrA); got != websocket.StatusGoingAway {
+		t.Errorf("connA expected close status 1001, got %d (err=%v)", got, readErrA)
+	}
+
+	// routerB's registry must NOT have been touched by routerA's shutdown.
+	// This is the load-bearing isolation assertion.
+	if routerB.wsReg.len() != 1 {
+		t.Errorf("routerB registry mutated by routerA shutdown: len=%d", routerB.wsReg.len())
+	}
+
+	// connB's read should NOT see a close frame — its handler ctx is still live.
+	// Use a short timeout: routerA's shutdown should not have generated traffic
+	// on connB. If a CloseGoingAway frame arrives, the test fails.
+	readCtxB, readCancelB := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer readCancelB()
+	_, _, readErrB := connB.Read(readCtxB)
+	if got := websocket.CloseStatus(readErrB); got == websocket.StatusGoingAway {
+		t.Errorf("connB received unexpected CloseGoingAway after routerA shutdown")
+	}
+	// A timeout (DeadlineExceeded) is the expected outcome — connB is healthy
+	// and idle. Any other error is also acceptable as long as it isn't a
+	// going-away close, which would prove the isolation broke.
+}
+
+// TestShutdown_MultiRouter_SSEIsolation mirrors the WebSocket isolation
+// test for the SSE registry.
+func TestShutdown_MultiRouter_SSEIsolation(t *testing.T) {
+	sseHandler := func(ctx context.Context, stream *SSEStream) error {
+		_ = stream.Send(Event{Name: "msg", Data: "hello"})
+		<-ctx.Done()
+		return nil
+	}
+
+	routerA := Portafilter().Get("/stream", StreamSimple(sseHandler, WithKeepAlive(50*time.Millisecond)))
+	routerB := Portafilter().Get("/stream", StreamSimple(sseHandler, WithKeepAlive(50*time.Millisecond)))
+
+	srvA := httptest.NewServer(routerA)
+	defer srvA.Close()
+	srvB := httptest.NewServer(routerB)
+	defer srvB.Close()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+
+	reqA, _ := http.NewRequestWithContext(ctx, "GET", srvA.URL+"/stream", nil)
+	respA, err := http.DefaultClient.Do(reqA)
+	if err != nil {
+		t.Fatalf("GET A failed: %v", err)
+	}
+	defer func() { _ = respA.Body.Close() }()
+
+	reqB, _ := http.NewRequestWithContext(ctx, "GET", srvB.URL+"/stream", nil)
+	respB, err := http.DefaultClient.Do(reqB)
+	if err != nil {
+		t.Fatalf("GET B failed: %v", err)
+	}
+	defer func() { _ = respB.Body.Close() }()
+
+	deadline := time.Now().Add(time.Second)
+	for (routerA.sseReg.len() == 0 || routerB.sseReg.len() == 0) && time.Now().Before(deadline) {
+		time.Sleep(10 * time.Millisecond)
+	}
+	if routerA.sseReg.len() != 1 || routerB.sseReg.len() != 1 {
+		t.Fatalf("expected 1 stream per router, got A=%d B=%d", routerA.sseReg.len(), routerB.sseReg.len())
+	}
+
+	// Shut down only routerA.
+	routerA.sseReg.closeAll("test shutdown A")
+
+	// routerB's stream must still be registered.
+	if routerB.sseReg.len() != 1 {
+		t.Errorf("routerB registry mutated by routerA shutdown: len=%d", routerB.sseReg.len())
+	}
 }
 
 type CreateUserReq struct {
