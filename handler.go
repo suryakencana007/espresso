@@ -30,20 +30,27 @@ type handlerInfo struct {
 // metadata) keyed by reflect.Type to avoid re-running reflection for every
 // request.
 //
-// Growth: the cache is process-global and has no eviction. Size is bounded
-// by the number of distinct handler function types (and Service[Req,Res]
-// type pairs) passed to Handler() / router.Handle() / WithLayers*() across
-// the process lifetime. In typical applications this is finite and small —
-// routes are registered at startup and never change.
+// Growth: the cache is process-global and bounded by an LRU policy. Default
+// upper bound is DefaultHandlerCacheSize (1024); tune with
+// SetHandlerCacheSize. When the bound is hit, the least-recently-used entry
+// is evicted; OnHandlerCacheEvict can observe this for telemetry.
 //
-// When the cache could grow unboundedly: applications that register
-// dynamically-generated handler types at runtime (plugin systems,
-// per-tenant codegen, reflect.MakeFunc scenarios) will accumulate one
-// cache entry per unique reflect.Type forever. If that describes you,
-// use the typed handler variants (Ristretto/Solo/Doppio/Lungo, or the
-// HandlerCtx* wrappers) which skip this cache entirely, or avoid
-// registering distinct function types per request.
-var handlerCache sync.Map // map[reflect.Type]*handlerInfo
+// In-flight requests are unaffected by eviction: handlerInfo values are
+// immutable, and request-side handlers hold a *handlerInfo pointer captured
+// at registration time via closure (createHandlerFromInfo). Eviction only
+// drops the cache's reference; existing pointers continue to work.
+//
+// For static apps (routes registered at startup, no dynamic registration),
+// the cache stays well under the default bound and never evicts. The
+// LRU bookkeeping adds one mutex acquisition per registration but does not
+// touch the per-request hot path.
+//
+// For apps that synthesize handler types at runtime (plugin hosts, per-tenant
+// codegen, reflect.MakeFunc scenarios), the bound prevents unbounded growth.
+// Tune SetHandlerCacheSize to your expected working set; use the typed
+// handler variants (Ristretto, Solo, Doppio, Lungo, HandlerCtx*) which
+// skip this cache entirely if reflection is not needed.
+var handlerCache = newBoundedHandlerCache(DefaultHandlerCacheSize)
 
 // Handler converts various handler types into http.HandlerFunc using reflection.
 // For better performance, use the typed Handler* functions (HandlerCtxReqErr, etc).
@@ -622,9 +629,7 @@ func isServiceSignature(t reflect.Type) bool {
 //nolint:gocyclo // complexity is inherent to reflection-based handler creation
 func handlerFunc(v reflect.Value, t reflect.Type) http.HandlerFunc {
 	// Check cache first
-	cached, ok := handlerCache.Load(t)
-	if ok {
-		info := cached.(*handlerInfo) //nolint:errcheck // type guaranteed by previous Store
+	if info, ok := handlerCache.Load(t); ok {
 		return createHandlerFromInfo(v, t, info)
 	}
 
