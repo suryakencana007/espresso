@@ -273,7 +273,8 @@ func TestWithLayers_Ristretto_Inference(t *testing.T) {
 
 	layers := Layers(Timeout(5 * time.Second))
 
-	// Should infer Req=struct{} for Ristretto
+	// Should infer Req=struct{} for the 0-arg HandlerNoReqNoErr shape
+	// (Ristretto since v1.6 takes ctx — see refactor/ristretto-ctx-aware).
 	httpHandler := WithLayers(handler, layers...)
 
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)

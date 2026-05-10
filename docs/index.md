@@ -79,8 +79,8 @@ func main() {
         Use(httpmiddleware.RequestIDMiddleware()).
         Use(httpmiddleware.RecoverMiddleware()).
         
-        // Simple health check (Ristretto - 0 params)
-        Get("/health", espresso.Ristretto(func() espresso.Text {
+        // Simple health check (Ristretto - ctx only, no error)
+        Get("/health", espresso.Ristretto(func(ctx context.Context) espresso.Text {
             return espresso.Text{Body: "OK"}
         })).
         

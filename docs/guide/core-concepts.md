@@ -27,7 +27,7 @@ Espresso uses coffee terminology to make the API intuitive:
 | Term | Component | Purpose |
 |------|-----------|---------|
 | **Portafilter** | `Portafilter()` | Creates the router (holds routes) |
-| **Ristretto** | `Ristretto()` | 0-param handler (concentrated) |
+| **Ristretto** | `Ristretto()` | ctx-only handler (concentrated, no error) |
 | **Solo** | `Solo()` | 1-param handler (single shot) |
 | **Doppio** | `Doppio()` | 2-param handler (double shot) |
 | **Brew** | `Brew()` | Starts the server |
@@ -55,12 +55,13 @@ Espresso uses coffee terminology to make the API intuitive:
 
 ## Handler Types
 
-### Ristretto (0 params)
+### Ristretto (ctx only, no error)
 
-For simple responses like health checks:
+Lightweight handler that receives `context.Context` and returns a response.
+Use for health checks and simple ctx-aware reads (e.g., `MustGetState[T]`).
 
 ```go
-func health() espresso.Text {
+func health(ctx context.Context) espresso.Text {
     return espresso.Text{Body: "OK"}
 }
 

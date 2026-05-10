@@ -74,7 +74,7 @@ func BenchmarkHandler_DifferentTypes(b *testing.B) {
 		{"Solo", func(req *JSON[CreateUserReq]) (JSON[UserRes], error) {
 			return JSON[UserRes]{}, nil
 		}},
-		{"Ristretto", func() Text {
+		{"Ristretto", func(_ context.Context) Text {
 			return Text{Body: "OK"}
 		}},
 	}

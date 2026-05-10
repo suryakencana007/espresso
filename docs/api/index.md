@@ -94,7 +94,7 @@ func WithStateMiddleware(state any) func(http.Handler) http.Handler
 ### Handler Functions
 
 ```go
-func Ristretto(f func() T) http.HandlerFunc  // 0 args
+func Ristretto(f func(context.Context) T) http.HandlerFunc  // ctx only, no error
 func Solo(f func(context.Context) T) http.HandlerFunc  // 1 arg
 func Doppio(f func(context.Context, *Req) T) http.HandlerFunc  // 2 args
 func Lungo(f func(context.Context, *Req1, *Req2) (T, error)) http.HandlerFunc  // 3 args (context + 2 extractors)

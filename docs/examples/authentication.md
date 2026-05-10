@@ -387,7 +387,7 @@ func main() {
     router.Brew(espresso.WithAddr(":8080"))
 }
 
-func healthHandler() string {
+func healthHandler(ctx context.Context) string {
     return "OK"
 }
 

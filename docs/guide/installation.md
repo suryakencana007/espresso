@@ -22,7 +22,7 @@ import "github.com/suryakencana007/espresso"
 
 func main() {
     espresso.Portafilter().
-        Get("/health", espresso.Ristretto(func() espresso.Text {
+        Get("/health", espresso.Ristretto(func(ctx context.Context) espresso.Text {
             return espresso.Text{Body: "OK"}
         })).
         Brew(espresso.WithAddr(":8080"))

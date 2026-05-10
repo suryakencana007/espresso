@@ -96,7 +96,7 @@ func main() {
         Brew(espresso.WithAddr(":8080"))
 }
 
-func healthCheck() espresso.Text {
+func healthCheck(ctx context.Context) espresso.Text {
     return espresso.Text{Body: "OK"}
 }
 
@@ -156,7 +156,7 @@ import (
 | Espresso Term | Framework Component | Purpose |
 |---------------|---------------------|---------|
 | **Portafilter** | `Portafilter()` | Creates the router that holds all routes |
-| **Ristretto** | `Ristretto()` | 0-param handler (concentrated, simple) |
+| **Ristretto** | `Ristretto()` | ctx-only handler (concentrated, no error) |
 | **Solo** | `Solo()` | 1-param handler (single shot) |
 | **Doppio** | `Doppio()` | 2-param handler (double shot, full power) |
 | **Brew** | `Brew()` | Starts the server (brews and serves) |
@@ -213,19 +213,25 @@ router.Get("/users/{id}", espresso.Doppio(getUser))
 
 | Alias | Signature | Use Case |
 |-------|-----------|---------|
-| `Ristretto` | `func() Res` | Health checks, static responses |
+| `Ristretto` | `func(ctx) Res` | Health checks, lightweight ctx-aware responses |
 | `Solo` | `func(*Req) (Res, error)` | Simple handlers, no context |
 | `Doppio` | `func(ctx, *Req) (Res, error)` | Production handlers |
 
-### Ristretto (0 params)
+### Ristretto (ctx only, no error)
 
 ```go
-func healthCheck() espresso.Text {
+func healthCheck(ctx context.Context) espresso.Text {
+    state := espresso.MustGetState[AppState](ctx)
+    if err := state.DB.PingContext(ctx); err != nil {
+        return espresso.Text{StatusCode: http.StatusServiceUnavailable, Body: "db unreachable"}
+    }
     return espresso.Text{Body: "OK"}
 }
 
 router.Get("/health", espresso.Ristretto(healthCheck))
 ```
+
+If your handler needs to return a typed error, use `Doppio` or `HandlerCtx` instead.
 
 ### Solo (1 param)
 
@@ -1095,7 +1101,7 @@ func main() {
         Brew(espresso.WithAddr(":38080"))
 }
 
-func healthCheck() espresso.Text {
+func healthCheck(ctx context.Context) espresso.Text {
     return espresso.Text{Body: "pong"}
 }
 

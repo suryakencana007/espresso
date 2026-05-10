@@ -77,7 +77,7 @@ These are the user-facing entry points; all wrap the underlying typed handlers:
 | Alias | Signature | Underlying |
 |-------|-----------|------------|
 | `Portafilter()` | constructs `Router` | `&Router{mux: http.NewServeMux()}` |
-| `Ristretto(f)` | `func() T` | `HandlerNoReq` |
+| `Ristretto(f)` | `func(context.Context) T` | `HandlerCtxNoErr` |
 | `Solo(f)` | `func(*Req) (T, error)` | `HandlerReqErr` |
 | `Doppio(f)` | `func(ctx, *Req) (T, error)` | `HandlerCtxReqErr` |
 | `Lungo(f)` | `func(ctx, *Req1, *Req2) (T, error)` | `HandlerCtxReq1Req2Err` |

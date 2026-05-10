@@ -46,7 +46,7 @@ func main() {
         Brew(espresso.WithAddr(":8080"))
 }
 
-func healthCheck() espresso.Text {
+func healthCheck(ctx context.Context) espresso.Text {
     return espresso.Text{Body: "OK"}
 }
 
@@ -107,7 +107,7 @@ curl -X POST http://localhost:8080/users \
 
 | Type | Signature | Use Case |
 |------|-----------|----------|
-| `Ristretto` | `func() Res` | No params, returns response |
+| `Ristretto` | `func(ctx) Res` | ctx-only, no error |
 | `Solo` | `func(*Req) Res` | One param (request) |
 | `Doppio` | `func(ctx, *Req) (Res, error)` | Full control |
 

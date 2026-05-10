@@ -44,19 +44,27 @@ func (r *Router) Brew(opts ...ServerOption)
 
 ### Ristretto
 
-Zero-argument handler:
+Context-only handler (no request body, no error). Lightweight enough for
+health checks while still allowing access to request-scoped state via
+`MustGetState[T]`. Since v1.6: takes `context.Context` (previously `func() T`).
 
 ```go
-func Ristretto[T any](f func() T) http.HandlerFunc
+func Ristretto[T any](f func(context.Context) T) http.HandlerFunc
 ```
 
 Example:
 
 ```go
-router.Get("/health", espresso.Ristretto(func() string {
+router.Get("/health", espresso.Ristretto(func(ctx context.Context) string {
+    state := espresso.MustGetState[AppState](ctx)
+    if err := state.DB.PingContext(ctx); err != nil {
+        return "db unreachable"
+    }
     return "OK"
 }))
 ```
+
+If your handler needs to return an error, use `Doppio` or `HandlerCtx` instead.
 
 ### Solo
 

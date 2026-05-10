@@ -477,24 +477,32 @@ func HandlerNoReqNoErr[Res IntoResponse](fn func() Res) http.HandlerFunc {
 // ============================================
 //
 // Named after espresso shot sizes:
-//   - Ristretto: "Restricted" shot - smallest, most concentrated (0 params)
+//   - Ristretto: "Restricted" shot - smallest, ctx-aware, no error (1 param: ctx)
 //   - Solo: Single shot - standard espresso (1 param: request)
 //   - Doppio: Double shot - full-powered (2 params: context + request)
 //   - Lungo: "Long" shot - extended extraction (3 params: context + 2 requests)
 
-// Ristretto creates a handler for func() Res.
-// Named after the "restricted" espresso shot - smallest, most concentrated.
-// Use for health checks and simple responses with no inputs.
+// Ristretto creates a handler for func(context.Context) Res.
+// Named after the "restricted" espresso shot - smallest, lightweight, no error.
+// Use for health checks and simple responses that need access to request-
+// scoped state via context (e.g., MustGetState[T]).
+//
+// If your handler must return an error, use HandlerCtx or Doppio instead.
+// If you don't need any inputs at all, use HandlerNoReqNoErr.
 //
 // Example:
 //
 //	app.Get("/health", Ristretto(healthCheck))
 //
-//	func healthCheck() Text {
+//	func healthCheck(ctx context.Context) Text {
+//	    state := MustGetState[AppState](ctx)
+//	    if err := state.DB.PingContext(ctx); err != nil {
+//	        return Text{StatusCode: http.StatusServiceUnavailable, Body: "db unreachable"}
+//	    }
 //	    return Text{Body: "OK"}
 //	}
-func Ristretto[Res IntoResponse](fn func() Res) http.HandlerFunc {
-	return HandlerNoReqNoErr(fn)
+func Ristretto[Res IntoResponse](fn func(context.Context) Res) http.HandlerFunc {
+	return HandlerCtxNoErr(fn)
 }
 
 // Solo creates a handler for func(*Req) (Res, error).
