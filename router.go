@@ -40,6 +40,8 @@ type Router struct {
 	middleware    []func(http.Handler) http.Handler
 	state         any
 	shutdownHooks []ShutdownHook
+	wsReg         *wsRegistry
+	sseReg        *sseStreamRegistry
 }
 
 // Portafilter creates a new Router with an initialized ServeMux.
@@ -52,7 +54,40 @@ type Router struct {
 //	router.Get("/health", Ristretto(healthCheck))
 //	router.Brew()
 func Portafilter() *Router {
-	return &Router{mux: http.NewServeMux()}
+	return &Router{
+		mux:    http.NewServeMux(),
+		wsReg:  newWSRegistry(),
+		sseReg: newSSERegistry(),
+	}
+}
+
+// routerRegistries carries a Router's stream registries through the request
+// context so handler wrappers (WebSocketSimple, StreamSimple, etc.) can
+// register the connections they create against the owning Router. This
+// replaces the v1.x package-global registries (defaultRegistry,
+// defaultSSERegistry), which leaked between sibling Routers in the same
+// process.
+type routerRegistries struct {
+	ws  *wsRegistry
+	sse *sseStreamRegistry
+}
+
+type registryCtxKey struct{}
+
+// withRouterRegistries returns a context carrying the given registries so
+// handler wrappers can look them up via routerRegistriesFrom.
+func withRouterRegistries(ctx context.Context, r *Router) context.Context {
+	return context.WithValue(ctx, registryCtxKey{}, routerRegistries{ws: r.wsReg, sse: r.sseReg})
+}
+
+// routerRegistriesFrom retrieves the per-Router registries from the request
+// context. If the handler is invoked outside a Router (e.g., wired into a
+// non-Espresso mux), the second return is false; callers should treat
+// add/remove as no-ops in that case rather than panic — the connection
+// still works, the user just opts out of graceful-shutdown integration.
+func routerRegistriesFrom(ctx context.Context) (routerRegistries, bool) {
+	regs, ok := ctx.Value(registryCtxKey{}).(routerRegistries)
+	return regs, ok
 }
 
 // Use adds HTTP-level middleware that runs before request extraction.
@@ -180,7 +215,8 @@ func (r *Router) applyMiddleware(handler http.HandlerFunc) http.HandlerFunc {
 }
 
 func (r *Router) ServeHTTP(w http.ResponseWriter, req *http.Request) {
-	r.mux.ServeHTTP(w, req)
+	ctx := withRouterRegistries(req.Context(), r)
+	r.mux.ServeHTTP(w, req.WithContext(ctx))
 }
 
 // Handle converts handler types to http.HandlerFunc.

@@ -519,11 +519,11 @@ func TestWebSocket_GracefulShutdown(t *testing.T) {
 	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	deadline := time.Now().Add(time.Second)
-	for defaultRegistry.len() == 0 && time.Now().Before(deadline) {
+	for router.wsReg.len() == 0 && time.Now().Before(deadline) {
 		time.Sleep(10 * time.Millisecond)
 	}
-	if defaultRegistry.len() == 0 {
-		t.Fatal("expected WebSocket to be registered")
+	if router.wsReg.len() == 0 {
+		t.Fatal("expected WebSocket to be registered on router.wsReg")
 	}
 
 	shutdownDone := make(chan struct{})

@@ -303,6 +303,7 @@ func serveStream(w http.ResponseWriter, r *http.Request, cfg *streamConfig, h fu
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
+	regs, _ := routerRegistriesFrom(r.Context())
 	stream := &SSEStream{
 		w:           w,
 		flusher:     flusher,
@@ -310,7 +311,7 @@ func serveStream(w http.ResponseWriter, r *http.Request, cfg *streamConfig, h fu
 		lastEventID: r.Header.Get("Last-Event-ID"),
 	}
 
-	defaultSSERegistry.add(stream)
+	regs.sse.add(stream)
 
 	if cfg.initialRetryHint > 0 {
 		_ = stream.SetRetry(cfg.initialRetryHint)
@@ -367,7 +368,7 @@ func serveStream(w http.ResponseWriter, r *http.Request, cfg *streamConfig, h fu
 	}
 
 	_ = stream.Close()
-	defaultSSERegistry.remove(stream)
+	regs.sse.remove(stream)
 }
 
 // sseStreamRegistry tracks open SSE streams for graceful shutdown.
@@ -380,19 +381,31 @@ func newSSERegistry() *sseStreamRegistry {
 	return &sseStreamRegistry{streams: make(map[*SSEStream]struct{})}
 }
 
+// add registers a stream. Nil-safe: a nil receiver is a no-op so call
+// sites don't need to guard against handlers running outside a Router context.
 func (r *sseStreamRegistry) add(s *SSEStream) {
+	if r == nil {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.streams[s] = struct{}{}
 }
 
+// remove unregisters a stream. Nil-safe (see add).
 func (r *sseStreamRegistry) remove(s *SSEStream) {
+	if r == nil {
+		return
+	}
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	delete(r.streams, s)
 }
 
 func (r *sseStreamRegistry) closeAll(reason string) {
+	if r == nil {
+		return
+	}
 	r.mu.RLock()
 	streams := make([]*SSEStream, 0, len(r.streams))
 	for s := range r.streams {
@@ -406,11 +419,13 @@ func (r *sseStreamRegistry) closeAll(reason string) {
 	}
 }
 
+// len returns the number of registered streams. Nil receiver returns 0.
 func (r *sseStreamRegistry) len() int {
+	if r == nil {
+		return 0
+	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.streams)
 }
 
-// defaultSSERegistry is the global SSE stream registry.
-var defaultSSERegistry = newSSERegistry()
