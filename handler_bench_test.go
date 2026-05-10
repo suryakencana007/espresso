@@ -86,3 +86,44 @@ func BenchmarkHandler_DifferentTypes(b *testing.B) {
 		}
 	}
 }
+
+// BenchmarkHandlerCache_SteadyState measures the cost of a cache HIT — the
+// path every static-route app hits on every registration after the first.
+// Single distinct handler type, repeated Loads. Should be sub-100ns:
+// just the mutex + map lookup + linked-list move-to-front, no reflection.
+func BenchmarkHandlerCache_SteadyState(b *testing.B) {
+	cache := newBoundedHandlerCache(DefaultHandlerCacheSize)
+	types := makeDistinctTypes(1)
+	cache.Store(types[0], &handlerInfo{numIn: 0})
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for range b.N {
+		_, _ = cache.Load(types[0])
+	}
+}
+
+// BenchmarkHandlerCache_Overflow measures the cost of registering N handler
+// types into a smaller cache, characterizing eviction overhead. Each Store
+// past capacity evicts one entry; the bench reports per-Store cost
+// (insertion + LRU update + eviction + onEvict hook fire).
+func BenchmarkHandlerCache_Overflow(b *testing.B) {
+	const cap = 64
+	const overflow = 256
+	types := makeDistinctTypes(overflow)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for n := range b.N {
+		// Reset cache each batch to keep the eviction pattern uniform.
+		// Cost-per-iteration is amortized across overflow inserts.
+		if n%overflow == 0 {
+			b.StopTimer()
+			cache := newBoundedHandlerCache(cap)
+			b.StartTimer()
+			for _, t := range types {
+				cache.Store(t, &handlerInfo{numIn: 0})
+			}
+		}
+	}
+}

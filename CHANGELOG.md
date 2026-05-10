@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Handler-reflection cache is now bounded with LRU eviction**
+  (v2.0 task-03). Default upper bound is `DefaultHandlerCacheSize`
+  (1024). Tuning surface added:
+  ```go
+  espresso.SetHandlerCacheSize(2048)
+  espresso.OnHandlerCacheEvict(func(t reflect.Type) {
+      metrics.Inc("handler_cache.evict", "type", t.String())
+  })
+  ```
+  Static apps stay well under the default and never evict — the LRU
+  bookkeeping adds ~24 ns/registration (measured) and does not touch
+  the per-request hot path. Dynamic-registration scenarios (plugin
+  hosts, per-tenant codegen, `reflect.MakeFunc`) now have an upper
+  bound on cache memory regardless of churn rate. In-flight requests
+  are unaffected by eviction: `*handlerInfo` values are immutable, and
+  request-side handlers hold the pointer captured at registration time.
+  Replaces the previous unbounded `sync.Map`. New benchmarks:
+  `BenchmarkHandlerCache_SteadyState` (24 ns/op, 0 allocs),
+  `BenchmarkHandlerCache_Overflow` (224 ns/op for insert+evict+hook).
+  This is **purely additive** — apps that don't call the new setters
+  see only the bound (1024) and identical hot-path behavior.
+
 ### Changed (BREAKING)
 
 - **Stream registries are now per-Router instead of process-global**

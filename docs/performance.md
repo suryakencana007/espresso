@@ -83,7 +83,46 @@ Espresso uses `sync.Pool` for request object pooling in handler wrappers (`Ristr
 
 - **Multipart upload buffering**: `MultipartExtractor` buffers up to 32 MB in memory. For very large uploads (>1 GB), consider using `io.Reader` directly or implementing a streaming extractor.
 - **SSE keepalive**: Keepalive comments are sent on a timer; there may be a brief window between a client disconnect and the server detecting it.
-- **Handler-reflection cache growth**: `espresso.Handler()` caches per-handler reflection metadata in a process-global `sync.Map` keyed by handler function type. The cache has no eviction: its size is bounded by the number of distinct handler types registered across the process lifetime. This is effectively constant for typical apps (routes are wired at startup). Applications that register dynamically-generated handler types at runtime (plugin hosts, per-tenant codegen, `reflect.MakeFunc` scenarios) will accumulate entries indefinitely — prefer the typed variants (`Ristretto`, `Solo`, `Doppio`, `Lungo`) or reuse a small set of handler types to stay out of the reflection path.
+
+## Handler-Reflection Cache
+
+`espresso.Handler()` caches per-handler reflection metadata in a
+process-global cache keyed by handler function type, so subsequent
+registrations of the same handler shape skip the reflection parse.
+
+Since v2.0 the cache is **bounded with LRU eviction**. Default upper bound
+is `DefaultHandlerCacheSize` (1024 entries). Tuning surface:
+
+```go
+// Resize the bound. Pass 0 or negative to reset to the default.
+espresso.SetHandlerCacheSize(2048)
+
+// Observe evictions for telemetry.
+espresso.OnHandlerCacheEvict(func(t reflect.Type) {
+    metrics.Inc("handler_cache.evict", "type", t.String())
+})
+```
+
+Static apps (routes wired at startup) stay well under the default bound
+and never evict — the LRU bookkeeping adds about 24 ns per registration
+(measured: `BenchmarkHandlerCache_SteadyState`) but does not touch the
+per-request hot path.
+
+Dynamic-registration scenarios (plugin hosts, per-tenant codegen,
+`reflect.MakeFunc`) now have an upper bound on cache memory regardless
+of churn rate. For those, set `OnHandlerCacheEvict` to a metric increment
+to alert on unexpected churn. Eviction overhead is bounded too:
+`BenchmarkHandlerCache_Overflow` measures roughly 224 ns/op for the
+insert + LRU update + evict + hook fire path.
+
+In-flight requests are unaffected by eviction: `*handlerInfo` values are
+immutable, and request-side handlers hold a pointer captured at
+registration time. Eviction only drops the cache's reference; existing
+pointers continue to work until garbage-collected.
+
+If reflection itself is unwanted (any handler-cache pressure is too much),
+use the typed handler variants — `Ristretto`, `Solo`, `Doppio`, `Lungo`,
+`HandlerCtx*` — which skip this cache entirely.
 
 ## Framework Comparison
 
