@@ -169,49 +169,10 @@ func (s Status) WriteResponse(w http.ResponseWriter) error
 func (s *Status) Reset()
 ```
 
-### SSE (deprecated)
-
-::: warning Deprecated since v1.3
-Use `Stream[T]` / `StreamSimple` and `*SSEStream` for typed streaming.
-The legacy `SSE` / `SSEEvent` types remain for backward compatibility
-and will be removed in v2.1. See [Streaming](../streaming.md).
-:::
-
-```go
-type SSE struct {
-    StatusCode int
-}
-
-type SSEEvent struct {
-    ID    string
-    Event string
-    Data  string
-    Retry int
-}
-
-func (s *SSE) WriteResponse(w http.ResponseWriter) error
-func (s *SSE) WriteEvent(w http.ResponseWriter, event SSEEvent)
-func (s *SSE) WriteKeepAlive(w http.ResponseWriter)
-```
-
-### SSEWriter (deprecated)
-
-::: warning Deprecated since v1.3
-Use `*SSEStream` (`SendText`, `SendJSON`, `SendData`, `Comment`) instead.
-Targeted for removal in v2.1.
-:::
-
-```go
-type SSEWriter struct { ... }
-
-func NewSSEWriter(w http.ResponseWriter) *SSEWriter
-func (s *SSEWriter) Event(event, data string)
-func (s *SSEWriter) EventWithID(id, event, data string)
-func (s *SSEWriter) Data(data string)
-func (s *SSEWriter) EventJSON(event string, data any) error
-func (s *SSEWriter) KeepAlive()
-func (s *SSEWriter) Retry(ms int)
-```
+For Server-Sent Events streaming, use `Stream[T]` / `StreamSimple` and
+the `*SSEStream` API documented in [Streaming](../streaming.md). The
+legacy `SSE`, `SSEEvent`, `SSEWriter`, and `NewSSEWriter` types were
+removed in v2.1.0 (deprecated since v1.3).
 
 ## Error Constructors
 

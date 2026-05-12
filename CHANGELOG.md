@@ -7,6 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Removed (BREAKING)
+
+- **Deprecated SSE types removed from `response.go`** (v2.1 task-01):
+  `SSE`, `SSEEvent`, `SSEWriter`, `NewSSEWriter`, and their methods.
+  Tagged `// Deprecated:` since v1.3; carry-over from v2.0 task-02
+  deferral. Replace with `Stream[T]` / `StreamSimple` and `*SSEStream`:
+  ```go
+  // Before (v2.0)
+  sse := espresso.NewSSEWriter(w)
+  sse.Event("update", "hello")
+
+  // After (v2.1)
+  router.Get("/stream", espresso.StreamSimple(func(ctx context.Context, s *espresso.SSEStream) error {
+      return s.SendText("update", "hello")
+  }))
+  ```
+  Net diff: -185 lines from `response.go`, -178 lines from
+  `response_test.go` (ten SSE/SSEWriter tests deleted). The `fmt`
+  import is now unused in `response.go` and dropped. Docs API
+  reference (`docs/api/espresso.md`) updated — the deprecated
+  sections that v2.0 PR #26 left in with warning banners are now
+  removed entirely; a one-paragraph forward pointer to the streaming
+  guide replaces them.
+
 ## [2.0.0] - 2026-05-10
 
 The first major release since v1.0. Bundles five breaking changes and
