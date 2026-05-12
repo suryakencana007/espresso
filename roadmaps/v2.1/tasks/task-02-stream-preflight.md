@@ -4,6 +4,9 @@
 **Estimated Effort:** 2-3 days
 **Dependencies:** None (builds on v2.0 task-01's `serveStream` restructure)
 
+
+> **Status: ✅ Shipped 2026-05-12.** Delivered via #33.
+
 ## Context
 
 Barista F-02 ([`roadmaps/USAGE_ESPRESSO.md`](../../USAGE_ESPRESSO.md#f-02)) is the v0.2-era observation that `Stream` commits HTTP headers as part of accepting the request, so a "resource not found" decision the handler would like to surface as an HTTP 404 can only become an `event: error` frame on a 200-OK stream. CDNs, proxies, and observability tools don't treat that as a real 4xx; downstream integrators have to special-case it.
@@ -12,11 +15,11 @@ Barista's workaround is per-route preflight middleware (`RequireAppAccess`, `Req
 
 ## Acceptance Criteria
 
-- [ ] SSE handlers can return an `*espresso.Error` before headers commit, surfacing as a real HTTP 4xx response with structured JSON body (matching the rest of the framework's error pipeline).
-- [ ] Existing `Stream[T]` / `StreamSimple` callers continue to work unchanged.
-- [ ] The "happy path" (handler accepts the stream and writes events) has zero new overhead.
-- [ ] A regression test asserts a pre-flight rejection produces a real 4xx with the structured error body — NOT a 200-OK SSE stream containing an `event: error` frame.
-- [ ] Migration-guide entry in `docs/migration-v2-to-v2.1.md` shows the Barista `RequireAppAccess`-style middleware pattern collapsing into a single pre-flight call.
+- [x] SSE handlers can return an `*espresso.Error` before headers commit, surfacing as a real HTTP 4xx response with structured JSON body (matching the rest of the framework's error pipeline).
+- [x] Existing `Stream[T]` / `StreamSimple` callers continue to work unchanged.
+- [x] The "happy path" (handler accepts the stream and writes events) has zero new overhead.
+- [x] A regression test asserts a pre-flight rejection produces a real 4xx with the structured error body — NOT a 200-OK SSE stream containing an `event: error` frame.
+- [x] Migration-guide entry in `docs/migration-v2-to-v2.1.md` shows the Barista `RequireAppAccess`-style middleware pattern collapsing into a single pre-flight call.
 
 ## Technical Approach
 
@@ -114,9 +117,9 @@ If options (a) or (b) are picked, document the breaking change in the migration 
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CHANGELOG `[Unreleased]` → `Added` (or `Changed (BREAKING)` if a non-additive design was chosen).
-- [ ] Migration-guide entry pairs the Barista preflight-middleware pattern with the new pre-flight call.
-- [ ] PR description references USAGE_ESPRESSO.md F-02 with a "closed" note that the next release of `roadmaps/USAGE_ESPRESSO.md` should mark accordingly.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] CHANGELOG `[Unreleased]` → `Added` (or `Changed (BREAKING)` if a non-additive design was chosen).
+- [x] Migration-guide entry pairs the Barista preflight-middleware pattern with the new pre-flight call.
+- [x] PR description references USAGE_ESPRESSO.md F-02 with a "closed" note that the next release of `roadmaps/USAGE_ESPRESSO.md` should mark accordingly.

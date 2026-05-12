@@ -4,24 +4,27 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** Tasks 1-4 substantially complete
 
+
+> **Status: ✅ Shipped 2026-05-12.** Delivered via #34.
+
 ## Context
 
 `docs/migration-v1-to-v2.md` (shipped in v2.0 task-06) covers the v1 → v2.0 jump. Users on v2.0 don't need to re-read it for v2.1; they need their own short migration. This task creates `docs/migration-v2-to-v2.1.md` covering ONLY the v2.1 deltas, plus a small docs-nav update so users on either v1.x or v2.0 land in the right guide.
 
 ## Acceptance Criteria
 
-- [ ] `docs/migration-v2-to-v2.1.md` exists.
-- [ ] Sections for each v2.1 change:
+- [x] `docs/migration-v2-to-v2.1.md` exists.
+- [x] Sections for each v2.1 change:
   - Removed: deprecated SSE types (Task 1) — Before/After + mechanical recipe.
   - Added: `Stream` pre-flight phase (Task 2) — Before/After showing the Barista preflight-middleware pattern collapsing into a single call.
   - Added: `validator.AsDefaultValidator()` helper (Task 3) — Before/After showing the closure → helper transformation.
-- [ ] A "Five-Minute Upgrade Checklist" at the top, like the v1→v2 guide.
-- [ ] Cross-link from:
+- [x] A "Five-Minute Upgrade Checklist" at the top, like the v1→v2 guide.
+- [x] Cross-link from:
   - `docs/.vitepress/config.ts` Upgrading sidebar group (add a second entry alongside the v1→v2 entry).
   - `roadmaps/v2.0/README.md` "Status" banner (mention v2.1 ships these deferred items).
   - `roadmaps/v2.1/README.md` (same).
   - `README.md` "Upgrading" section (add a v2.0 → v2.1 line).
-- [ ] No code changes — pure documentation.
+- [x] No code changes — pure documentation.
 
 ## Technical Approach
 
@@ -153,7 +156,7 @@ None — this task ships documentation only.
 
 ## Definition of Done
 
-- [ ] `docs/migration-v2-to-v2.1.md` written and cross-linked.
-- [ ] `docs/.vitepress/config.ts` nav and sidebar updated.
-- [ ] `README.md` Upgrading section gains a v2.0 → v2.1 line.
-- [ ] PR description references each Task 1/2/3 PR by number for traceability.
+- [x] `docs/migration-v2-to-v2.1.md` written and cross-linked.
+- [x] `docs/.vitepress/config.ts` nav and sidebar updated.
+- [x] `README.md` Upgrading section gains a v2.0 → v2.1 line.
+- [x] PR description references each Task 1/2/3 PR by number for traceability.

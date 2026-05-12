@@ -4,6 +4,9 @@
 **Estimated Effort:** 1 day
 **Dependencies:** None
 
+
+> **Status: ✅ Shipped 2026-05-12.** Delivered via #30.
+
 ## Context
 
 `response.go` carries four types that have been tagged `// Deprecated:` since v1.3 with forward pointers to `Stream[T]` / `*SSEStream`:
@@ -17,12 +20,12 @@ v2.0 task-02 was scoped to remove them but deferred (see [v2.0 task-02 retrospec
 
 ## Acceptance Criteria
 
-- [ ] `response.go` no longer defines `SSE`, `SSEEvent`, `SSEWriter`, or `NewSSEWriter`.
-- [ ] All methods on those types (e.g., `SSE.WriteResponse`, `SSEWriter.Event`, `SSEWriter.EventJSON`, `SSEWriter.KeepAlive`, etc.) are removed along with the types.
-- [ ] No internal callers remain — `go build ./...` clean.
-- [ ] `response_test.go` tests covering the deprecated types are deleted.
-- [ ] `docs/api/espresso.md` no longer has the Deprecated SSE / SSEWriter sections (currently shown with warning banners post-#26).
-- [ ] CHANGELOG `[Unreleased]` → `Removed (BREAKING)` entry.
+- [x] `response.go` no longer defines `SSE`, `SSEEvent`, `SSEWriter`, or `NewSSEWriter`.
+- [x] All methods on those types (e.g., `SSE.WriteResponse`, `SSEWriter.Event`, `SSEWriter.EventJSON`, `SSEWriter.KeepAlive`, etc.) are removed along with the types.
+- [x] No internal callers remain — `go build ./...` clean.
+- [x] `response_test.go` tests covering the deprecated types are deleted.
+- [x] `docs/api/espresso.md` no longer has the Deprecated SSE / SSEWriter sections (currently shown with warning banners post-#26).
+- [x] CHANGELOG `[Unreleased]` → `Removed (BREAKING)` entry.
 
 ## Technical Approach
 
@@ -75,8 +78,8 @@ router.Get("/stream", espresso.StreamSimple(func(ctx context.Context, s *espress
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./...` clean.
-- [ ] `golangci-lint run ./...` clean — no remaining `SA1019` warnings on the removed symbols (because they're gone).
-- [ ] CHANGELOG `[Unreleased]` Removed (BREAKING) entry written.
-- [ ] PR description references the v2.0 task-02 retrospective deferral note.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./...` clean.
+- [x] `golangci-lint run ./...` clean — no remaining `SA1019` warnings on the removed symbols (because they're gone).
+- [x] CHANGELOG `[Unreleased]` Removed (BREAKING) entry written.
+- [x] PR description references the v2.0 task-02 retrospective deferral note.

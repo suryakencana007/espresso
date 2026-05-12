@@ -4,6 +4,9 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** None
 
+
+> **Status: ✅ Shipped 2026-05-12.** Delivered via #31.
+
 ## Context
 
 v2.0 task-05 added `espresso.SetDefaultValidator(fn func(any) error)` for opt-in auto-validation on extract. The wiring requires users to wrap `validator.Struct` in a closure that converts `FieldErrors` → `ValidationErrors` so the response body has the framework's standard 400 shape:
@@ -25,12 +28,12 @@ Every user who wires the bundled validator copies this exact closure. Ship a hel
 
 ## Acceptance Criteria
 
-- [ ] `validator/` package exposes `AsDefaultValidator() func(v any) error` (or a similarly-named factory).
-- [ ] The returned closure is the canonical `validator.Struct` + `FieldErrors → ValidationErrors` adapter.
-- [ ] `cmd/example/validate/main.go` updated to use the helper.
-- [ ] Unit test asserts: invalid input → non-nil `*espresso.Error` with status 400 and code `VALIDATION_ERROR`; valid input → nil.
-- [ ] `docs/guide/validation.md` "Auto-Validate on Extract" section updated to show the helper as the recommended path; the inline closure preserved as the customization-point pattern.
-- [ ] CHANGELOG `[Unreleased]` → `Added`.
+- [x] `validator/` package exposes `AsDefaultValidator() func(v any) error` (or a similarly-named factory).
+- [x] The returned closure is the canonical `validator.Struct` + `FieldErrors → ValidationErrors` adapter.
+- [x] `cmd/example/validate/main.go` updated to use the helper.
+- [x] Unit test asserts: invalid input → non-nil `*espresso.Error` with status 400 and code `VALIDATION_ERROR`; valid input → nil.
+- [x] `docs/guide/validation.md` "Auto-Validate on Extract" section updated to show the helper as the recommended path; the inline closure preserved as the customization-point pattern.
+- [x] CHANGELOG `[Unreleased]` → `Added`.
 
 ## Technical Approach
 
@@ -142,8 +145,8 @@ None. Pure addition.
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./validator/...` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CHANGELOG `[Unreleased]` → `Added` entry.
-- [ ] PR description includes a one-line before/after demonstrating the LOC reduction in user code (~10 lines down to 1).
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./validator/...` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] CHANGELOG `[Unreleased]` → `Added` entry.
+- [x] PR description includes a one-line before/after demonstrating the LOC reduction in user code (~10 lines down to 1).

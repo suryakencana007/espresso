@@ -1,5 +1,9 @@
 # Espresso v2.1.0 — Finish the Pull
 
+> **Status: shipped 2026-05-12.** Tag [`v2.1.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.1.0).
+> See [`docs/migration-v2-to-v2.1.md`](../../docs/migration-v2-to-v2.1.md) for the upgrade guide.
+> This directory is retained for historical reference; future work has its own roadmap.
+
 This directory contains the roadmap and task specifications for Espresso v2.1.0, a **minor** release that finishes the work v2.0 deliberately deferred and ships one bounded ergonomics improvement.
 
 ## Why v2.1?
@@ -33,29 +37,29 @@ The v2.0 charter ("breaking changes are allowed, each must be justified") still 
 
 ### 🔴 P0 — Must Have
 
-| # | Task | File | Estimated Effort |
-|---|------|------|------------------|
-| 1 | Remove deprecated SSE types | [task-01-remove-deprecated-sse.md](./tasks/task-01-remove-deprecated-sse.md) | 1 day |
-| 2 | `Stream` pre-flight phase (closes Barista F-02) | [task-02-stream-preflight.md](./tasks/task-02-stream-preflight.md) | 2-3 days |
+| # | Task | File | Status |
+|---|------|------|--------|
+| 1 | Remove deprecated SSE types | [task-01-remove-deprecated-sse.md](./tasks/task-01-remove-deprecated-sse.md) | ✅ Merged (#30) |
+| 2 | `Stream` pre-flight phase (closes Barista F-02) | [task-02-stream-preflight.md](./tasks/task-02-stream-preflight.md) | ✅ Merged (#33) |
 
 ### 🟡 P1 — Should Have
 
-| # | Task | File | Estimated Effort |
-|---|------|------|------------------|
-| 3 | `validator.AsDefaultValidator()` adapter | [task-03-validator-default-adapter.md](./tasks/task-03-validator-default-adapter.md) | 0.5 day |
+| # | Task | File | Status |
+|---|------|------|--------|
+| 3 | `validator.AsDefaultValidator()` adapter | [task-03-validator-default-adapter.md](./tasks/task-03-validator-default-adapter.md) | ✅ Merged (#31) |
 
 ### 🔵 Verification
 
-| # | Task | File | Estimated Effort |
-|---|------|------|------------------|
-| 4 | Bench refresh vs Gin/Echo/Fiber on v2.x | [task-04-bench-refresh.md](./tasks/task-04-bench-refresh.md) | 0.5 day |
+| # | Task | File | Status |
+|---|------|------|--------|
+| 4 | Bench refresh vs Gin/Echo/Fiber on v2.x | [task-04-bench-refresh.md](./tasks/task-04-bench-refresh.md) | ✅ Merged (#32) |
 
 ### 📦 Meta
 
-| # | Task | File | Estimated Effort |
-|---|------|------|------------------|
-| 5 | Migration-guide v2.0 → v2.1 update | [task-05-migration-update.md](./tasks/task-05-migration-update.md) | 0.5 day |
-| 6 | CHANGELOG & v2.1.0 release | [task-06-changelog-release.md](./tasks/task-06-changelog-release.md) | 0.5 day |
+| # | Task | File | Status |
+|---|------|------|--------|
+| 5 | Migration-guide v2.0 → v2.1 update | [task-05-migration-update.md](./tasks/task-05-migration-update.md) | ✅ Merged (#34) |
+| 6 | CHANGELOG & v2.1.0 release | [task-06-changelog-release.md](./tasks/task-06-changelog-release.md) | ✅ Merged (#35) — tagged v2.1.0 |
 
 ## Recommended Execution Order
 
