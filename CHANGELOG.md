@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-05-12
+
+A maintenance release that pays off v2.0's deferred SSE-removal debt
+(#30), closes Barista F-02 with a new `WithPreFlight` Stream option
+(#33), and ships one validator ergonomics helper (#31). Plus a bench
+refresh against current hardware/Go-version (#32) and a v2.0 → v2.1
+migration guide (#34). See
+[`docs/migration-v2-to-v2.1.md`](docs/migration-v2-to-v2.1.md) for
+upgrade recipes.
+
 ### Added
 
 - **`validator.AsDefaultValidator()` helper** (v2.1 task-03): returns
