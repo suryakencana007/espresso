@@ -49,6 +49,7 @@ Update when a new Espresso-shaped decision lands. Batch entries by milestone hea
 - **Observation:** `Stream` flushes HTTP headers as part of accepting the request — so a "resource not found" decision the handler would like to surface as an HTTP 404 can only be emitted as an SSE `event: error` frame on a 200-OK stream. Standard REST clients (plus CDNs, proxies, observability tools) don't treat `event: error` on a 200 stream like a real 4xx, and every downstream integrator has to special-case it.
 - **Evidence (workaround):** `internal/api/middleware/preflight.go:43` — `RequireAppAccess` / `RequireDeploymentAccess` run the ownership lookup and return a real 404 before `Stream` is ever invoked. See also `internal/api/server.go:81`.
 - **Suggested change:** Let `Stream` handlers return an `espresso.Error` before the stream opens — e.g. a pre-flight phase that still lets the handler inspect the request context. v0.2 landed a middleware workaround (Task 05), but it's boilerplate per SSE route; first-class support in `Stream` would erase it.
+- **Status (2026-05-12): ✅ Closed by Espresso v2.1.0** ([#33](https://github.com/suryakencana007/espresso/pull/33)). The framework now exposes `espresso.WithPreFlight(fn func(ctx context.Context) error)` as a `StreamOption`. Non-nil returns route through `writeHandlerError`, producing a real HTTP 4xx with the structured JSON envelope — exactly what the suggested change asked for. Migration: Barista's `RequireAppAccess` / `RequireDeploymentAccess` middlewares can be replaced by a single `WithPreFlight(...)` call on each affected `Stream[T]` / `StreamSimple` registration. Recipe lives in [`docs/migration-v2-to-v2.1.md`](../docs/migration-v2-to-v2.1.md). Closing entry — workaround retired upstream.
 
 ## v0.2.0 — additional observations
 
@@ -280,4 +281,6 @@ Closing the entry — workaround retired upstream.
 - TD-ESP-01 through TD-ESP-04 — folded into F-01, F-02, W-03, F-04 / W-07 above.
 - TD-HOT-04 in [`roadmaps/v0.4.0/TECH_DEBT.md`](roadmaps/v0.4.0/TECH_DEBT.md) — F-08 is the framework-side framing of the same observation.
 - F-05, F-06, F-07 closed by Espresso v1.5.0 (2026-05-10) — see `roadmaps/v1.5/`.
-- F-01, F-02 deferred to Espresso v2.0 — both require breaking changes (Ristretto signature) or restructuring `serveStream`'s pre-flight phase. Tracked in `roadmaps/v2.0/`.
+- F-01 closed by Espresso v2.0.0 (2026-05-10) — `Ristretto` adopted `func(ctx context.Context) Res`. See `roadmaps/v2.0/` and PR #20.
+- F-02 closed by Espresso v2.1.0 (2026-05-12) — `Stream` gained `WithPreFlight(fn)` option. See `roadmaps/v2.1/` and PR #33.
+- F-08 remains open (test-seam pattern — application-layer; framework could ship a docs note rather than an API change).

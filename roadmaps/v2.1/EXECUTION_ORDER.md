@@ -1,8 +1,10 @@
 # Execution Order for v2.1.0
 
-This document provides the recommended execution order for the v2.1 roadmap tasks. The schedule fits in approximately one focused week.
+> **Shipped 2026-05-12** — tag [`v2.1.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.1.0). This document describes the original 1-week plan; below it, "Actual" records what shipped and in what order.
 
-## Overview
+This document originally provided the recommended execution order for the v2.1 roadmap tasks. The schedule was sized for approximately one focused week.
+
+## Overview (planned)
 
 ```
 Day 1:    Task 1 (remove deprecated SSE) — narrow, mechanical
@@ -10,6 +12,21 @@ Day 2-3:  Task 2 (Stream pre-flight phase) — touches sse.go and tests
 Day 4:    Task 3 (validator adapter) + Task 4 (bench refresh)
 Day 5:    Task 5 (migration guide update) + Task 6 (CHANGELOG & release)
 ```
+
+## Actual
+
+Delivered 2026-05-12 across six PRs. Tasks 02, 03, 04 ran in parallel via three isolated worktree agents after task-01 landed — collapsing what the planned schedule sized as 4 sequential days into a single dispatch round. Order:
+
+| Order | PR | Subject | Roadmap task |
+|---|---|---|---|
+| 1 | #30 | refactor!: remove deprecated SSE types | task-01 |
+| 2 | #31 | feat(validator): add AsDefaultValidator() adapter helper | task-03 |
+| 3 | #32 | docs(bench): refresh framework comparison numbers | task-04 |
+| 4 | #33 | feat(stream): add WithPreFlight option for SSE pre-flight rejection | task-02 |
+| 5 | #34 | docs(migration): v2.0 → v2.1 migration guide | task-05 |
+| 6 | #35 | chore(release): bump to v2.1.0 | task-06 |
+
+The CHANGELOG `[Unreleased]` section took CHANGELOG conflicts on every PR after the first; rebases were one-file, one-section affairs and resolved in seconds. The agent dispatching task-02 (the largest one) flagged a discrepancy between the spec's draft `WithPreFlight` signature and what shipped — and reflected the shipped reality in the migration guide instead of silently following the stale spec. Good catch worth preserving.
 
 ## Day 1 — Remove Deprecated SSE Types
 

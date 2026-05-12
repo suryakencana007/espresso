@@ -4,21 +4,24 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** All other tasks must be merged
 
+
+> **Status: ✅ Shipped 2026-05-12.** Delivered via #35 — tagged v2.1.0.
+
 ## Context
 
 Final gate before tagging v2.1.0. Promotes `[Unreleased]` to `[2.1.0] - <date>`, bumps the version chip + `package.json`, runs the full quality-gate set, tags, publishes the GitHub release. Single atomic commit (mirrors v2.0 task-07).
 
 ## Acceptance Criteria
 
-- [ ] `CHANGELOG.md` has a complete `[2.1.0] - 2026-MM-DD` section covering Tasks 1, 2, 3 (and noting the Task 4 bench refresh + Task 5 migration guide as `Documentation` entries).
-- [ ] `package.json` version bumped to `2.1.0`.
-- [ ] `docs/.vitepress/config.ts` version chip updated to `v2.1.0`.
-- [ ] `[Unreleased]` retained empty for v2.2.x work.
-- [ ] `go test ./... -race` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] `bench/` module compiles cleanly.
-- [ ] Git tag `v2.1.0` created and pushed.
-- [ ] GitHub release published with the `[2.1.0]` body + link to `docs/migration-v2-to-v2.1.md`.
+- [x] `CHANGELOG.md` has a complete `[2.1.0] - 2026-MM-DD` section covering Tasks 1, 2, 3 (and noting the Task 4 bench refresh + Task 5 migration guide as `Documentation` entries).
+- [x] `package.json` version bumped to `2.1.0`.
+- [x] `docs/.vitepress/config.ts` version chip updated to `v2.1.0`.
+- [x] `[Unreleased]` retained empty for v2.2.x work.
+- [x] `go test ./... -race` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] `bench/` module compiles cleanly.
+- [x] Git tag `v2.1.0` created and pushed.
+- [x] GitHub release published with the `[2.1.0]` body + link to `docs/migration-v2-to-v2.1.md`.
 
 ## Technical Approach
 
@@ -26,11 +29,11 @@ Final gate before tagging v2.1.0. Promotes `[Unreleased]` to `[2.1.0] - <date>`,
 
 Walk the v2.1 roadmap. Every task file's Acceptance Criteria boxes are ticked.
 
-- [ ] Task 1: Remove deprecated SSE types
-- [ ] Task 2: Stream pre-flight phase
-- [ ] Task 3: validator.AsDefaultValidator()
-- [ ] Task 4: Bench refresh
-- [ ] Task 5: Migration guide v2.0 → v2.1
+- [x] Task 1: Remove deprecated SSE types
+- [x] Task 2: Stream pre-flight phase
+- [x] Task 3: validator.AsDefaultValidator()
+- [x] Task 4: Bench refresh
+- [x] Task 5: Migration guide v2.0 → v2.1
 
 ### Step 6.2 — CHANGELOG
 
@@ -121,10 +124,10 @@ The full test suite, plus the bench module spot-check.
 
 ## Definition of Done
 
-- [ ] `CHANGELOG.md` `[2.1.0]` section finalized with the ship date.
-- [ ] `package.json` version bumped to `2.1.0`.
-- [ ] Docs version chip updated to `v2.1.0`.
-- [ ] Git tag `v2.1.0` pushed.
-- [ ] GitHub release published.
-- [ ] `roadmaps/USAGE_ESPRESSO.md` F-02 marked closed.
-- [ ] Barista pinged with the migration recipe for `RequireAppAccess` / `RequireDeploymentAccess` retirement.
+- [x] `CHANGELOG.md` `[2.1.0]` section finalized with the ship date.
+- [x] `package.json` version bumped to `2.1.0`.
+- [x] Docs version chip updated to `v2.1.0`.
+- [x] Git tag `v2.1.0` pushed.
+- [x] GitHub release published.
+- [x] `roadmaps/USAGE_ESPRESSO.md` F-02 marked closed.
+- [x] Barista pinged with the migration recipe for `RequireAppAccess` / `RequireDeploymentAccess` retirement.

@@ -4,6 +4,9 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** Tasks 1-3 substantially complete (so the numbers reflect post-cleanup v2.1, not mid-cycle)
 
+
+> **Status: ✅ Shipped 2026-05-12.** Delivered via #32.
+
 ## Context
 
 The README's "Framework Comparison" tables were captured against v1.4 (when the `bench/` module landed). v2.0 added a bounded handler cache and the auto-validate hook, but neither is on the per-request hot path when unset (which is how the bench module runs). Numbers shouldn't have moved meaningfully — but "shouldn't have moved" is a hypothesis that's worth a measurement before we let users assume it.
@@ -12,10 +15,10 @@ This is purely informational. No code is changed in Espresso itself.
 
 ## Acceptance Criteria
 
-- [ ] Bench module re-run from a clean checkout against the current `main` (post-Task 1/2/3).
-- [ ] `README.md` "Framework Comparison" tables refreshed with the new ns/op, B/op, allocs/op values.
-- [ ] Caption notes the run was on v2.1.x (no behavioral changes from v1.4 on the bench paths, just a refresh of the published numbers).
-- [ ] If any framework's number moved by >10% in either direction, investigate and document the reason in `bench/README.md`.
+- [x] Bench module re-run from a clean checkout against the current `main` (post-Task 1/2/3).
+- [x] `README.md` "Framework Comparison" tables refreshed with the new ns/op, B/op, allocs/op values.
+- [x] Caption notes the run was on v2.1.x (no behavioral changes from v1.4 on the bench paths, just a refresh of the published numbers).
+- [x] If any framework's number moved by >10% in either direction, investigate and document the reason in `bench/README.md`.
 
 ## Technical Approach
 
@@ -79,7 +82,7 @@ None.
 
 ## Definition of Done
 
-- [ ] Three updated tables in README with v2.1.x numbers.
-- [ ] Caption updated with run conditions.
-- [ ] If any number moved >10%, the reason is captured in `bench/README.md` or the PR description.
-- [ ] PR description includes the raw `go test -bench` output for traceability.
+- [x] Three updated tables in README with v2.1.x numbers.
+- [x] Caption updated with run conditions.
+- [x] If any number moved >10%, the reason is captured in `bench/README.md` or the PR description.
+- [x] PR description includes the raw `go test -bench` output for traceability.
