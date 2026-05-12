@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Documentation
+
+- **`docs/guide/testing.md`** — new page documenting the recommended
+  test-seam pattern for services with unexported function-field
+  dispatch. Recommends private functional options keyed through
+  `_test.go`-only setters so `*ForTest` setters don't leak into the
+  production API surface or appear on `pkg.go.dev`. Includes a "when
+  to promote to an interface seam instead" decision rule (4+ stubs
+  across test files). Wired into the docs sidebar under Advanced.
+  Closes the last open friction item from Barista's feedback log
+  (F-08, see [`roadmaps/USAGE_ESPRESSO.md`](roadmaps/USAGE_ESPRESSO.md#f-08))
+  — application-layer pattern, framework ships guidance not API.
+
 ## [2.1.0] - 2026-05-12
 
 A maintenance release that pays off v2.0's deferred SSE-removal debt

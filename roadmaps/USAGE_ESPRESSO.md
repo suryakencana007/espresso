@@ -203,6 +203,7 @@ Closing the entry — workaround retired upstream.
 - **Observation:** v0.4 introduced two test seams — `WebhookService.SetDeployFromGitForTest` and `ClusterService.SetClientBuildersForTest`. Both are exported methods that swap unexported function fields so handler-level tests in different packages can stub the dispatch. The pattern works but each occurrence pollutes the production type with a `*ForTest` method. Espresso doesn't enforce a particular DI structure, so this is an application-layer concern — but as a flagship app, Barista's accumulating seams suggest the framework could supply an idiomatic Options pattern (e.g. `service.WithOption(...)`) to keep test stubs out of the production surface.
 - **Evidence:** `internal/service/webhook_service.go` (`SetDeployFromGitForTest`), `internal/service/cluster_service.go` (`SetClientBuildersForTest`).
 - **Suggested change:** Not framework-side per se — but a pattern note in Espresso docs (or a tiny `optionalfield` helper) would help every flagship app avoid the same drift. Track in `roadmaps/v0.4.0/TECH_DEBT.md` (TD-HOT-04) for the v0.5 retro.
+- **Status (2026-05-12): ✅ Closed by Espresso docs.** The pattern note shipped in [`docs/guide/testing.md`](../docs/guide/testing.md) under "Testing Patterns": private functional options keyed through a `_test.go`-only setter, so `*ForTest` setters don't leak into the production API or appear on `pkg.go.dev`. The page also covers when to promote to an interface seam instead (4+ stubs across test files). Barista's `SetDeployFromGitForTest` and `SetClientBuildersForTest` can be retired by moving the setters into `service/exporttest_test.go` files and wrapping them in a small `internal/servicetest/` options package — recipe in the doc. Closing entry — framework-side guidance shipped; application work tracked in `roadmaps/v0.4.0/TECH_DEBT.md` TD-HOT-04.
 
 ## v0.5.0 — additional observations
 
@@ -283,4 +284,4 @@ Closing the entry — workaround retired upstream.
 - F-05, F-06, F-07 closed by Espresso v1.5.0 (2026-05-10) — see `roadmaps/v1.5/`.
 - F-01 closed by Espresso v2.0.0 (2026-05-10) — `Ristretto` adopted `func(ctx context.Context) Res`. See `roadmaps/v2.0/` and PR #20.
 - F-02 closed by Espresso v2.1.0 (2026-05-12) — `Stream` gained `WithPreFlight(fn)` option. See `roadmaps/v2.1/` and PR #33.
-- F-08 remains open (test-seam pattern — application-layer; framework could ship a docs note rather than an API change).
+- F-08 closed by Espresso docs (2026-05-12) — `docs/guide/testing.md` ships the test-seam pattern recommendation (private functional options + `_test.go` setters). No framework API change; pure docs guidance per the original suggestion.

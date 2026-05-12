@@ -120,6 +120,7 @@ export default defineConfig({
           items: [
             { text: "Response Types", link: "/guide/response" },
             { text: "Object Pooling", link: "/guide/pooling" },
+            { text: "Testing Patterns", link: "/guide/testing" },
           ],
         },
         {
