@@ -108,6 +108,40 @@ func stream(ctx context.Context, stream *espresso.SSEStream) error {
 }
 ```
 
+## Rejecting requests before the stream opens
+
+By default `Stream[T]` / `StreamSimple` commit HTTP headers (status `200 OK` plus `Content-Type: text/event-stream`) as part of accepting the request. A handler that wants to surface a *resource not found* or *forbidden* decision as a real HTTP 4xx can't do it once the stream has opened — the best it can do is emit an `event: error` frame on a 200-OK stream, which CDNs, proxies, and standard REST clients won't recognise.
+
+`WithPreFlight` adds a check that runs **before** the headers commit. If it returns a non-nil error, the error flows through the framework's standard JSON error pipeline — `*espresso.Error` produces its declared status code (e.g. 404, 403) with the structured `{"error":{"code":..., "message":..., "details":..., "request_id":...}}` envelope; any other error becomes a 500.
+
+```go
+type AppState struct {
+    Repo *AppRepo
+}
+
+router.WithState(state).Get("/apps/{id}/logs", espresso.Stream(logStream,
+    espresso.WithPreFlight(func(ctx context.Context) error {
+        s := espresso.MustGetState[AppState](ctx)
+        if !s.Repo.UserCanReadFromCtx(ctx) {
+            return espresso.ErrNotFound("app not found")
+        }
+        return nil
+    }),
+))
+```
+
+For Barista-style callers that today wrap each SSE route with `RequireAppAccess` / `RequireDeploymentAccess` HTTP middleware, this collapses into a single per-route pre-flight call and removes the boilerplate middleware-per-resource-kind.
+
+The closure receives the request context, so it can read state via `MustGetState[T]` / `GetState[T]` and any context values populated by upstream middleware (request-id, auth principal, path params, etc.). The extracted typed `Req` is **not** threaded into pre-flight in this iteration — keep pre-flight checks tied to context-derivable identity / authorization state. For body-shape validation, return errors from your `Extract` method as usual; extractor failures route through `writeExtractError` and produce a 400.
+
+A pre-flight rejection short-circuits the stream entirely:
+
+- No `Content-Type: text/event-stream` header is sent.
+- No `event: error` frame is written.
+- The response body is JSON, matching the rest of the framework's error pipeline.
+
+If no `WithPreFlight` option is configured, the v2.0 stream flow is unchanged — zero overhead on the happy path.
+
 ## Event Methods
 
 | Method | Description |

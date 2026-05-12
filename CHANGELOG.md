@@ -25,6 +25,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   customization keep writing the inline closure — the helper is the
   most-common-case shortcut, not a configuration surface.
 
+- **`WithPreFlight(fn)` Stream option** (v2.1 task-02, closes Barista
+  F-02): SSE handlers can reject a request with a real HTTP 4xx
+  *before* the response headers commit. Pass any
+  `func(ctx context.Context) error` to `Stream[T]` or `StreamSimple`;
+  a non-nil return routes through `writeHandlerError`, so an
+  `*espresso.Error` (e.g. `ErrNotFound`, `ErrForbidden`) surfaces with
+  its declared status code and the framework's structured JSON
+  envelope — not as an `event: error` frame on a 200-OK stream. The
+  closure receives the request context and can call
+  `MustGetState[T]` / `GetState[T]`. Closes
+  [USAGE_ESPRESSO.md F-02](roadmaps/USAGE_ESPRESSO.md#f-02) — the
+  Barista per-route `RequireAppAccess` / `RequireDeploymentAccess`
+  preflight middleware collapses into a single
+  `WithPreFlight(...)` call. Additive: existing `Stream[T]` /
+  `StreamSimple` callers see no behavioural change and pay zero
+  overhead on the happy path. See
+  [`roadmaps/v2.1/tasks/task-02-stream-preflight.md`](roadmaps/v2.1/tasks/task-02-stream-preflight.md).
+
 ### Removed (BREAKING)
 
 - **Deprecated SSE types removed from `response.go`** (v2.1 task-01):

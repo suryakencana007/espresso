@@ -2,7 +2,10 @@ package espresso
 
 import (
 	"bufio"
+	"bytes"
 	"context"
+	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -551,6 +554,224 @@ func TestSSE_StreamClosed(t *testing.T) {
 	err := stream.Send(Event{Data: "test"})
 	if err == nil {
 		t.Error("expected error when sending to closed stream")
+	}
+}
+
+// TestStream_PreFlightReject_404 asserts that a pre-flight rejection
+// closes Barista F-02: the response must be a real HTTP 404 with the
+// framework's structured JSON error envelope, NOT a 200-OK SSE stream
+// containing an `event: error` frame.
+func TestStream_PreFlightReject_404(t *testing.T) {
+	handler := func(ctx context.Context, stream *SSEStream) error {
+		t.Error("handler must not run when pre-flight rejects")
+		return nil
+	}
+
+	preflight := func(ctx context.Context) error {
+		return ErrNotFound("app not found").WithDetail("app_id", "missing")
+	}
+
+	router := Portafilter().Get("/stream",
+		StreamSimple(handler, WithPreFlight(preflight)),
+	)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/stream")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusNotFound {
+		t.Errorf("expected status 404, got %d", resp.StatusCode)
+	}
+
+	ct := resp.Header.Get("Content-Type")
+	if !strings.Contains(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type, got %q", ct)
+	}
+	if strings.Contains(ct, "text/event-stream") {
+		t.Errorf("expected NO text/event-stream header; got %q", ct)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+
+	if bytes.Contains(body, []byte("event: error")) {
+		t.Errorf("body must not contain `event: error` frame: %s", body)
+	}
+
+	var envelope struct {
+		Error struct {
+			Code    string         `json:"code"`
+			Message string         `json:"message"`
+			Details map[string]any `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		t.Fatalf("decode JSON envelope: %v (body=%s)", err, body)
+	}
+	if envelope.Error.Code != "NOT_FOUND" {
+		t.Errorf("expected error.code NOT_FOUND, got %q", envelope.Error.Code)
+	}
+	if envelope.Error.Message != "app not found" {
+		t.Errorf("expected error.message 'app not found', got %q", envelope.Error.Message)
+	}
+	if got := envelope.Error.Details["app_id"]; got != "missing" {
+		t.Errorf("expected error.details.app_id 'missing', got %v", got)
+	}
+}
+
+// TestStream_PreFlightAccept_HeadersOK asserts that a pre-flight that
+// returns nil leaves the existing stream flow unchanged: SSE headers
+// commit and events are delivered.
+func TestStream_PreFlightAccept_HeadersOK(t *testing.T) {
+	preflightCalled := atomic.Bool{}
+
+	preflight := func(ctx context.Context) error {
+		preflightCalled.Store(true)
+		return nil
+	}
+
+	handler := func(ctx context.Context, stream *SSEStream) error {
+		return stream.Send(Event{Name: "ok", Data: "accepted"})
+	}
+
+	router := Portafilter().Get("/stream",
+		StreamSimple(handler, WithPreFlight(preflight)),
+	)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/stream")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if !preflightCalled.Load() {
+		t.Error("expected pre-flight closure to be invoked")
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+
+	events := parseSSEEvents(t, resp)
+	if len(events) == 0 {
+		t.Fatal("expected at least one event")
+	}
+	if events[0].Name != "ok" || events[0].Data != "accepted" {
+		t.Errorf("expected event ok/accepted, got %s/%s", events[0].Name, events[0].Data)
+	}
+}
+
+// TestStream_PreFlightHonorsCtx asserts the pre-flight closure receives
+// the request context and can resolve router state via MustGetState[T].
+func TestStream_PreFlightHonorsCtx(t *testing.T) {
+	type authState struct {
+		Allowed bool
+	}
+
+	handler := func(ctx context.Context, stream *SSEStream) error {
+		return stream.Send(Event{Name: "ok", Data: "go"})
+	}
+
+	preflight := func(ctx context.Context) error {
+		s := MustGetState[authState](ctx)
+		if !s.Allowed {
+			return ErrForbidden("not allowed")
+		}
+		return nil
+	}
+
+	t.Run("allowed", func(t *testing.T) {
+		router := Portafilter().
+			WithState(authState{Allowed: true}).
+			Get("/stream", StreamSimple(handler, WithPreFlight(preflight)))
+		server := httptest.NewServer(router)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/stream")
+		if err != nil {
+			t.Fatalf("GET failed: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if resp.StatusCode != http.StatusOK {
+			t.Errorf("expected status 200, got %d", resp.StatusCode)
+		}
+		events := parseSSEEvents(t, resp)
+		if len(events) == 0 || events[0].Data != "go" {
+			t.Errorf("expected event data 'go', got %+v", events)
+		}
+	})
+
+	t.Run("denied", func(t *testing.T) {
+		router := Portafilter().
+			WithState(authState{Allowed: false}).
+			Get("/stream", StreamSimple(handler, WithPreFlight(preflight)))
+		server := httptest.NewServer(router)
+		defer server.Close()
+
+		resp, err := http.Get(server.URL + "/stream")
+		if err != nil {
+			t.Fatalf("GET failed: %v", err)
+		}
+		defer func() { _ = resp.Body.Close() }()
+
+		if resp.StatusCode != http.StatusForbidden {
+			t.Errorf("expected status 403, got %d", resp.StatusCode)
+		}
+		if ct := resp.Header.Get("Content-Type"); strings.Contains(ct, "text/event-stream") {
+			t.Errorf("rejected stream must not advertise text/event-stream, got %q", ct)
+		}
+	})
+}
+
+// TestStream_NoPreFlight_BackwardCompat asserts that StreamSimple
+// without the WithPreFlight option behaves byte-identical to v2.0: the
+// same headers, status, and frame layout that TestSSE_BasicStream
+// verifies.
+func TestStream_NoPreFlight_BackwardCompat(t *testing.T) {
+	handler := func(ctx context.Context, stream *SSEStream) error {
+		return stream.Send(Event{Name: "message", Data: "hello"})
+	}
+
+	router := Portafilter().Get("/stream", StreamSimple(handler))
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	resp, err := http.Get(server.URL + "/stream")
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("expected Content-Type text/event-stream, got %q", ct)
+	}
+	if cc := resp.Header.Get("Cache-Control"); cc != "no-cache" {
+		t.Errorf("expected Cache-Control no-cache, got %q", cc)
+	}
+
+	events := parseSSEEvents(t, resp)
+	if len(events) != 1 {
+		t.Fatalf("expected exactly 1 event, got %d", len(events))
+	}
+	if events[0].Name != "message" || events[0].Data != "hello" {
+		t.Errorf("expected event message/hello, got %s/%s", events[0].Name, events[0].Data)
+	}
+	if events[0].ID != "1" {
+		t.Errorf("expected auto-assigned ID '1', got %q", events[0].ID)
 	}
 }
 
