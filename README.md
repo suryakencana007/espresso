@@ -1148,35 +1148,41 @@ BenchmarkBufferPool-16         67260426   17.92 ns/op      0 B/op     0 allocs/o
 ### Framework Comparison
 
 Head-to-head against Gin, Echo, and Fiber on three equivalent scenarios.
-Source: [`bench/`](bench/). Hardware: Intel Core Ultra 7 155H, Windows 11,
-Go 1.23. `go test -bench . -benchmem -benchtime=3s`.
+Source: [`bench/`](bench/). Refreshed against v2.1.x at commit
+`167d10a`. Hardware: AMD Ryzen 7 4800H (amd64, Windows), Go 1.25.6.
+`go test -bench . -benchmem -benchtime=3s -count=3 -cpu=1` (mean of
+three runs reported). Numbers are higher than the v1.4 publication
+because the benchmark runner moved from an Intel Core Ultra 7 155H
+to an AMD Ryzen 7 4800H — all four frameworks moved by roughly the
+same proportion, so the relative ordering is unchanged. See
+[`bench/README.md`](bench/README.md) for the hardware-shift note.
 
 **Static text `GET /ping → "pong"`**
 
 | Framework | ns/op | B/op  | allocs/op |
 |-----------|-------|-------|-----------|
-| Gin       |   532 |  1041 |         9 |
-| Echo      |   565 |  1017 |        10 |
-| Espresso  |   595 |  1016 |        10 |
-| Fiber*    |  5889 |  5829 |        21 |
+| Gin       |  1392 |  1040 |         9 |
+| Echo      |  1660 |  1016 |        10 |
+| Espresso  |  1998 |  1400 |        13 |
+| Fiber*    | 10505 |  5530 |        21 |
 
 **JSON round-trip `POST /echo`**
 
 | Framework | ns/op | B/op  | allocs/op |
 |-----------|-------|-------|-----------|
-| Echo      |   774 |  1138 |        14 |
-| Espresso  |   979 |  1522 |        19 |
-| Gin       |  1412 |  2056 |        22 |
-| Fiber*    | 15763 | 13806 |        52 |
+| Echo      |  2692 |  1136 |        14 |
+| Espresso  |  3183 |  1704 |        22 |
+| Gin       |  5313 |  2048 |        22 |
+| Fiber*    | 29791 | 13214 |        52 |
 
 **Path parameter `GET /users/{id}`**
 
 | Framework | ns/op | B/op  | allocs/op |
 |-----------|-------|-------|-----------|
-| Gin       |   681 |  1042 |        11 |
-| Echo      |   738 |  1074 |        11 |
-| Espresso  |  1000 |  1273 |        16 |
-| Fiber*    |  7006 |  5826 |        24 |
+| Gin       |  1677 |  1040 |        11 |
+| Echo      |  1799 |  1072 |        11 |
+| Espresso  |  3066 |  1545 |        19 |
+| Fiber*    | 10021 |  5548 |        24 |
 
 *Fiber's numbers include the fasthttp-based `app.Test()` harness overhead
 (wire-format encode/decode) because it does not sit on `net/http`. Treat Fiber
