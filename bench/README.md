@@ -51,3 +51,21 @@ scenarios. The tradeoff buys you compile-time-typed handlers, bidirectional
 
 If raw throughput is the only thing that matters, measure your workload —
 differences here are dominated by JSON encoding, not by framework dispatch.
+
+## Note on the v2.1 refresh vs the v1.4 baseline (May 2026)
+
+The README numbers were refreshed against v2.1.x and are roughly 2-3x
+higher across the board than the v1.4 publication. This is **not** a
+framework-dispatch regression — it is a hardware shift. The v1.4
+numbers were captured on an Intel Core Ultra 7 155H (a 2023 P-core /
+E-core hybrid mobile chip). The v2.1 refresh ran on an AMD Ryzen 7
+4800H, a 2020 Zen 2 mobile part with substantially lower
+single-thread throughput. Every framework — Gin, Echo, Espresso, and
+Fiber — slowed down by roughly the same proportion (~150-250% on
+ns/op, identical or near-identical B/op and allocs/op), which is the
+fingerprint of a runner change rather than a framework change. The
+Go toolchain also moved from 1.23 (v1.4 baseline) to 1.25.6 (current
+mise pin), but that contributes a small fraction of the delta
+compared to the CPU shift. When the next refresh runs on a machine
+closer to the v1.4 baseline class, expect ns/op to drop back into
+the same neighborhood as the original publication.

@@ -31,6 +31,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   removed entirely; a one-paragraph forward pointer to the streaming
   guide replaces them.
 
+### Documentation
+
+- **Framework comparison benchmarks refreshed against v2.1.x**
+  (v2.1 task-04). Re-ran `bench/` (Gin / Echo / Espresso / Fiber across
+  static-text, JSON round-trip, and path-parameter scenarios) on
+  Go 1.25.6 / AMD Ryzen 7 4800H with
+  `go test -bench . -benchmem -benchtime=3s -count=3 -cpu=1`, then
+  substituted the mean values into the README's three "Framework
+  Comparison" tables. Caption updated to record run conditions
+  (hardware, Go version, commit, command line). The new numbers run
+  ~2-3x higher than the v1.4 publication across **all four**
+  frameworks — this is a benchmark-runner hardware shift (the v1.4
+  baseline was an Intel Core Ultra 7 155H), not an Espresso dispatch
+  regression. Allocations and B/op are essentially unchanged for the
+  competitor frameworks and only marginally up for Espresso, which
+  rules out an allocation regression. Added a paragraph to
+  `bench/README.md` capturing the hardware-shift explanation so
+  future readers don't mistake the absolute numbers for a v2.x
+  slowdown. Purely informational; no behavioral change to Espresso.
+
 ## [2.0.0] - 2026-05-10
 
 The first major release since v1.0. Bundles five breaking changes and
