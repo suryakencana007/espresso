@@ -2,6 +2,8 @@
 
 > **Status: shipped 2026-05-10.** Tag [`v2.0.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.0.0).
 > See [`docs/migration-v1-to-v2.md`](../../docs/migration-v1-to-v2.md) for the upgrade guide.
+> The deferred task-02 SSE removal and the deferred Stream pre-flight work (Barista F-02) shipped in v2.1 —
+> see [`roadmaps/v2.1/`](../v2.1/) and [`docs/migration-v2-to-v2.1.md`](../../docs/migration-v2-to-v2.1.md).
 > This directory is retained for historical reference; future work has its own roadmap.
 
 This directory contains the roadmap and task specifications for Espresso v2.0.0, a **major** release that bundles the breaking changes we deliberately deferred through the v1.x line.
