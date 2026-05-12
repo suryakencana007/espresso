@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`validator.AsDefaultValidator()` helper** (v2.1 task-03): returns
+  the canonical `func(any) error` adapter for
+  `espresso.SetDefaultValidator(...)`. Wraps `validator.Struct` and
+  converts the resulting `espresso.FieldErrors` into
+  `espresso.ValidationErrors` so failures surface as the framework's
+  standard 400 JSON shape. Drops the auto-validate wiring in user
+  code from ~10 lines to 1:
+  ```go
+  func init() {
+      espresso.SetDefaultValidator(validator.AsDefaultValidator())
+  }
+  ```
+  Users who need a different error code, extra detail keys, or other
+  customization keep writing the inline closure — the helper is the
+  most-common-case shortcut, not a configuration surface.
+
 ### Removed (BREAKING)
 
 - **Deprecated SSE types removed from `response.go`** (v2.1 task-01):

@@ -268,6 +268,34 @@ func TestStruct_JSONFieldName(t *testing.T) {
 	}
 }
 
+func TestAsDefaultValidator_InvalidReturns400(t *testing.T) {
+	type Req struct {
+		Name string `json:"name" validate:"required"`
+	}
+	fn := validator.AsDefaultValidator()
+	err := fn(&Req{}) // empty name → required fails
+	if err == nil {
+		t.Fatal("expected error from empty Name")
+	}
+	var espErr *espresso.Error
+	if !errors.As(err, &espErr) {
+		t.Fatalf("expected *espresso.Error, got %T", err)
+	}
+	if espErr.StatusCode != 400 || espErr.Code != "VALIDATION_ERROR" {
+		t.Errorf("status=%d code=%q, want 400/VALIDATION_ERROR", espErr.StatusCode, espErr.Code)
+	}
+}
+
+func TestAsDefaultValidator_ValidReturnsNil(t *testing.T) {
+	type Req struct {
+		Name string `json:"name" validate:"required"`
+	}
+	fn := validator.AsDefaultValidator()
+	if err := fn(&Req{Name: "alice"}); err != nil {
+		t.Errorf("unexpected error for valid input: %v", err)
+	}
+}
+
 func TestStruct_ToValidationErrors(t *testing.T) {
 	type req struct {
 		Name string `json:"name" validate:"required"`
