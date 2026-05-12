@@ -58,7 +58,7 @@ go get github.com/suryakencana007/espresso/v2
 
 ---
 
-## Upgrading from v1 to v2
+## Upgrading
 
 If you are migrating an existing v1.x app to v2.0, see
 [`docs/migration-v1-to-v2.md`](docs/migration-v1-to-v2.md). It covers
@@ -66,6 +66,16 @@ the module-path bump, the legacy-error-constructor removal, the
 `Ristretto` signature change, and the per-Router stream registries —
 plus mechanical `gofmt -r` recipes for everything that's safe to
 auto-rewrite. Most apps complete the upgrade in one sitting.
+
+If you are already on v2.0 and upgrading to v2.1, see
+[`docs/migration-v2-to-v2.1.md`](docs/migration-v2-to-v2.1.md). The
+module path is unchanged; the only code change required is migrating
+off the now-removed deprecated SSE types (`SSE`, `SSEEvent`,
+`SSEWriter`, `NewSSEWriter`) to `Stream` / `StreamSimple` and
+`*SSEStream`. v2.1 also ships two ergonomics additions —
+`espresso.WithPreFlight(fn)` for SSE pre-flight authorization and
+`validator.AsDefaultValidator()` as a one-liner for auto-validate
+wiring — both fully backward-compatible.
 
 ---
 

@@ -56,7 +56,13 @@ export default defineConfig({
       { text: "Guide", link: "/guide/", activeMatch: "/guide/" },
       { text: "Examples", link: "/examples/", activeMatch: "/examples/" },
       { text: "API", link: "/api/", activeMatch: "/api/" },
-      { text: "v1 → v2", link: "/migration-v1-to-v2" },
+      {
+        text: "Migrations",
+        items: [
+          { text: "v1 → v2", link: "/migration-v1-to-v2" },
+          { text: "v2.0 → v2.1", link: "/migration-v2-to-v2.1" },
+        ],
+      },
       {
         text: "v2.0.0",
         items: [
@@ -121,6 +127,7 @@ export default defineConfig({
           collapsed: false,
           items: [
             { text: "v1 → v2 Migration", link: "/migration-v1-to-v2" },
+            { text: "v2.0 → v2.1 Migration", link: "/migration-v2-to-v2.1" },
           ],
         },
       ],

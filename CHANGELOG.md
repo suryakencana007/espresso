@@ -69,6 +69,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- **v2.0 → v2.1 migration guide** (v2.1 task-05): new
+  [`docs/migration-v2-to-v2.1.md`](docs/migration-v2-to-v2.1.md)
+  covering the four user-facing v2.1 deltas — the removed deprecated
+  SSE types (PR #30), the new `WithPreFlight` Stream option (PR #33,
+  closes Barista F-02), the `validator.AsDefaultValidator()` helper
+  (PR #31), and the framework-comparison bench refresh (PR #32). Five-
+  minute upgrade checklist at the top in the same style as the v1 → v2
+  guide; Before/After recipes for each change. Docs nav
+  (`docs/.vitepress/config.ts`) gains a "Migrations" dropdown at the
+  top level and a second entry under the "Upgrading" sidebar group so
+  readers on either v1.x or v2.0 land in the right guide. README
+  `Upgrading` section gains a parallel paragraph for the v2.0 → v2.1
+  jump. Cross-references added from `roadmaps/v2.0/README.md` and
+  `roadmaps/v2.1/README.md` to the new guide. Pure documentation; no
+  behavioural change.
+
 - **Framework comparison benchmarks refreshed against v2.1.x**
   (v2.1 task-04). Re-ran `bench/` (Gin / Echo / Espresso / Fiber across
   static-text, JSON round-trip, and path-parameter scenarios) on

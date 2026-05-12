@@ -13,6 +13,9 @@ Plus one ergonomics nick that turned up while writing the v2.0 migration guide:
 
 - The `cmd/example/validate/` opt-in wiring requires users to wrap `validator.Struct` in a closure that converts `FieldErrors` → `ValidationErrors`. That's the same closure every user will write. Ship a helper.
 
+For the user-facing upgrade story across these three items, see
+[`docs/migration-v2-to-v2.1.md`](../../docs/migration-v2-to-v2.1.md).
+
 ## Design Principles
 
 Carried forward unchanged from v2.0:
