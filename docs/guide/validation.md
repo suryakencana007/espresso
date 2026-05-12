@@ -124,7 +124,8 @@ Nil pointer fields are skipped — if you want to enforce presence of a pointer 
 
 For the most common case — "validate every JSON/Query/Path/Form/etc. body
 on every route" — wire the validator once globally and let extraction take
-care of the rest:
+care of the rest. The `validator` package ships an `AsDefaultValidator()`
+helper that returns the canonical adapter for this hook:
 
 ```go
 import (
@@ -133,17 +134,7 @@ import (
 )
 
 func init() {
-    espresso.SetDefaultValidator(func(v any) error {
-        if err := validator.Struct(v); err != nil {
-            // Wrap FieldErrors in the standard 400 shape so downstream
-            // gets {"error":{"code":"VALIDATION_ERROR",...}} bodies.
-            if fe, ok := err.(espresso.FieldErrors); ok {
-                return espresso.ValidationErrors(fe.ToValidationErrors())
-            }
-            return err
-        }
-        return nil
-    })
+    espresso.SetDefaultValidator(validator.AsDefaultValidator())
 }
 
 type CreateUserReq struct {
@@ -157,9 +148,36 @@ func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espress
 }
 ```
 
+`AsDefaultValidator()` runs `validator.Struct` and converts the resulting
+`FieldErrors` into `ValidationErrors`, so failures surface as the standard
+`{"error":{"code":"VALIDATION_ERROR",...}}` 400 body.
+
 When `SetDefaultValidator` is unset (the default), extractors behave
 identically to v1.x — the nil-fast path is one atomic load with zero
 allocations (see `BenchmarkRunDefaultValidator_NilHook`).
+
+### Custom error mapping
+
+If you need a different error code, additional context, or some other
+shape, write the closure yourself instead of using the helper:
+
+```go
+func init() {
+    espresso.SetDefaultValidator(func(v any) error {
+        if err := validator.Struct(v); err != nil {
+            if fe, ok := err.(espresso.FieldErrors); ok {
+                // Customize: different code, extra detail keys, logging, etc.
+                return espresso.ValidationErrors(fe.ToValidationErrors())
+            }
+            return err
+        }
+        return nil
+    })
+}
+```
+
+`AsDefaultValidator()` is deliberately not configurable — it covers the
+common case in one line; everything else is just a closure away.
 
 `RunDefaultValidator(v any) error` is also exported so custom `Extract`
 methods can opt into the same hook:

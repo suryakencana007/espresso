@@ -32,6 +32,31 @@ import (
 	"github.com/suryakencana007/espresso/v2"
 )
 
+// AsDefaultValidator returns a function suitable for
+// espresso.SetDefaultValidator that runs Struct(v) and converts the
+// FieldErrors result into the framework's standard ValidationError shape.
+//
+// Wire it once in init():
+//
+//	func init() {
+//	    espresso.SetDefaultValidator(validator.AsDefaultValidator())
+//	}
+//
+// Users who need a custom error mapper (different code, extra context,
+// etc.) should write their own closure instead — this helper is the
+// most-common-case shortcut, not a configuration surface.
+func AsDefaultValidator() func(v any) error {
+	return func(v any) error {
+		if err := Struct(v); err != nil {
+			if fe, ok := err.(espresso.FieldErrors); ok {
+				return espresso.ValidationErrors(fe.ToValidationErrors())
+			}
+			return err
+		}
+		return nil
+	}
+}
+
 // Struct validates v against its `validate` struct tags. It returns
 // espresso.FieldErrors on failure (implements error) or nil when every
 // field passes.
