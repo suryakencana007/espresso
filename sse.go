@@ -210,9 +210,49 @@ func WithRetryHint(d time.Duration) StreamOption {
 	return func(c *streamConfig) { c.initialRetryHint = d }
 }
 
+// WithPreFlight registers a pre-flight authorization closure that runs
+// BEFORE the SSE response headers commit. If the closure returns a
+// non-nil error, the stream is rejected and the error is routed through
+// the standard JSON error pipeline (writeHandlerError) — an
+// *espresso.Error surfaces with its declared status code (e.g. 404), and
+// any other error becomes a 500. No SSE headers are written and no
+// event frames are emitted.
+//
+// This closes the v0.2-era "Stream commits headers before the handler
+// runs" foot-gun (USAGE_ESPRESSO.md F-02): handlers can now surface a
+// "resource not found" decision as a real HTTP 4xx with a structured
+// JSON body, instead of emitting an `event: error` frame on a 200-OK
+// stream.
+//
+// The closure receives the request context, so it can read state via
+// MustGetState[T] / GetState[T] and any context values populated by
+// upstream middleware (request-id, auth principal, etc.). The extracted
+// request body is NOT threaded into pre-flight in this iteration — keep
+// pre-flight checks tied to context-derivable identity / authorization
+// state.
+//
+// Example:
+//
+//	router.Get("/apps/{id}/logs", espresso.Stream(logsStream,
+//	    espresso.WithPreFlight(func(ctx context.Context) error {
+//	        s := espresso.MustGetState[AppState](ctx)
+//	        if !s.UserCanReadApp(ctx) {
+//	            return espresso.ErrNotFound("app not found")
+//	        }
+//	        return nil
+//	    }),
+//	))
+//
+// Zero overhead on the happy path: if no pre-flight closure is
+// registered, the v2.0 stream flow is unchanged.
+func WithPreFlight(fn func(ctx context.Context) error) StreamOption {
+	return func(c *streamConfig) { c.preflight = fn }
+}
+
 type streamConfig struct {
 	keepAliveInterval time.Duration
 	initialRetryHint  time.Duration
+	preflight         func(ctx context.Context) error
 }
 
 // StreamHandler is the function signature for SSE handlers.
@@ -286,6 +326,18 @@ func StreamSimple(h func(ctx context.Context, stream *SSEStream) error, opts ...
 // Both Stream[Req] and StreamSimple delegate here; Stream[Req] adapts its
 // typed handler into the uniform signature via a closure.
 func serveStream(w http.ResponseWriter, r *http.Request, cfg *streamConfig, h func(ctx context.Context, stream *SSEStream) error) {
+	// Pre-flight phase (USAGE_ESPRESSO.md F-02): runs BEFORE any header is
+	// committed, so a rejection becomes a real HTTP 4xx with a structured
+	// JSON body via writeHandlerError — not an `event: error` frame on a
+	// 200-OK stream. Skipped entirely when no pre-flight closure is
+	// configured (zero overhead on the happy path).
+	if cfg.preflight != nil {
+		if err := cfg.preflight(r.Context()); err != nil {
+			writeHandlerError(w, r, err)
+			return
+		}
+	}
+
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")

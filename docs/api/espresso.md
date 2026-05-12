@@ -174,6 +174,28 @@ the `*SSEStream` API documented in [Streaming](../streaming.md). The
 legacy `SSE`, `SSEEvent`, `SSEWriter`, and `NewSSEWriter` types were
 removed in v2.1.0 (deprecated since v1.3).
 
+### Stream options
+
+`Stream[T]` and `StreamSimple` accept a variadic `...StreamOption` that
+configures the SSE transport. All options are additive — omit them and
+the v2.0 stream flow is unchanged.
+
+```go
+type StreamOption func(*streamConfig)
+
+func WithKeepAlive(interval time.Duration) StreamOption
+func WithRetryHint(d time.Duration) StreamOption
+func WithPreFlight(fn func(ctx context.Context) error) StreamOption
+```
+
+| Option | Purpose |
+|--------|---------|
+| `WithKeepAlive(interval)` | Send periodic `: keepalive` comment frames so proxies don't drop the idle connection. Set to `0` (default) to disable. |
+| `WithRetryHint(d)` | Emit an initial `retry: <ms>` field so EventSource clients use the given reconnection delay. |
+| `WithPreFlight(fn)` | Run an authorization / resource-existence check **before** the SSE response headers commit. Returning a non-nil error short-circuits the stream and routes through the standard JSON error pipeline — an `*espresso.Error` surfaces as a real HTTP 4xx with the framework's structured envelope, not an `event: error` frame on a 200-OK stream. The closure receives the request context, so it can call `MustGetState[T]` / `GetState[T]`. Added in v2.1 to close [USAGE_ESPRESSO.md F-02](../../roadmaps/USAGE_ESPRESSO.md#f-02). |
+
+See [Streaming → Rejecting requests before the stream opens](../streaming.md#rejecting-requests-before-the-stream-opens) for the canonical `WithPreFlight` pattern.
+
 ## Error Constructors
 
 Structured errors use `*espresso.Error`. The `Err*` family covers
