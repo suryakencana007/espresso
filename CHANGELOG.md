@@ -37,6 +37,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   switch to 400 (validation) / 503 (circuit-breaker, timeout). Handler-returned
   `*espresso.Error` responses and genuinely unknown errors are unaffected.
 
+- **Every framework-produced error now emits the canonical JSON envelope**
+  (v2.2 task-03). Three error paths previously bypassed the
+  `{"error":{"code","message","details","request_id"}}` shape that
+  `writeErrorResponse` produces for extractor / handler / SSE / WebSocket
+  failures:
+  - **Auth rejection (401)** — `JWTMiddleware` / `BasicAuthMiddleware` /
+    `APIKeyMiddleware` (plus the generic `AuthMiddleware`) emitted
+    `text/plain` `"Unauthorized…"` via `http.Error`. They now emit the JSON
+    envelope with code `UNAUTHORIZED` and `request_id`, preserving the
+    previous message text inside `message` (e.g.
+    `{"error":{"code":"UNAUTHORIZED","message":"Unauthorized: invalid token","request_id":"…"}}`).
+    The `WWW-Authenticate` header on Basic-auth challenges is unchanged.
+  - **Rate-limit rejection (429)** — `RateLimitMiddleware` emitted
+    `text/plain` `"Too Many Requests"`. It now emits the envelope with code
+    `TOO_MANY_REQUESTS` and `request_id`.
+  - **Panic recovery (500)** — `RecoverMiddleware` hand-rolled an
+    anonymous-struct JSON (code `PANIC`) that omitted the `details` key. It
+    now routes through the shared writer, so the body is byte-identical to a
+    `writeHandlerError` 500: `details` is omitted (nil → `omitempty`),
+    matching the canonical 500 exactly.
+
+  These three paths and the root package's `writeErrorResponse` now share a
+  single stdlib-only leaf package, `internal/errorenvelope`, so the wire
+  format cannot drift between them. The root → `middleware/http` import
+  direction is preserved (the leaf is importable by both without a cycle);
+  `middleware/http` still does not import the root package. No API signatures
+  changed.
+
+  **Upgrade from v2.1:** callers that parsed the old `text/plain` 401 / 429
+  bodies (e.g. matching the literal strings `"Unauthorized"` /
+  `"Too Many Requests"`, or branching on a `text/plain` content type) must
+  switch to parsing the JSON envelope and reading `error.code`
+  (`UNAUTHORIZED` / `TOO_MANY_REQUESTS`). The 500 panic body is unchanged in
+  practice (it already lacked `details`).
+
 ### Fixed
 
 - **Two-extractor reflection handlers now fail fast at registration**

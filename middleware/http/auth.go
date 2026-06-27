@@ -6,7 +6,24 @@ import (
 	"encoding/base64"
 	"net/http"
 	"strings"
+
+	"github.com/suryakencana007/espresso/v2/internal/errorenvelope"
 )
+
+// writeUnauthorized emits the canonical error envelope for a 401 rejection
+// (code UNAUTHORIZED) via the cycle-safe leaf, replacing the previous
+// http.Error text/plain bodies. message preserves the per-site signal (e.g.
+// "Unauthorized: invalid token"); the request ID is pulled from context so the
+// envelope matches a root-package 401 exactly. Any header a caller set before
+// this (e.g. WWW-Authenticate for Basic auth) is preserved — Write only sets
+// Content-Type and the status, then writes the body once.
+func writeUnauthorized(w http.ResponseWriter, r *http.Request, message string) {
+	errorenvelope.Write(w, http.StatusUnauthorized, errorenvelope.Body{
+		Code:      "UNAUTHORIZED",
+		Message:   message,
+		RequestID: GetRequestID(r.Context()),
+	})
+}
 
 // JWTConfig defines configuration for JWT middleware.
 type JWTConfig struct {
@@ -54,18 +71,18 @@ func JWTMiddleware(config JWTConfig) Middleware {
 
 			token, err := extractToken(r, config.TokenLookup, config.TokenHeader)
 			if err != nil {
-				http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+				writeUnauthorized(w, r, "Unauthorized: "+err.Error())
 				return
 			}
 
 			if config.ClaimsExtractor == nil {
-				http.Error(w, "Unauthorized: no claims extractor", http.StatusUnauthorized)
+				writeUnauthorized(w, r, "Unauthorized: no claims extractor")
 				return
 			}
 
 			claims, err := config.ClaimsExtractor(token)
 			if err != nil {
-				http.Error(w, "Unauthorized: invalid token", http.StatusUnauthorized)
+				writeUnauthorized(w, r, "Unauthorized: invalid token")
 				return
 			}
 
@@ -104,20 +121,20 @@ func BasicAuthMiddleware(config BasicAuthConfig) Middleware {
 			username, password, ok := extractBasicAuth(r)
 			if !ok {
 				w.Header().Set("WWW-Authenticate", `Basic realm="`+config.Realm+`"`)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				writeUnauthorized(w, r, "Unauthorized")
 				return
 			}
 
 			if config.Validator != nil {
 				if !config.Validator(username, password) {
 					w.Header().Set("WWW-Authenticate", `Basic realm="`+config.Realm+`"`)
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					writeUnauthorized(w, r, "Unauthorized")
 					return
 				}
 			} else {
 				if !validateBasicAuth(username, password, config.Users) {
 					w.Header().Set("WWW-Authenticate", `Basic realm="`+config.Realm+`"`)
-					http.Error(w, "Unauthorized", http.StatusUnauthorized)
+					writeUnauthorized(w, r, "Unauthorized")
 					return
 				}
 			}
@@ -161,18 +178,18 @@ func APIKeyMiddleware(config APIKeyConfig) Middleware {
 
 			key, err := extractAPIKey(r, config.KeyLookup)
 			if err != nil {
-				http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
+				writeUnauthorized(w, r, "Unauthorized: "+err.Error())
 				return
 			}
 
 			if config.KeyValidator != nil {
 				if !config.KeyValidator(key) {
-					http.Error(w, "Unauthorized: invalid API key", http.StatusUnauthorized)
+					writeUnauthorized(w, r, "Unauthorized: invalid API key")
 					return
 				}
 			} else {
 				if !validateAPIKey(key, config.Keys) {
-					http.Error(w, "Unauthorized: invalid API key", http.StatusUnauthorized)
+					writeUnauthorized(w, r, "Unauthorized: invalid API key")
 					return
 				}
 			}
