@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Two-extractor reflection handlers now fail fast at registration**
+  (v2.2 task-01): registering `func(ctx, *Req1, *Req2) (T, error)` via the
+  reflection path (`Handler` / `router.Get/Post/Handle`) previously
+  succeeded silently — `handlerInfo` carries a single request slot, so the
+  second `FromRequest` arg clobbered the first and every request hit the
+  defensive `panic("espresso: invalid handler argument - this is a bug")`
+  in `createHandlerFromInfo`, surfacing as an HTTP 500 under
+  `RecoverMiddleware`. The registration-time argument loop in `handlerFunc`
+  now counts `FromRequest` arguments and panics immediately (at startup,
+  not per-request) with an actionable message pointing to the typed
+  `HandlerCtxReq1Req2Err` constructor (or its `Lungo` alias). This aligns
+  with the framework's "panic at registration, not request" philosophy and
+  makes the "this is a bug" panic unreachable for any registrable
+  signature. The typed `HandlerCtxReq1Req2Err` / `HandlerCtxReq1Req2` /
+  `Lungo` / `LungoNoErr` two-extractor path is unchanged.
+
 ### Documentation
 
 - **`docs/guide/testing.md`** — new page documenting the recommended
