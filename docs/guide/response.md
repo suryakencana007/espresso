@@ -61,71 +61,73 @@ func deleteHandler(ctx context.Context, req *espresso.Path[ID]) (espresso.Status
 
 ### Server-Sent Events (SSE)
 
-Real-time streaming from server to client:
+SSE streams are registered with `espresso.StreamSimple` (no extractor) or
+`espresso.Stream[T]` (with an extractor) — they don't return a response value.
+The handler is handed an `*espresso.SSEStream`. See the
+[Streaming guide](../streaming.md) for the full API.
 
 ```go
-func streamHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
-    // Send events
-    writer.Event("message", "Hello, World!")
-    writer.Event("update", `{"count": 42}`)
-    writer.KeepAlive()
+func streamHandler(ctx context.Context, stream *espresso.SSEStream) error {
+    if err := stream.SendText("message", "Hello, World!"); err != nil {
+        return err // client disconnected
+    }
+    if err := stream.SendJSON("update", map[string]any{"count": 42}); err != nil {
+        return err
+    }
+    return nil
 }
 
-// With event ID and retry
-writer.EventWithID("123", "message", "data here")
-
-// JSON events
-writer.EventJSON("data", map[string]any{"user": "john", "count": 42})
-
-// Simple data messages
-writer.Data("simple message")
-
-// Reconnection time
-writer.Retry(5000) // 5 seconds
+router.Get("/events", espresso.StreamSimple(streamHandler))
 ```
 
-#### SSE Event Format
+`*espresso.SSEStream` send methods:
 
 ```go
-// Simple event
+stream.SendText("message", "data here")               // named text event
+stream.SendJSON("data", map[string]any{"count": 42})  // named JSON event
+stream.SendData("simple message")                     // data-only (default "message" event)
+stream.Send(espresso.Event{ID: "123", Name: "message", Data: "data here"}) // explicit ID
+_ = stream.SetRetry(5 * time.Second)                  // reconnection hint
+lastID := stream.LastEventID()                        // resume after a reconnect
+```
+
+Keepalive comment frames are emitted automatically when you register with
+`espresso.WithKeepAlive(interval)` — there's no manual ping loop.
+
+#### SSE Wire Format
+
+```text
 event: message
 data: Hello, World!
 
-// Event with ID
 id: 123
 event: message
 data: Hello, World!
 
-// Event with retry
 event: message
 retry: 5000
 data: Hello, World!
 ```
 
-#### Integration with Handlers
+#### Streaming with Live Updates
 
 ```go
-func sseHandler(w http.ResponseWriter, r *http.Request) {
-    // Set SSE headers automatically
-    writer := espresso.NewSSEWriter(w)
-    
-    // Flushing listener for real-time updates
-    ctx := r.Context()
+var messages = make(chan string, 100)
+
+func sseHandler(ctx context.Context, stream *espresso.SSEStream) error {
     for {
         select {
         case <-ctx.Done():
-            return
+            return nil
         case msg := <-messages:
-            writer.Event("message", msg)
-        case <-time.After(30 * time.Second):
-            writer.KeepAlive()
+            if err := stream.SendText("message", msg); err != nil {
+                return err
+            }
         }
     }
 }
 
-router.Get("/events", http.HandlerFunc(sseHandler))
+router.Get("/events", espresso.StreamSimple(sseHandler, espresso.WithKeepAlive(30*time.Second)))
 ```
 
 ## Custom Response Types

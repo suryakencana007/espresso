@@ -71,9 +71,11 @@ var handlerCache = newBoundedHandlerCache(DefaultHandlerCacheSize)
 //	func(context.Context, *Req) T
 //		- Receives context and extracted Req, returns T
 //
-//	func(context.Context, *Req1, *Req2) (T, error)
-//		- Receives context and two extracted requests (e.g., path + body)
-//		- Use Lungo() alias for this signature
+// Two-extractor handlers — func(context.Context, *Req1, *Req2) (T, error) —
+// are NOT supported by this reflection path: handlerInfo carries a single
+// request slot, so a second FromRequest argument panics at request time.
+// Use the typed HandlerCtxReq1Req2Err constructor (or its Lungo alias) for
+// two extractors.
 //
 // Service interface:
 //

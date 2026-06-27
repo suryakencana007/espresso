@@ -11,38 +11,40 @@ This example shows how to implement real-time streaming using Server-Sent Events
 
 ### Simple Event Stream
 
+Register an SSE route with `espresso.StreamSimple`. The handler receives an
+`*espresso.SSEStream`; the framework sets the SSE headers, flushes after every
+send, and cleans up when the client disconnects.
+
 ```go
 package main
 
 import (
+    "context"
     "fmt"
-    "net/http"
     "time"
-    
+
     "github.com/suryakencana007/espresso/v2"
 )
 
 func main() {
     router := espresso.Portafilter()
-    
+
     // SSE endpoint
-    router.Get("/events", http.HandlerFunc(streamHandler))
-    
+    router.Get("/events", espresso.StreamSimple(streamHandler))
+
     fmt.Println("Server starting on :8080")
     router.Brew(espresso.WithAddr(":8080"))
 }
 
-func streamHandler(w http.ResponseWriter, r *http.Request) {
-    // Set SSE headers
-    writer := espresso.NewSSEWriter(w)
-    
+func streamHandler(ctx context.Context, stream *espresso.SSEStream) error {
     // Send events
     for i := 0; i < 10; i++ {
-        writer.Event("message", fmt.Sprintf("Event %d", i))
+        if err := stream.SendText("message", fmt.Sprintf("Event %d", i)); err != nil {
+            return err // client disconnected
+        }
         time.Sleep(1 * time.Second)
     }
-    
-    writer.Event("done", "Stream complete")
+    return stream.SendText("done", "Stream complete")
 }
 ```
 
@@ -67,20 +69,35 @@ eventSource.onerror = (error) => {
 
 ## Integration with Handlers
 
-### Using SSE Type
+### Streaming with an Extractor
+
+Use `espresso.Stream[Req]` when the stream needs request data. The typed
+request is extracted first (via the `FromRequest` interface), then the handler
+is invoked with both the request and the `*espresso.SSEStream`.
 
 ```go
+import "github.com/suryakencana007/espresso/v2/extractor"
+
 type StreamRequest struct {
     Topic string `query:"topic"`
 }
 
-func sseHandler(ctx context.Context, req *espresso.JSON[StreamRequest]) (*espresso.SSE, error) {
-    // SSE type is used for streaming endpoints
-    return &espresso.SSE{}, nil
+func topicStream(ctx context.Context, req *extractor.Query[StreamRequest], stream *espresso.SSEStream) error {
+    topic := req.Data.Topic
+    for {
+        select {
+        case <-ctx.Done():
+            return nil
+        case msg := <-subscribe(topic):
+            if err := stream.SendText("message", msg); err != nil {
+                return err
+            }
+        }
+    }
 }
 
-// Route with handler pattern
-router.Get("/stream", espresso.Doppio(sseHandler))
+// A normal GET route — SSE works over plain HTTP GET.
+router.Get("/stream", espresso.Stream(topicStream))
 ```
 
 ## Real-Time Updates
@@ -88,24 +105,22 @@ router.Get("/stream", espresso.Doppio(sseHandler))
 ### Counter Example
 
 ```go
-func counterHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
-    ctx := r.Context()
+func counterHandler(ctx context.Context, stream *espresso.SSEStream) error {
     for i := 1; i <= 100; i++ {
         select {
         case <-ctx.Done():
-            return
+            return nil
         default:
-            writer.Event("count", fmt.Sprintf("%d", i))
+            if err := stream.SendText("count", fmt.Sprintf("%d", i)); err != nil {
+                return err
+            }
             time.Sleep(100 * time.Millisecond)
         }
     }
-    
-    writer.Event("complete", "done")
+    return stream.SendText("complete", "done")
 }
 
-router.Get("/counter", http.HandlerFunc(counterHandler))
+router.Get("/counter", espresso.StreamSimple(counterHandler))
 ```
 
 ### Chat Messages
@@ -114,31 +129,33 @@ router.Get("/counter", http.HandlerFunc(counterHandler))
 // Message broker (simplified)
 var messageChan = make(chan string, 100)
 
-func chatHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
-    ctx := r.Context()
+func chatHandler(ctx context.Context, stream *espresso.SSEStream) error {
     for {
         select {
         case <-ctx.Done():
-            return
+            return nil
         case msg := <-messageChan:
-            writer.Event("message", msg)
-        case <-time.After(30 * time.Second):
-            writer.KeepAlive()
+            if err := stream.SendText("message", msg); err != nil {
+                return err
+            }
         }
     }
 }
 
-// Send message endpoint
-func sendHandler(w http.ResponseWriter, r *http.Request) {
-    msg := r.URL.Query().Get("msg")
-    messageChan <- msg
-    w.WriteHeader(http.StatusOK)
+// Send-message endpoint
+type SendReq struct {
+    Msg string `query:"msg"`
 }
 
-router.Get("/chat/stream", http.HandlerFunc(chatHandler))
-router.Get("/chat/send", http.HandlerFunc(sendHandler))
+func sendHandler(ctx context.Context, req *extractor.Query[SendReq]) (espresso.Text, error) {
+    messageChan <- req.Data.Msg
+    return espresso.Text{Body: "ok"}, nil
+}
+
+// WithKeepAlive emits a comment frame periodically so idle proxies don't drop
+// the connection — no manual keepalive loop needed.
+router.Get("/chat/stream", espresso.StreamSimple(chatHandler, espresso.WithKeepAlive(30*time.Second)))
+router.Get("/chat/send", espresso.Doppio(sendHandler))
 ```
 
 ## JSON Events
@@ -152,21 +169,22 @@ type StockPrice struct {
     Time   string  `json:"time"`
 }
 
-func stockHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
+func stockHandler(ctx context.Context, stream *espresso.SSEStream) error {
     stocks := []StockPrice{
         {Symbol: "AAPL", Price: 178.50, Time: time.Now().Format(time.RFC3339)},
         {Symbol: "GOOGL", Price: 141.80, Time: time.Now().Format(time.RFC3339)},
         {Symbol: "MSFT", Price: 378.90, Time: time.Now().Format(time.RFC3339)},
     }
-    
+
     for _, stock := range stocks {
-        writer.EventJSON("stock", stock)
+        if err := stream.SendJSON("stock", stock); err != nil {
+            return err
+        }
     }
+    return nil
 }
 
-router.Get("/stocks", http.HandlerFunc(stockHandler))
+router.Get("/stocks", espresso.StreamSimple(stockHandler))
 ```
 
 ### Client-Side JSON Parsing
@@ -185,31 +203,32 @@ eventSource.addEventListener('stock', (event) => {
 ### Resumable Events
 
 ```go
-func resumableHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
-    // Set retry time
-    writer.Retry(5000) // 5 seconds
-    
-    // Get last event ID from client
-    lastID := r.Header.Get("Last-Event-ID")
+func resumableHandler(ctx context.Context, stream *espresso.SSEStream) error {
+    // Hint the client to wait 5s before reconnecting.
+    _ = stream.SetRetry(5 * time.Second)
+
+    // Resume from the client's Last-Event-ID, if it sent one.
     startID := 0
-    if lastID != "" {
+    if lastID := stream.LastEventID(); lastID != "" {
         startID, _ = strconv.Atoi(lastID)
     }
-    
-    // Send events with IDs
+
+    // Send events with explicit IDs so the client can resume after a drop.
     for i := startID + 1; i <= startID+10; i++ {
-        writer.EventWithID(
-            fmt.Sprintf("%d", i),
-            "message",
-            fmt.Sprintf("Event %d", i),
-        )
+        err := stream.Send(espresso.Event{
+            ID:   strconv.Itoa(i),
+            Name: "message",
+            Data: fmt.Sprintf("Event %d", i),
+        })
+        if err != nil {
+            return err
+        }
         time.Sleep(500 * time.Millisecond)
     }
+    return nil
 }
 
-router.Get("/resumable", http.HandlerFunc(resumableHandler))
+router.Get("/resumable", espresso.StreamSimple(resumableHandler))
 ```
 
 ### Client-Side Reconnection
@@ -231,25 +250,19 @@ eventSource.addEventListener('message', (event) => {
 
 ### Preventing Timeouts
 
+Keepalive is a stream option, not something you hand-roll in the handler. The
+framework sends a comment frame on the configured interval and stops it cleanly
+when the handler returns.
+
 ```go
-func keepAliveHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
-    ctx := r.Context()
-    ticker := time.NewTicker(15 * time.Second)
-    defer ticker.Stop()
-    
-    for {
-        select {
-        case <-ctx.Done():
-            return
-        case <-ticker.C:
-            writer.KeepAlive()
-        }
-    }
+func feedHandler(ctx context.Context, stream *espresso.SSEStream) error {
+    // Emit real events as they arrive; block until the client leaves.
+    // Keepalive comment frames are sent automatically (see registration).
+    <-ctx.Done()
+    return nil
 }
 
-router.Get("/keepalive", http.HandlerFunc(keepAliveHandler))
+router.Get("/keepalive", espresso.StreamSimple(feedHandler, espresso.WithKeepAlive(15*time.Second)))
 ```
 
 ## Complete Example
@@ -258,12 +271,13 @@ router.Get("/keepalive", http.HandlerFunc(keepAliveHandler))
 package main
 
 import (
+    "context"
     "fmt"
-    "net/http"
     "sync"
     "time"
-    
+
     "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
 )
 
 // Simple message broker
@@ -308,48 +322,43 @@ var broker = NewBroker()
 
 func main() {
     router := espresso.Portafilter()
-    
-    // SSE stream endpoint
-    router.Get("/stream", http.HandlerFunc(streamHandler))
-    
+
+    // SSE stream endpoint (keepalive handled by the framework)
+    router.Get("/stream", espresso.StreamSimple(streamHandler, espresso.WithKeepAlive(30*time.Second)))
+
     // Publish endpoint
-    router.Post("/publish", http.HandlerFunc(publishHandler))
-    
+    router.Post("/publish", espresso.Doppio(publishHandler))
+
     fmt.Println("Server starting on :8080")
     router.Brew(espresso.WithAddr(":8080"))
 }
 
-func streamHandler(w http.ResponseWriter, r *http.Request) {
-    writer := espresso.NewSSEWriter(w)
-    
+func streamHandler(ctx context.Context, stream *espresso.SSEStream) error {
     ch := broker.Subscribe()
     defer broker.Unsubscribe(ch)
-    
-    ctx := r.Context()
-    keepAlive := time.NewTicker(30 * time.Second)
-    defer keepAlive.Stop()
-    
+
     for {
         select {
         case <-ctx.Done():
-            return
+            return nil
         case msg := <-ch:
-            writer.Event("message", msg)
-        case <-keepAlive.C:
-            writer.KeepAlive()
+            if err := stream.SendText("message", msg); err != nil {
+                return err
+            }
         }
     }
 }
 
-func publishHandler(w http.ResponseWriter, r *http.Request) {
-    msg := r.URL.Query().Get("msg")
-    if msg == "" {
-        http.Error(w, "missing msg parameter", http.StatusBadRequest)
-        return
+type PublishReq struct {
+    Msg string `query:"msg"`
+}
+
+func publishHandler(ctx context.Context, req *extractor.Query[PublishReq]) (espresso.Text, error) {
+    if req.Data.Msg == "" {
+        return espresso.Text{}, espresso.ErrBadRequest("missing msg parameter")
     }
-    
-    broker.Publish(msg)
-    w.WriteHeader(http.StatusOK)
+    broker.Publish(req.Data.Msg)
+    return espresso.Text{Body: "ok"}, nil
 }
 ```
 
