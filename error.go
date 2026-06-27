@@ -1,6 +1,7 @@
 package espresso
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -216,16 +217,54 @@ func requestIDFromContext(r *http.Request, err *Error) string {
 }
 
 // writeHandlerError writes an appropriate error response for a handler error.
-// If the error is a *Error, it's used directly. Otherwise, it's wrapped as a
-// 500 Internal Server Error.
+// A handler-returned *Error keeps its explicit status. Known service-layer
+// errors are mapped to their contract status via translateLayerError.
+// Anything else is wrapped as a 500 Internal Server Error.
 func writeHandlerError(w http.ResponseWriter, r *http.Request, err error) {
 	var espErr *Error
 	if errors.As(err, &espErr) {
 		writeErrorResponse(w, r, espErr)
 		return
 	}
+	if mapped, ok := translateLayerError(err); ok {
+		writeErrorResponse(w, r, mapped)
+		return
+	}
 	wrapped := ErrInternal("internal server error").Wrap(err)
 	writeErrorResponse(w, r, wrapped)
+}
+
+// translateLayerError converts known service-layer error types into a
+// structured *Error with the correct HTTP status. Returns (nil, false) when
+// err is not a recognized layer error, leaving the caller's 500 fallback
+// intact. Circuit-breaker and timeout are classified before the generic
+// validation check so a layer error wrapping a deadline is mapped once,
+// deterministically.
+func translateLayerError(err error) (*Error, bool) {
+	// Open circuit breaker → 503. The CircuitBreakerLayer returns
+	// *servicemiddleware.CircuitBreakerError, so the servicemiddleware matcher
+	// is the correct one (the espresso.CircuitBreakerError type is distinct).
+	if servicemiddleware.IsCircuitBreakerError(err) {
+		return ErrServiceUnavailable("service temporarily unavailable").Wrap(err), true
+	}
+
+	// TimeoutLayer deadline → 503.
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ErrServiceUnavailable("request timed out").Wrap(err), true
+	}
+
+	// ValidationLayer → 400 with preserved field detail when available.
+	// ErrValidation is a value type, so errors.As targets the value.
+	var ve servicemiddleware.ErrValidation
+	if errors.As(err, &ve) {
+		var fe FieldErrors
+		if errors.As(ve.Err, &fe) {
+			return ValidationErrors(fe.ToValidationErrors()).Wrap(err), true
+		}
+		return ErrBadRequest(ve.Err.Error()).WithCode("VALIDATION_ERROR").Wrap(err), true
+	}
+
+	return nil, false
 }
 
 // writeExtractError writes an appropriate error response for a request extraction error.
