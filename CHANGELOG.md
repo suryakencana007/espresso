@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Service-layer errors now map to their contract HTTP status instead of
+  collapsing to 500** (v2.2 task-02). `writeHandlerError` previously
+  special-cased only `*espresso.Error`; every other error surfaced through
+  `WithLayers` / `WithLayersTyped` was wrapped as `ErrInternal` → 500. A new
+  `translateLayerError` step (in `error.go`, run after the `*espresso.Error`
+  fast path and before the 500 fallback) recognizes the three built-in layer
+  failure modes:
+  - **ValidationLayer** (`servicemiddleware.ErrValidation`): `500 INTERNAL`
+    → `400 VALIDATION_ERROR`. When the validator returns
+    `espresso.FieldErrors`, the field detail is preserved under
+    `details.errors`; otherwise the validator's message is preserved.
+  - **CircuitBreaker open** (`*servicemiddleware.CircuitBreakerError`):
+    `500 INTERNAL` → `503 SERVICE_UNAVAILABLE`.
+  - **TimeoutLayer deadline** (`context.DeadlineExceeded`): `500 INTERNAL`
+    → `503 SERVICE_UNAVAILABLE`.
+
+  Handler-returned `*espresso.Error` values (e.g. `ErrConflict`) keep their
+  explicit status — the fast path runs first and is not shadowed. Unknown /
+  unrecognized errors still map to `500 INTERNAL` (fallback unchanged). The
+  auto-validate-on-extract path (which already returns 400 via `ErrBadRequest`)
+  was left untouched. Every mapped error continues to emit the canonical
+  `{"error":{"code","message","details","request_id"}}` envelope.
+
+  **Upgrade from v2.1:** clients that key off HTTP 500 to detect a failed
+  *service-layer* validation, open circuit breaker, or layer timeout must
+  switch to 400 (validation) / 503 (circuit-breaker, timeout). Handler-returned
+  `*espresso.Error` responses and genuinely unknown errors are unaffected.
+
 ### Fixed
 
 - **Two-extractor reflection handlers now fail fast at registration**

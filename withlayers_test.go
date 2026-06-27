@@ -3,6 +3,7 @@ package espresso
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -161,8 +162,13 @@ func TestWithLayersTyped_WithTimeout(t *testing.T) {
 
 	httpHandler(rec, req)
 
-	if rec.Code != http.StatusInternalServerError {
-		t.Errorf("expected status 500 (timeout), got %d", rec.Code)
+	// v2.2 (task-02): TimeoutLayer deadlines now map to 503, not 500.
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503 (timeout), got %d", rec.Code)
+	}
+
+	if code := decodeErrorCode(t, rec); code != "SERVICE_UNAVAILABLE" {
+		t.Errorf("expected error code SERVICE_UNAVAILABLE, got %q", code)
 	}
 }
 
@@ -463,6 +469,232 @@ func TestLayerConfig_Metrics(t *testing.T) {
 	cfg := Metrics(collector, "test")
 	if cfg == nil {
 		t.Error("expected non-nil config")
+	}
+}
+
+// ============================================
+// Test Service-Layer Error → HTTP Status Mapping (v2.2 task-02)
+// ============================================
+
+// decodeErrorCode asserts the recorder holds a canonical structured error
+// envelope and returns its error.code. It fails the test if the body is not
+// the {"error":{"code","message","details","request_id"}} shape.
+func decodeErrorCode(t *testing.T, rec *httptest.ResponseRecorder) string {
+	t.Helper()
+
+	ct := rec.Header().Get("Content-Type")
+	if !strings.HasPrefix(ct, "application/json") {
+		t.Errorf("expected JSON Content-Type, got %q", ct)
+	}
+
+	var body struct {
+		Error struct {
+			Code      string         `json:"code"`
+			Message   string         `json:"message"`
+			Details   map[string]any `json:"details"`
+			RequestID string         `json:"request_id"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response body is not JSON: %v; body=%s", err, rec.Body.String())
+	}
+	if body.Error.Message == "" {
+		t.Error("expected non-empty error message in envelope")
+	}
+	return body.Error.Code
+}
+
+// fieldErrorsValidator returns espresso.FieldErrors so the validation layer
+// error carries structured field detail.
+type fieldErrorsValidator struct{}
+
+func (fieldErrorsValidator) Validate(ctx context.Context, req *JSON[CreateUserReq]) error {
+	return FieldErrors{{Field: "name", Message: "is required"}}
+}
+
+// plainErrorValidator returns a non-FieldErrors error.
+type plainErrorValidator struct{}
+
+func (plainErrorValidator) Validate(ctx context.Context, req *JSON[CreateUserReq]) error {
+	return errors.New("name is bad")
+}
+
+func newUserPostRequest() (*http.Request, *httptest.ResponseRecorder) {
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(`{"name":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	return req, httptest.NewRecorder()
+}
+
+func TestLayerError_Validation_400(t *testing.T) {
+	handler := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		return JSON[UserRes]{Data: UserRes{Message: "ok"}}, nil
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](
+		handler,
+		Validation[*JSON[CreateUserReq]](fieldErrorsValidator{}),
+	)
+
+	req, rec := newUserPostRequest()
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+	if code := decodeErrorCode(t, rec); code != "VALIDATION_ERROR" {
+		t.Errorf("expected code VALIDATION_ERROR, got %q", code)
+	}
+
+	var body struct {
+		Error struct {
+			Details struct {
+				Errors []ValidationError `json:"errors"`
+			} `json:"details"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response body is not JSON: %v", err)
+	}
+	if len(body.Error.Details.Errors) != 1 {
+		t.Fatalf("expected 1 field error preserved in details.errors, got %d", len(body.Error.Details.Errors))
+	}
+	if body.Error.Details.Errors[0].Field != "name" {
+		t.Errorf("expected field 'name', got %q", body.Error.Details.Errors[0].Field)
+	}
+}
+
+func TestLayerError_Validation_NonFieldErrors_400(t *testing.T) {
+	handler := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		return JSON[UserRes]{Data: UserRes{Message: "ok"}}, nil
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](
+		handler,
+		Validation[*JSON[CreateUserReq]](plainErrorValidator{}),
+	)
+
+	req, rec := newUserPostRequest()
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("expected status 400, got %d", rec.Code)
+	}
+	if code := decodeErrorCode(t, rec); code != "VALIDATION_ERROR" {
+		t.Errorf("expected code VALIDATION_ERROR, got %q", code)
+	}
+
+	var body struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("response body is not JSON: %v", err)
+	}
+	if body.Error.Message != "name is bad" {
+		t.Errorf("expected message preserved as 'name is bad', got %q", body.Error.Message)
+	}
+}
+
+func TestLayerError_CircuitBreakerOpen_503(t *testing.T) {
+	failing := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		return JSON[UserRes]{}, errors.New("upstream down")
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](
+		failing,
+		CircuitBreaker(servicemiddleware.CircuitBreakerConfig{
+			ServiceName:      "users",
+			FailureThreshold: 2,
+			Timeout:          time.Minute,
+			SuccessThreshold: 1,
+		}),
+	)
+
+	// Trip the breaker: FailureThreshold failures move it to Open.
+	for i := 0; i < 2; i++ {
+		req, rec := newUserPostRequest()
+		httpHandler(rec, req)
+	}
+
+	// The next call is rejected with *servicemiddleware.CircuitBreakerError.
+	req, rec := newUserPostRequest()
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rec.Code)
+	}
+	if code := decodeErrorCode(t, rec); code != "SERVICE_UNAVAILABLE" {
+		t.Errorf("expected code SERVICE_UNAVAILABLE, got %q", code)
+	}
+}
+
+func TestLayerError_Timeout_503(t *testing.T) {
+	slowHandler := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		select {
+		case <-time.After(100 * time.Millisecond):
+			return JSON[UserRes]{Data: UserRes{Message: "done"}}, nil
+		case <-ctx.Done():
+			return JSON[UserRes]{}, ctx.Err()
+		}
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](
+		slowHandler,
+		Timeout(10*time.Millisecond),
+	)
+
+	req, rec := newUserPostRequest()
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503, got %d", rec.Code)
+	}
+	if code := decodeErrorCode(t, rec); code != "SERVICE_UNAVAILABLE" {
+		t.Errorf("expected code SERVICE_UNAVAILABLE, got %q", code)
+	}
+}
+
+func TestLayerError_Unknown_500(t *testing.T) {
+	handler := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		return JSON[UserRes]{}, errors.New("boom")
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](
+		handler,
+		Logging(zerolog.Nop(), "test"),
+	)
+
+	req, rec := newUserPostRequest()
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("expected status 500, got %d", rec.Code)
+	}
+	if code := decodeErrorCode(t, rec); code != "INTERNAL" {
+		t.Errorf("expected code INTERNAL, got %q", code)
+	}
+}
+
+func TestLayerError_ExplicitEspressoError_Passthrough(t *testing.T) {
+	handler := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		return JSON[UserRes]{}, ErrConflict("user already exists")
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](
+		handler,
+		Timeout(5*time.Second),
+		Logging(zerolog.Nop(), "test"),
+	)
+
+	req, rec := newUserPostRequest()
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusConflict {
+		t.Errorf("expected status 409 (passthrough), got %d", rec.Code)
+	}
+	if code := decodeErrorCode(t, rec); code != "CONFLICT" {
+		t.Errorf("expected code CONFLICT, got %q", code)
 	}
 }
 
