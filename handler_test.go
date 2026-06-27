@@ -742,3 +742,148 @@ func TestHandlerCtxReq1Req2(t *testing.T) {
 		t.Errorf("expected status %d, got %d", http.StatusOK, rec.Code)
 	}
 }
+
+// TestReflectionTwoExtractor asserts that a two-extractor handler registered via
+// the reflection path (Handler / router.Get) fails fast at registration (v2.2
+// approach B) instead of panicking per-request with "this is a bug".
+func TestReflectionTwoExtractor(t *testing.T) {
+	twoExtractor := func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{Message: "unreachable"}, nil
+	}
+
+	t.Run("Handler panics at registration", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected Handler to panic at registration for two-extractor signature")
+			}
+		}()
+		Handler(twoExtractor)
+	})
+
+	t.Run("router.Get panics at registration", func(t *testing.T) {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatal("expected router.Get to panic at registration for two-extractor signature")
+			}
+		}()
+		r := Portafilter()
+		r.Get("/u/{id}", twoExtractor)
+	})
+}
+
+// TestReflectionTwoExtractor_RegistrationPanicMessage asserts the registration
+// panic names the typed alternative so the user knows the fix.
+func TestReflectionTwoExtractor_RegistrationPanicMessage(t *testing.T) {
+	defer func() {
+		r := recover()
+		if r == nil {
+			t.Fatal("expected panic for two-extractor reflection handler")
+		}
+		msg, ok := r.(string)
+		if !ok {
+			t.Fatalf("expected string panic value, got %T: %v", r, r)
+		}
+		if !strings.Contains(msg, "HandlerCtxReq1Req2Err") {
+			t.Errorf("panic message must name HandlerCtxReq1Req2Err, got: %q", msg)
+		}
+		if !strings.Contains(msg, "Lungo") {
+			t.Errorf("panic message must name Lungo, got: %q", msg)
+		}
+		if !strings.Contains(msg, "FromRequest") {
+			t.Errorf("panic message should mention FromRequest arguments, got: %q", msg)
+		}
+	}()
+
+	Handler(func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+		return testRes{}, nil
+	})
+}
+
+// TestLungoTwoExtractor_Regression locks the typed two-extractor path: both
+// extractors must populate. This guards the "typed path unchanged" criterion.
+func TestLungoTwoExtractor_Regression(t *testing.T) {
+	for _, name := range []string{"Lungo", "HandlerCtxReq1Req2Err"} {
+		t.Run(name, func(t *testing.T) {
+			fn := func(ctx context.Context, path *testPathID, body *testReq) (testRes, error) {
+				return testRes{Message: "id=" + strconv.FormatInt(path.ID, 10) + ",name=" + body.Name}, nil
+			}
+			var handler http.HandlerFunc
+			if name == "Lungo" {
+				handler = Lungo(fn)
+			} else {
+				handler = HandlerCtxReq1Req2Err(fn)
+			}
+
+			body := `{"name":"john","email":"john@example.com"}`
+			req := httptest.NewRequest(http.MethodPut, "/users/789", strings.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			req.SetPathValue("id", "789")
+			rec := httptest.NewRecorder()
+
+			handler(rec, req)
+
+			if rec.Code != http.StatusOK {
+				t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+			}
+
+			var result testRes
+			if err := sonic.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+				t.Fatalf("sonic.Unmarshal() error = %v", err)
+			}
+			if result.Message != "id=789,name=john" {
+				t.Errorf("expected both extractors populated, got %q", result.Message)
+			}
+		})
+	}
+}
+
+// TestReflectionSingleExtractor_Unaffected confirms zero- and single-extractor
+// reflection handlers still register and serve after the two-extractor guard.
+func TestReflectionSingleExtractor_Unaffected(t *testing.T) {
+	t.Run("func() T", func(t *testing.T) {
+		handler := Handler(func() testRes { return testRes{Message: "zero"} })
+		rec := httptest.NewRecorder()
+		handler(rec, httptest.NewRequest(http.MethodGet, "/test", nil))
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+	})
+
+	t.Run("func(*Req) T", func(t *testing.T) {
+		handler := Handler(func(req *testReq) testRes { return testRes{Message: "hello " + req.Name} })
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"name":"jane"}`))
+		r.Header.Set("Content-Type", "application/json")
+		handler(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+		var result testRes
+		if err := sonic.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("sonic.Unmarshal() error = %v", err)
+		}
+		if result.Message != "hello jane" {
+			t.Errorf("expected 'hello jane', got %q", result.Message)
+		}
+	})
+
+	t.Run("func(ctx, *Req) (T, error)", func(t *testing.T) {
+		handler := Handler(func(ctx context.Context, req *testReq) (testRes, error) {
+			return testRes{Message: "hello " + req.Name}, nil
+		})
+		rec := httptest.NewRecorder()
+		r := httptest.NewRequest(http.MethodPost, "/test", strings.NewReader(`{"name":"jane"}`))
+		r.Header.Set("Content-Type", "application/json")
+		handler(rec, r)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, rec.Code)
+		}
+		var result testRes
+		if err := sonic.Unmarshal(rec.Body.Bytes(), &result); err != nil {
+			t.Fatalf("sonic.Unmarshal() error = %v", err)
+		}
+		if result.Message != "hello jane" {
+			t.Errorf("expected 'hello jane', got %q", result.Message)
+		}
+	})
+}

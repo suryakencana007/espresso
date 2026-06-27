@@ -73,9 +73,9 @@ var handlerCache = newBoundedHandlerCache(DefaultHandlerCacheSize)
 //
 // Two-extractor handlers — func(context.Context, *Req1, *Req2) (T, error) —
 // are NOT supported by this reflection path: handlerInfo carries a single
-// request slot, so a second FromRequest argument panics at request time.
-// Use the typed HandlerCtxReq1Req2Err constructor (or its Lungo alias) for
-// two extractors.
+// request slot. A second FromRequest argument is rejected at registration
+// time with a panic pointing to the typed alternative. Use the typed
+// HandlerCtxReq1Req2Err constructor (or its Lungo alias) for two extractors.
 //
 // Service interface:
 //
@@ -653,6 +653,7 @@ func handlerFunc(v reflect.Value, t reflect.Type) http.HandlerFunc {
 		reqPool    *sync.Pool
 		reqType    reflect.Type
 		reqIndex   int
+		reqCount   int
 	)
 
 	for i := range numIn {
@@ -666,6 +667,15 @@ func handlerFunc(v reflect.Value, t reflect.Type) http.HandlerFunc {
 				implementsFromRequest = implementsFromRequest || argType.Elem().Implements(fromRequestType)
 			}
 			if implementsFromRequest {
+				reqCount++
+				if reqCount > 1 {
+					// The reflection path carries a single request slot; a second
+					// FromRequest arg would clobber the first. Fail fast at
+					// registration (not request) and point at the typed alternative.
+					panic("espresso: reflection handler has " + strconv.Itoa(reqCount) +
+						" FromRequest arguments; two-extractor handlers require " +
+						"HandlerCtxReq1Req2Err (or its Lungo alias)")
+				}
 				reqPool = &sync.Pool{New: func() any {
 					if argType.Kind() == reflect.Pointer {
 						return reflect.New(argType.Elem()).Interface()
@@ -742,7 +752,10 @@ func createHandlerFromInfo(v reflect.Value, _ reflect.Type, info *handlerInfo) h
 					args[i] = rv
 				}
 			} else {
-				// This should never happen due to validation above
+				// Unreachable: handlerFunc rejects any signature with >1
+				// FromRequest arg at registration, so every index here is
+				// either the context slot or the single request slot.
+				// Kept as a defensive assertion.
 				panic("espresso: invalid handler argument - this is a bug")
 			}
 		}
