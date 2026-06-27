@@ -65,10 +65,10 @@ This is the load-bearing distinction in the codebase, and the mistake to avoid i
 
 Two paths into the same destination — `http.HandlerFunc`:
 
-1. **Reflection path** — `Handler(any)` / `router.Handle(any)` / `router.Get/Post/...(path, fn)`. Inspects the function via reflection at registration time, caches results in `handlerCache` (a process-global `sync.Map` keyed by `reflect.Type`). Supports `func() T`, `func(*Req) T`, `func(ctx, *Req) (T, error)`, `func(ctx, *Req1, *Req2) (T, error)`, and `Service[Req,Res]`. Panics at registration (not request) for invalid signatures.
+1. **Reflection path** — `Handler(any)` / `router.Handle(any)` / `router.Get/Post/...(path, fn)`. Inspects the function via reflection at registration time, caches results in `handlerCache` (a process-global, **LRU-bounded** cache keyed by `reflect.Type`). Supports `func() T`, `func(*Req) T`, `func(ctx, *Req) (T, error)`, `func(ctx, *Req1, *Req2) (T, error)`, and `Service[Req,Res]`. Panics at registration (not request) for invalid signatures.
 2. **Typed path** — generic `HandlerCtxReqErr[Req,Res]`, `HandlerCtxReq`, `HandlerReqErr`, `HandlerReq`, `HandlerCtxReq1Req2Err`, etc. Skip the reflection cache; use these for hot paths or when avoiding the cache matters.
 
-`handlerCache` has **no eviction** — fine for static route registration at startup, but applications that register dynamically-generated function types per request will accumulate entries forever. Eviction is on the v2.0 roadmap (`roadmaps/v2.0/tasks/task-03-handler-cache-eviction.md`). The doc comment on `handlerCache` in `handler.go` is canonical.
+`handlerCache` is **LRU-bounded** (`boundedHandlerCache` in `handler_cache.go`; default `DefaultHandlerCacheSize = 1024`, tunable via `SetHandlerCacheSize` / `OnHandlerCacheEvict`) — shipped in v2.0 (task-03). It is still **process-global and shared across all Routers**, keyed by `reflect.Type` identity so sibling routers share hits. Eviction is safe for in-flight requests: `handlerInfo` values are immutable after `Store`, and the request path holds the `*handlerInfo` by closure (captured at registration), so eviction only drops a cache reference. `SetHandlerCacheSize(0)` resets to the default (never zero). Per-Router cache config remains deferred (a v2.2 candidate). The doc comments in `handler_cache.go` are canonical.
 
 ### Coffee-themed aliases
 
@@ -76,7 +76,7 @@ These are the user-facing entry points; all wrap the underlying typed handlers:
 
 | Alias | Signature | Underlying |
 |-------|-----------|------------|
-| `Portafilter()` | constructs `Router` | `&Router{mux: http.NewServeMux()}` |
+| `Portafilter()` | constructs `Router` | `&Router{mux, wsReg, sseReg}` |
 | `Ristretto(f)` | `func(context.Context) T` | `HandlerCtxNoErr` |
 | `Solo(f)` | `func(*Req) (T, error)` | `HandlerReqErr` |
 | `Doppio(f)` | `func(ctx, *Req) (T, error)` | `HandlerCtxReqErr` |
@@ -101,12 +101,12 @@ State is **immutable, context-carried**. Three usage patterns:
 
 ### Long-lived connections (SSE & WebSocket)
 
-Two **process-global registries** (`defaultSSERegistry`, `defaultRegistry`) track active streams. They exist so `gracefulShutdown` (`server.go`) can close all SSE streams and send WebSocket close frames (code 1001) before `http.Server.Shutdown`. Per-Router registries are on the v2.0 roadmap (`task-01-per-router-registries.md`).
+Each `*Router` owns **per-Router registries** — `wsReg` (`*wsRegistry`) and `sseReg` (`*sseStreamRegistry`), allocated in `Portafilter()` — tracking active streams. `Router.ServeHTTP` injects them into the request context (`withRouterRegistries`); handler wrappers (`WebSocketSimple`, `StreamSimple`, etc.) recover them via `routerRegistriesFrom(ctx)` to register the connections they open. They exist so `gracefulShutdown` (`server.go`) can close all SSE streams and send WebSocket close frames (code 1001) before `http.Server.Shutdown`. The v1.x package-global registries (`defaultRegistry`, `defaultSSERegistry`) were removed in v2.0 (task-01) — two `Portafilter()` instances in one process silently shared them. A Router wired into a foreign mux that bypasses `ServeHTTP` is nil-safe; it just opts out of shutdown draining.
 
 Shutdown sequence (`server.go:gracefulShutdown`):
 1. User-registered `OnShutdown` hooks run in order (panic-recovered, logged).
-2. `defaultSSERegistry.closeAll(...)` — final comment frame.
-3. `defaultRegistry.closeAll(CloseGoingAway, ...)` — close code 1001.
+2. `r.sseReg.closeAll(...)` — final comment frame.
+3. `r.wsReg.closeAll(CloseGoingAway, ...)` — close code 1001.
 4. `srv.Shutdown(ctx)` — stop accepting + drain in-flight requests.
 
 `Brew()` blocks on SIGINT/SIGTERM/SIGQUIT; `BrewContext(ctx, opts...)` is the programmatic variant for tests/embedding.
