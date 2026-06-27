@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -17,6 +16,8 @@ import (
 	"time"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/suryakencana007/espresso/v2/internal/errorenvelope"
 )
 
 // Middleware wraps an HTTP handler with additional behavior.
@@ -83,21 +84,15 @@ func RecoverMiddleware() Middleware {
 						Str("stack", string(stack)).
 						Msg("Panic recovered")
 
-					requestID := GetRequestID(r.Context())
-					body := struct {
-						Error struct {
-							Code      string `json:"code"`
-							Message   string `json:"message"`
-							RequestID string `json:"request_id,omitempty"`
-						} `json:"error"`
-					}{}
-					body.Error.Code = "PANIC"
-					body.Error.Message = "internal server error"
-					body.Error.RequestID = requestID
-
-					w.Header().Set("Content-Type", "application/json; charset=utf-8")
-					w.WriteHeader(http.StatusInternalServerError)
-					_ = json.NewEncoder(w).Encode(body)
+					// Emit the canonical error envelope via the cycle-safe leaf
+					// so a recovered panic is byte-identical to a writeHandlerError
+					// 500. Details is left nil -> omitempty keeps the "details" key
+					// absent, matching the root package's 500 exactly.
+					errorenvelope.Write(w, http.StatusInternalServerError, errorenvelope.Body{
+						Code:      "PANIC",
+						Message:   "internal server error",
+						RequestID: GetRequestID(r.Context()),
+					})
 				}
 			}()
 			next.ServeHTTP(w, r)
@@ -248,7 +243,11 @@ func RateLimitMiddleware(limiter RateLimiter) Middleware {
 			}
 
 			if !limiter.Allow(key) {
-				http.Error(w, "Too Many Requests", http.StatusTooManyRequests)
+				errorenvelope.Write(w, http.StatusTooManyRequests, errorenvelope.Body{
+					Code:      "TOO_MANY_REQUESTS",
+					Message:   "Too Many Requests",
+					RequestID: GetRequestID(r.Context()),
+				})
 				return
 			}
 
@@ -453,7 +452,11 @@ func AuthMiddleware(validator AuthValidator) Middleware {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			ctx, err := validator.Validate(r)
 			if err != nil {
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				errorenvelope.Write(w, http.StatusUnauthorized, errorenvelope.Body{
+					Code:      "UNAUTHORIZED",
+					Message:   "Unauthorized",
+					RequestID: GetRequestID(r.Context()),
+				})
 				return
 			}
 

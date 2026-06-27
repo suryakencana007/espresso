@@ -2,11 +2,11 @@ package espresso
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
 
+	"github.com/suryakencana007/espresso/v2/internal/errorenvelope"
 	httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 	servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
@@ -176,33 +176,31 @@ func (e *Error) WriteResponse(w http.ResponseWriter) error {
 	return nil
 }
 
-// errorResponse is the JSON wrapper for error responses.
+// errorResponse is the JSON wrapper for error responses: {"error": {...}}.
+// It is the same shape errorenvelope.Write emits; kept so decoding helpers and
+// tests can unmarshal the envelope through the root package.
 type errorResponse struct {
 	Error errorBody `json:"error"`
 }
 
-type errorBody struct {
-	Code      string         `json:"code"`
-	Message   string         `json:"message"`
-	Details   map[string]any `json:"details,omitempty"`
-	RequestID string         `json:"request_id,omitempty"`
-}
+// errorBody is the inner error object of the canonical envelope. It is a type
+// alias for the cycle-safe leaf type so the root package and middleware/http
+// serialize the exact same shape. The field order, tags, and omitempty rules
+// live in internal/errorenvelope.Body; the externally observable JSON is
+// unchanged (guarded by TestWithLayers_ExtractorErrorReturnsStructuredJSON).
+type errorBody = errorenvelope.Body
 
-// writeErrorResponse writes the error as a JSON response.
-// If r is non-nil, the request ID is automatically included from context.
+// writeErrorResponse writes the error as a JSON response by delegating to the
+// shared envelope writer. If r is non-nil, the request ID is automatically
+// included from context. Routing through errorenvelope.Write keeps this byte-
+// identical to the panic/auth/rate-limit paths in middleware/http.
 func writeErrorResponse(w http.ResponseWriter, r *http.Request, err *Error) {
-	body := errorResponse{
-		Error: errorBody{
-			Code:      err.Code,
-			Message:   err.Message,
-			Details:   err.Details,
-			RequestID: requestIDFromContext(r, err),
-		},
-	}
-
-	w.Header().Set("Content-Type", "application/json; charset=utf-8")
-	w.WriteHeader(err.StatusCode)
-	_ = json.NewEncoder(w).Encode(body)
+	errorenvelope.Write(w, err.StatusCode, errorBody{
+		Code:      err.Code,
+		Message:   err.Message,
+		Details:   err.Details,
+		RequestID: requestIDFromContext(r, err),
+	})
 }
 
 // requestIDFromContext extracts the request ID from the request context,
