@@ -4,6 +4,8 @@
 **Estimated Effort:** 1.5 days
 **Dependencies:** Task 2 (shares `error.go`)
 
+> **Status: ✅ Shipped 2026-06-28 (v2.2.0).** Delivered via #43 — `internal/errorenvelope` leaf; auth/rate-limit/panic unified.
+
 ## Context
 
 Espresso advertises a single error shape for every failure it produces:
@@ -27,13 +29,13 @@ Finally — this finding was **surfaced by analysis, not yet independently locke
 
 ## Acceptance Criteria
 
-- [ ] **(First.)** A characterization test confirms the current behavior before any change: the panic path emits JSON **without** a `details` key with code `"PANIC"`; auth 401 and rate-limit 429 emit `text/plain` (not the JSON envelope). This pins the "before" state so the unification is provably a fix, not a guess.
-- [ ] A cycle-safe shared writer for the canonical envelope exists, importable by **both** the root package and `httpmiddleware` without forming an import cycle (root → httpmiddleware stays intact).
-- [ ] `RecoverMiddleware` emits the canonical envelope including the `details` key (present-but-empty/omitted per the canonical `omitempty` rule, matching `writeErrorResponse`) and `request_id`.
-- [ ] Auth failures (JWT / BasicAuth / APIKey, 401) emit the canonical JSON envelope with code `UNAUTHORIZED` and `request_id` instead of `text/plain`.
-- [ ] Rate-limit rejection (429) emits the canonical JSON envelope with code `TOO_MANY_REQUESTS` and `request_id` instead of `text/plain`.
-- [ ] `TestWithLayers_ExtractorErrorReturnsStructuredJSON` still passes unchanged — the extractor/handler/SSE/WS paths are not regressed.
-- [ ] The shared writer is stdlib-only (no dependency on `sonic`, the root package, or the validator) so the leaf stays importable by everyone.
+- [x] **(First.)** A characterization test confirms the current behavior before any change: the panic path emits JSON **without** a `details` key with code `"PANIC"`; auth 401 and rate-limit 429 emit `text/plain` (not the JSON envelope). This pins the "before" state so the unification is provably a fix, not a guess.
+- [x] A cycle-safe shared writer for the canonical envelope exists, importable by **both** the root package and `httpmiddleware` without forming an import cycle (root → httpmiddleware stays intact).
+- [x] `RecoverMiddleware` emits the canonical envelope including the `details` key (present-but-empty/omitted per the canonical `omitempty` rule, matching `writeErrorResponse`) and `request_id`.
+- [x] Auth failures (JWT / BasicAuth / APIKey, 401) emit the canonical JSON envelope with code `UNAUTHORIZED` and `request_id` instead of `text/plain`.
+- [x] Rate-limit rejection (429) emits the canonical JSON envelope with code `TOO_MANY_REQUESTS` and `request_id` instead of `text/plain`.
+- [x] `TestWithLayers_ExtractorErrorReturnsStructuredJSON` still passes unchanged — the extractor/handler/SSE/WS paths are not regressed.
+- [x] The shared writer is stdlib-only (no dependency on `sonic`, the root package, or the validator) so the leaf stays importable by everyone.
 
 ## Technical Approach
 
@@ -116,9 +118,9 @@ Update the Step 3.1 tests to assert the **new** canonical shape, so they now loc
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] The cycle-safe leaf is stdlib-only; `middleware/http` still does not import the root package (verified).
-- [ ] `go test -race ./...` clean, including the unchanged `TestWithLayers_ExtractorErrorReturnsStructuredJSON`.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CHANGELOG `[Unreleased]` → `Changed` entry drafted with before/after for the auth/rate-limit/panic bodies.
-- [ ] PR description shows the flipped characterization tests (before/after assertions) and explicitly flags the `text/plain` → JSON behavior change for auth/rate-limit, with a note to confirm no Barista caller parses the old text bodies.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] The cycle-safe leaf is stdlib-only; `middleware/http` still does not import the root package (verified).
+- [x] `go test -race ./...` clean, including the unchanged `TestWithLayers_ExtractorErrorReturnsStructuredJSON`.
+- [x] `golangci-lint run ./...` clean.
+- [x] CHANGELOG `[Unreleased]` → `Changed` entry drafted with before/after for the auth/rate-limit/panic bodies.
+- [x] PR description shows the flipped characterization tests (before/after assertions) and explicitly flags the `text/plain` → JSON behavior change for auth/rate-limit, with a note to confirm no Barista caller parses the old text bodies.
