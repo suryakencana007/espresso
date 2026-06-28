@@ -4,8 +4,12 @@ package openapi
 import (
 	"context"
 	"errors"
+	"net/http"
 	"reflect"
+	"strconv"
 	"strings"
+
+	"github.com/suryakencana007/espresso/v2/extractor"
 )
 
 // HandlerInfo contains extracted type information from a handler function.
@@ -47,8 +51,59 @@ const (
 var (
 	contextType   = reflect.TypeFor[context.Context]()
 	errorType     = reflect.TypeFor[error]()
-	fromRequestIf = reflect.TypeFor[interface{ Extract(r any) error }]()
+	fromRequestIf = reflect.TypeFor[interface{ Extract(*http.Request) error }]()
 )
+
+// rootPkgPath is the import path of the root espresso package. The JSON[T] and
+// State[T] extractors live there, so the openapi package cannot reference them
+// concretely (it would form an import cycle: espresso imports openapi). They are
+// matched by package path + base name instead. The extractor-package types below
+// are referenced concretely so a rename surfaces as a compile error.
+const rootPkgPath = "github.com/suryakencana007/espresso/v2"
+
+// extractorKey identifies a generic extractor by its package path and base name
+// (the name with the type-parameter instantiation stripped), so PathExtractor[Any]
+// and PathExtractor[Other] map to the same kind.
+type extractorKey struct {
+	pkgPath  string
+	baseName string
+}
+
+// extractorKindByType classifies extractors off their actual base types rather
+// than a type-name prefix. Referencing the concrete extractor types means a
+// rename becomes a compile error instead of a silent mis-classification, and
+// FileExtractor vs FilesExtractor are distinct base types (no prefix ambiguity).
+var extractorKindByType = func() map[extractorKey]ExtractorKind {
+	m := map[extractorKey]ExtractorKind{
+		keyOf(reflect.TypeFor[extractor.PathExtractor[struct{}]]()):      KindPath,
+		keyOf(reflect.TypeFor[extractor.QueryExtractor[struct{}]]()):     KindQuery,
+		keyOf(reflect.TypeFor[extractor.FormExtractor[struct{}]]()):      KindForm,
+		keyOf(reflect.TypeFor[extractor.MultipartExtractor[struct{}]]()): KindMultipart,
+		keyOf(reflect.TypeFor[extractor.HeaderExtractor[struct{}]]()):    KindHeader,
+		keyOf(reflect.TypeFor[extractor.CookieExtractor[struct{}]]()):    KindCookie,
+		keyOf(reflect.TypeFor[extractor.FileExtractor]()):                KindFile,
+		keyOf(reflect.TypeFor[extractor.FilesExtractor]()):               KindFiles,
+		// Root-package extractors (cannot be referenced concretely — cycle).
+		{pkgPath: rootPkgPath, baseName: "JSON"}:  KindJSONBody,
+		{pkgPath: rootPkgPath, baseName: "State"}: KindState,
+	}
+	return m
+}()
+
+// keyOf builds an extractorKey from a reflect.Type, stripping the generic
+// type-parameter instantiation from the name.
+func keyOf(t reflect.Type) extractorKey {
+	return extractorKey{pkgPath: t.PkgPath(), baseName: baseName(t.Name())}
+}
+
+// baseName strips the bracketed generic instantiation from a reflect type name,
+// e.g. "PathExtractor[struct {...}]" -> "PathExtractor".
+func baseName(name string) string {
+	if i := strings.IndexByte(name, '['); i >= 0 {
+		return name[:i]
+	}
+	return name
+}
 
 // IntrospectError is returned when handler introspection fails.
 type IntrospectError struct {
@@ -131,49 +186,18 @@ func Introspect(handler any) (*HandlerInfo, error) {
 	return info, nil
 }
 
-// getExtractorKind determines the extractor kind from a type.
+// getExtractorKind determines the extractor kind from a type by matching its
+// actual base type, not a type-name prefix.
 func getExtractorKind(t reflect.Type) ExtractorKind {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 
-	typeName := getTypeName(t)
-
-	extractorKinds := []struct {
-		prefixes []string
-		kind     ExtractorKind
-	}{
-		{[]string{"PathExtractor", "Path"}, KindPath},
-		{[]string{"QueryExtractor", "Query"}, KindQuery},
-		{[]string{"JSONExtractor", "JSON"}, KindJSONBody},
-		{[]string{"FormExtractor", "Form"}, KindForm},
-		{[]string{"MultipartExtractor", "Multipart"}, KindMultipart},
-		{[]string{"HeaderExtractor", "Header"}, KindHeader},
-		{[]string{"CookieExtractor", "Cookie"}, KindCookie},
-		{[]string{"FileExtractor", "File"}, KindFile},
-		{[]string{"FilesExtractor", "Files"}, KindFiles},
-		{[]string{"State"}, KindState},
-	}
-
-	for _, ek := range extractorKinds {
-		for _, prefix := range ek.prefixes {
-			if strings.HasPrefix(typeName, prefix) || typeName == prefix {
-				return ek.kind
-			}
-		}
+	if kind, ok := extractorKindByType[keyOf(t)]; ok {
+		return kind
 	}
 
 	return KindUnknown
-}
-
-// getTypeName returns the type name, handling generic types.
-func getTypeName(t reflect.Type) string {
-	name := t.Name()
-	if name == "" {
-		// For unnamed types, use string representation
-		name = t.String()
-	}
-	return name
 }
 
 // extractInnerType extracts the inner type T from extractor types.
@@ -233,29 +257,36 @@ func extractResponseType(t reflect.Type) reflect.Type {
 	return nil
 }
 
-// extractStatusCode extracts status code from response types.
-// Returns 0 when status code is dynamic/not determined.
-//
-//nolint:unparam // Always returns 0 for now, will be extended later
+// statusCoder lets a response type declare the HTTP status it documents to,
+// so a non-200 success status (e.g. 201 Created) is derivable from the type
+// alone. The built-in JSON[T]/Text/Status responses carry their status on the
+// instance (not the type), so they document as 200 by default; callers that
+// need a different success code either implement this interface or pass
+// openapi.Status(...) at registration time.
+type statusCoder interface {
+	OpenAPIStatusCode() int
+}
+
+var statusCoderIf = reflect.TypeFor[statusCoder]()
+
+// extractStatusCode derives the documented HTTP status code from a response
+// type. A type implementing statusCoder reports its own status; every other
+// response type documents the 200 default (their concrete status is an instance
+// field, not statically knowable from the type).
 func extractStatusCode(t reflect.Type) int {
 	if t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
 
-	if t.Name() == "Status" {
-		return 0
-	}
-
-	if t.Kind() == reflect.Struct {
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
-			if field.Name == "StatusCode" && field.Type.Kind() == reflect.Int {
-				return 0
+	if t.Implements(statusCoderIf) {
+		if v, ok := reflect.Zero(t).Interface().(statusCoder); ok {
+			if code := v.OpenAPIStatusCode(); code != 0 {
+				return code
 			}
 		}
 	}
 
-	return 0
+	return http.StatusOK
 }
 
 // MustIntrospect is like Introspect but panics on error.
@@ -284,6 +315,85 @@ func BuildOperation(info *HandlerInfo, opts ...OperationOption) *Operation {
 	}
 
 	return op
+}
+
+// BuildPathOperation builds a complete OpenAPI operation from handler info:
+// it applies options, defaults the tag, wires path/query parameters and the
+// JSON request body, and attaches the response-body schema under the handler's
+// documented status code. It is the single source of truth shared by both
+// registration paths (the fluent Get/Post/… chain and RegisterHandler) so they
+// can no longer drift — previously only the fluent path attached the response
+// schema. gen may be nil, in which case schemas are not added to components.
+func BuildPathOperation(gen *Generator, info *HandlerInfo, opts ...OperationOption) *Operation {
+	op := BuildOperation(info, opts...)
+
+	if len(op.Tags) == 0 {
+		op.Tags = []string{"default"}
+	}
+
+	for i, reqType := range info.RequestTypes {
+		if i >= len(info.ExtractorKinds) {
+			continue
+		}
+
+		switch info.ExtractorKinds[i] {
+		case KindPath:
+			op.Parameters = append(op.Parameters, GeneratePathParams(reqType)...)
+		case KindQuery:
+			op.Parameters = append(op.Parameters, GenerateQueryParams(reqType)...)
+		case KindJSONBody:
+			if op.RequestBody == nil {
+				op.RequestBody = GenerateRequestBody(reqType, gen)
+			}
+		}
+	}
+
+	attachResponse(gen, op, info)
+
+	return op
+}
+
+// attachResponse seeds the success response under the handler's documented
+// status code and attaches the response-body schema (if any). When the options
+// already declared a 2xx success response (e.g. via openapi.Status("201", …)),
+// the schema is attached there rather than forcing a 200.
+func attachResponse(gen *Generator, op *Operation, info *HandlerInfo) {
+	statusKey := strconv.Itoa(info.StatusCode)
+	if k, ok := existingSuccessKey(op.Responses); ok {
+		statusKey = k
+	}
+
+	resp, ok := op.Responses[statusKey]
+	if !ok {
+		resp = Response{Description: "Success"}
+	}
+
+	if info.ResponseType != nil {
+		schema := GenerateSchemaFromType(info.ResponseType)
+		if name := info.ResponseType.Name(); name != "" && gen != nil {
+			gen.Schema(name, info.ResponseType)
+		}
+		resp.Content = map[string]MediaType{
+			"application/json": {Schema: schema},
+		}
+	}
+
+	if op.Responses == nil {
+		op.Responses = make(map[string]Response)
+	}
+	op.Responses[statusKey] = resp
+}
+
+// existingSuccessKey returns the first 2xx response key already present in the
+// response map, so an explicit success status from options wins over the
+// reflection default.
+func existingSuccessKey(responses map[string]Response) (string, bool) {
+	for code := range responses {
+		if len(code) == 3 && code[0] == '2' {
+			return code, true
+		}
+	}
+	return "", false
 }
 
 // GeneratePathParams generates OpenAPI path parameters from a struct type.

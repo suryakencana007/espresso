@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"reflect"
 
+	"github.com/rs/zerolog/log"
+
 	"github.com/suryakencana007/espresso/v2/openapi"
 )
 
@@ -33,6 +35,12 @@ type OpenAPIOptions struct {
 type OpenAPIRouter struct {
 	router *Router
 	gen    *openapi.Generator
+
+	// errs records introspection failures from the fluent Get/Post/… chain.
+	// Those methods cannot return an error through the chain, so a failure is
+	// logged and recorded here rather than silently dropping the route. Inspect
+	// via Errors().
+	errs []error
 }
 
 // OpenAPI creates an OpenAPI-enabled router.
@@ -105,66 +113,29 @@ func (r *OpenAPIRouter) Head(path string, handler any, opts ...openapi.Operation
 }
 
 // registerPath introspects the handler and generates OpenAPI documentation.
+// Because it is called from the fluent Get/Post/… chain (which returns
+// *OpenAPIRouter, not error), an introspection failure cannot be returned. It is
+// logged and recorded on the router (see Errors) instead of being silently
+// dropped, so a route never vanishes from the spec without a trace.
 func (r *OpenAPIRouter) registerPath(method, path string, handler any, opts ...openapi.OperationOption) {
 	info, err := openapi.Introspect(handler)
 	if err != nil {
+		log.Error().Err(err).Str("method", method).Str("path", path).
+			Msg("openapi: handler introspection failed; route omitted from spec")
+		r.errs = append(r.errs, err)
 		return
 	}
 
-	op := openapi.BuildOperation(info, opts...)
-
-	if len(op.Tags) == 0 {
-		op.Tags = []string{"default"}
-	}
-
-	if len(op.Responses) == 0 {
-		op.Responses = map[string]openapi.Response{
-			"200": {
-				Description: "Success",
-			},
-		}
-	}
-
-	for i, reqType := range info.RequestTypes {
-		if i >= len(info.ExtractorKinds) {
-			continue
-		}
-
-		kind := info.ExtractorKinds[i]
-		switch kind {
-		case openapi.KindPath:
-			params := openapi.GeneratePathParams(reqType)
-			op.Parameters = append(op.Parameters, params...)
-		case openapi.KindQuery:
-			params := openapi.GenerateQueryParams(reqType)
-			op.Parameters = append(op.Parameters, params...)
-		case openapi.KindJSONBody:
-			if op.RequestBody == nil {
-				op.RequestBody = openapi.GenerateRequestBody(reqType, r.gen)
-			}
-		}
-	}
-
-	if info.ResponseType != nil {
-		schema := openapi.GenerateSchemaFromType(info.ResponseType)
-		schemaName := info.ResponseType.Name()
-		if schemaName != "" {
-			r.gen.Schema(schemaName, info.ResponseType)
-		}
-
-		if _, ok := op.Responses["200"]; ok {
-			op.Responses["200"] = openapi.Response{
-				Description: "Success",
-				Content: map[string]openapi.MediaType{
-					"application/json": {
-						Schema: schema,
-					},
-				},
-			}
-		}
-	}
-
+	op := openapi.BuildPathOperation(r.gen, info, opts...)
 	r.gen.AddPath(method, path, *op)
+}
+
+// Errors returns introspection failures accumulated by the fluent registration
+// chain (Get/Post/…). It is empty when every handler was introspected
+// successfully. RegisterHandler returns its error directly and does not record
+// it here.
+func (r *OpenAPIRouter) Errors() []error {
+	return r.errs
 }
 
 // Brew starts the server.
@@ -267,40 +238,7 @@ func RegisterHandler(gen *openapi.Generator, method, path string, handler any, o
 		return err
 	}
 
-	op := openapi.BuildOperation(info, opts...)
-
-	if len(op.Tags) == 0 {
-		op.Tags = []string{"default"}
-	}
-
-	if len(op.Responses) == 0 {
-		op.Responses = map[string]openapi.Response{
-			"200": {
-				Description: "Success",
-			},
-		}
-	}
-
-	for i, reqType := range info.RequestTypes {
-		if i >= len(info.ExtractorKinds) {
-			continue
-		}
-
-		kind := info.ExtractorKinds[i]
-		switch kind {
-		case openapi.KindPath:
-			params := openapi.GeneratePathParams(reqType)
-			op.Parameters = append(op.Parameters, params...)
-		case openapi.KindQuery:
-			params := openapi.GenerateQueryParams(reqType)
-			op.Parameters = append(op.Parameters, params...)
-		case openapi.KindJSONBody:
-			if op.RequestBody == nil {
-				op.RequestBody = openapi.GenerateRequestBody(reqType, gen)
-			}
-		}
-	}
-
+	op := openapi.BuildPathOperation(gen, info, opts...)
 	gen.AddPath(method, path, *op)
 	return nil
 }
