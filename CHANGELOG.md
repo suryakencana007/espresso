@@ -76,6 +76,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `readLoop` (`websocket.go`) already drains the connection and auto-replies
   pong correctly.
 
+- **OpenAPI serving path hardened — three serving/surface defects** (v2.3
+  task-03). The generated spec was correct after tasks 1-2; these fixes make the
+  *serving* of it trustworthy. All three are in `openapi/`:
+  - **The spec-generation failure path emits the canonical JSON envelope, not
+    `text/plain` (D1).** `Generator.Handler()` (`openapi/openapi.go`) previously
+    called `http.Error(...)` on a marshal failure, producing a `text/plain` body
+    with no `code`, no `request_id`, and no `{"error":{...}}` wrapper — the
+    opposite of every other framework failure path. It now writes the canonical
+    `{"error":{"code":"INTERNAL","message":...}}` envelope with `Content-Type:
+    application/json` and a 500 status, via the stdlib-only
+    `internal/errorenvelope` leaf. The `openapi` package still does **not** import
+    the root `espresso` package, so no import cycle is introduced (the leaf is
+    the cycle-safe path, mirroring how `middleware/http` reuses it).
+  - **The marshaled spec is cached, not re-marshaled on every request (D7).**
+    `Handler()` called `ToJSON()` → `json.MarshalIndent` on each hit even though
+    the spec is immutable once route registration completes. The `Generator` now
+    marshals lazily on the first request and serves the cached bytes thereafter,
+    guarded by a mutex so concurrent serving is `-race` clean. Every mutation
+    method (`Server`/`AddServer`, `AddPath`, `AddSchema`, `Schema`,
+    `AddSecurityScheme`, `Description`/`SetDescription`) invalidates the cache, so
+    a spec built incrementally is never served stale.
+
+### Changed
+
+- **The Scalar docs-UI CDN bundle is now version-pinned (D10, v2.3 task-03).**
+  `openapi/scalar.go` embedded `https://cdn.jsdelivr.net/npm/@scalar/api-reference`
+  with no `@version`, resolving to `latest` — so a breaking Scalar release could
+  silently break the docs page. It is now pinned to a concrete published version
+  via the exported `openapi.ScalarVersion` constant
+  (`@scalar/api-reference@1.25.122`), so the pin is bumped deliberately in a
+  dedicated release rather than left to float. A godoc note on `ScalarVersion`
+  and `ScalarUIHandler` documents that the bundle still loads from an external
+  CDN, so offline / air-gapped / strict-CSP deployments should self-host the
+  bundle and point their docs HTML at the local copy (the spec is already
+  referenced via a relative data-url, so only the bundle URL needs repointing).
+
+### Removed
+
+- **`AutoRegister` no-op stub removed** (v2.3 task-03, D5). The exported
+  `espresso.AutoRegister(gen, router, optsMap)` in `router_openapi.go` was an
+  **empty no-op** whose godoc described it in detail as registering every route
+  on a `Router` into the spec — the API promised behavior it never had, so
+  callers wired it up and got nothing. The symbol and its misleading godoc are
+  deleted so the surface stops lying. This is an API removal, but no behavior is
+  lost (it did nothing): callers of the no-op simply delete the call. Genuine
+  route auto-registration — walking a live `*Router` and introspecting each route
+  into the spec — is **possible future work, not a v2.3 commitment**; use
+  `RegisterHandler` or the `OpenAPIRouter` fluent API in the meantime.
+
 ### Added
 
 - **`openapi.Generator.AddSecurityScheme(name, scheme)` registers security

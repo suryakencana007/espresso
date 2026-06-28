@@ -3,6 +3,21 @@ package openapi
 
 import "net/http"
 
+// ScalarVersion pins the @scalar/api-reference bundle the docs UI loads from the
+// jsDelivr CDN. It is pinned (not left to resolve to "latest") so a breaking
+// Scalar release cannot silently break the docs page. Bump this deliberately in
+// a dedicated release after verifying the new bundle renders; do not let it
+// float.
+//
+// Note on delivery: the bundle is fetched from an external host
+// (cdn.jsdelivr.net). Offline / air-gapped deployments and pages served under a
+// strict Content-Security-Policy that forbids third-party script hosts will
+// render blank. For those environments, self-host the @scalar/api-reference
+// bundle and serve your own docs HTML that points <script src> at the local
+// copy; the spec itself is already referenced via a relative data-url, so only
+// the bundle URL needs repointing.
+const ScalarVersion = "1.25.122"
+
 const scalarHTML = `<!DOCTYPE html>
 <html>
 <head>
@@ -15,16 +30,22 @@ const scalarHTML = `<!DOCTYPE html>
 </head>
 <body>
     <script id="api-reference" data-url="SPEC_URL_PLACEHOLDER"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference@SCALAR_VERSION_PLACEHOLDER"></script>
 </body>
 </html>`
 
 // ScalarUIHandler returns an http.Handler that serves Scalar API Reference UI.
 // Scalar provides a beautiful, modern API documentation interface.
 // See: https://github.com/scalar/scalar
+//
+// The Scalar bundle is loaded from the jsDelivr CDN at the version pinned in
+// ScalarVersion. Offline / air-gapped / strict-CSP deployments should self-host
+// the bundle instead — see ScalarVersion for details.
 func ScalarUIHandler(specURL string) http.Handler {
 	const specPlaceholder = "SPEC_URL_PLACEHOLDER"
+	const versionPlaceholder = "SCALAR_VERSION_PLACEHOLDER"
 	html := replaceString(scalarHTML, specPlaceholder, specURL)
+	html = replaceString(html, versionPlaceholder, ScalarVersion)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		_, _ = w.Write([]byte(html))

@@ -7,6 +7,9 @@ import (
 	"reflect"
 	"sort"
 	"strings"
+	"sync"
+
+	"github.com/suryakencana007/espresso/v2/internal/errorenvelope"
 )
 
 // Spec represents the OpenAPI 3.0 specification.
@@ -133,8 +136,47 @@ func APIKeyHeaderScheme(headerName string) SecurityScheme {
 }
 
 // Generator generates OpenAPI specs from routes.
+//
+// The marshaled spec is cached: Handler serves the bytes produced by the first
+// successful marshal and reuses them on every subsequent request, since the spec
+// is immutable once route registration completes. Any mutation method
+// (Server/AddServer, AddPath, AddSchema, Schema, AddSecurityScheme, Description/
+// SetDescription) invalidates the cache so a later marshal reflects the change —
+// the cache is never stale. Reads and the mutation/invalidation path are guarded
+// by mu, so Handler is safe to serve concurrently while registration is still in
+// flight (verified under -race).
 type Generator struct {
 	spec *Spec
+
+	// mu guards specBytes/specErr and the invalidation flag below. The cached
+	// bytes are computed lazily on the first marshal and dropped on any mutation.
+	mu         sync.Mutex
+	specBytes  []byte
+	specErr    error
+	specCached bool
+}
+
+// invalidateCache drops any cached marshaled spec. It must be called by every
+// method that mutates g.spec so a subsequent marshal does not serve stale bytes.
+func (g *Generator) invalidateCache() {
+	g.mu.Lock()
+	g.specBytes = nil
+	g.specErr = nil
+	g.specCached = false
+	g.mu.Unlock()
+}
+
+// cachedJSON returns the marshaled spec, computing and caching it on first call
+// and serving the cached slice (and any marshal error) thereafter. It is safe
+// for concurrent use. The cache is dropped by invalidateCache on mutation.
+func (g *Generator) cachedJSON() ([]byte, error) {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.specCached {
+		g.specBytes, g.specErr = g.ToJSON()
+		g.specCached = true
+	}
+	return g.specBytes, g.specErr
 }
 
 // New creates a new OpenAPI generator with the given title and version.
@@ -172,6 +214,7 @@ func NewGenerator(title, version string) *Generator {
 // Description sets the API description.
 func (g *Generator) Description(desc string) *Generator {
 	g.spec.Info.Description = desc
+	g.invalidateCache()
 	return g
 }
 
@@ -188,6 +231,7 @@ func (g *Generator) Server(url, description string) *Generator {
 		URL:         url,
 		Description: description,
 	})
+	g.invalidateCache()
 	return g
 }
 
@@ -223,6 +267,7 @@ func (g *Generator) AddPath(method, path string, op Operation) *Generator {
 	}
 
 	g.spec.Paths[path] = pathItem
+	g.invalidateCache()
 	return g
 }
 
@@ -234,6 +279,7 @@ func (g *Generator) AddSchema(name string, schema *Schema) *Generator {
 		g.spec.Components["schemas"] = schemas
 	}
 	schemas[name] = schema
+	g.invalidateCache()
 	return g
 }
 
@@ -256,6 +302,7 @@ func (g *Generator) AddSecurityScheme(name string, scheme SecurityScheme) *Gener
 		g.spec.Components["securitySchemes"] = schemes
 	}
 	schemes[name] = scheme
+	g.invalidateCache()
 	return g
 }
 
@@ -400,11 +447,21 @@ func generateSchemaFromStruct(t reflect.Type) *Schema {
 }
 
 // Handler returns an http.Handler that serves the OpenAPI spec.
+//
+// The spec is marshaled once (lazily, on the first request) and served from the
+// cache thereafter; a mutation to the generator invalidates the cache so the
+// next request re-marshals. On a marshal failure the handler emits the canonical
+// {"error":{...}} envelope with Content-Type application/json (via the
+// stdlib-only internal/errorenvelope leaf), not a text/plain http.Error body, so
+// it matches every other framework failure path.
 func (g *Generator) Handler() http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		data, err := g.ToJSON()
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		data, err := g.cachedJSON()
 		if err != nil {
-			http.Error(w, "Failed to generate OpenAPI spec", http.StatusInternalServerError)
+			errorenvelope.Write(w, http.StatusInternalServerError, errorenvelope.Body{
+				Code:    "INTERNAL",
+				Message: "failed to generate OpenAPI specification",
+			})
 			return
 		}
 
