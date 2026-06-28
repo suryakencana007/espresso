@@ -16,7 +16,6 @@ package main
 
 import (
     "context"
-    "net/http"
     
     "github.com/suryakencana007/espresso/v2"
     "github.com/suryakencana007/espresso/v2/extractor"
@@ -242,7 +241,6 @@ package main
 import (
     "context"
     "fmt"
-    "net/http"
     "path/filepath"
     
     "github.com/suryakencana007/espresso/v2"

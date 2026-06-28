@@ -27,7 +27,7 @@ type UserPath struct {
     ID int64 `path:"id,required"`
 }
 
-func getUser(ctx context.Context, req *espresso.Path[UserPath]) (espresso.JSON[User], error) {
+func getUser(ctx context.Context, req *extractor.Path[UserPath]) (espresso.JSON[User], error) {
     // req.Data.ID contains the path parameter
     user := findUser(req.Data.ID)
     return espresso.JSON[User]{Data: user}, nil
@@ -71,7 +71,7 @@ router.Get("/static/*", staticHandler)
 ### Wildcard Handler
 
 ```go
-func fileHandler(ctx context.Context, req *espresso.Path[struct{}]) (espresso.Text, error) {
+func fileHandler(ctx context.Context, req *extractor.Path[struct{}]) (espresso.Text, error) {
     // Access the wildcard portion
     path := req.Data.(map[string]string)["path..."]
     // or use r.PathValue("path...") directly

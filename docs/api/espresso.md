@@ -114,7 +114,7 @@ Example:
 ```go
 router.Put("/users/{id}", espresso.Lungo(updateUser))
 
-func updateUser(ctx context.Context, path *espresso.Path[UserPath], req *espresso.JSON[UpdateUserReq]) (espresso.JSON[User], error) {
+func updateUser(ctx context.Context, path *extractor.Path[UserPath], req *espresso.JSON[UpdateUserReq]) (espresso.JSON[User], error) {
     // path.Data.ID contains path parameter
     // req.Data contains request body
 }

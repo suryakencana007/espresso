@@ -415,8 +415,8 @@ import (
     "myapp/internal/models"
 )
 
-func ListUsers(state *app.State) func(ctx context.Context, query *espresso.Query[models.ListQuery]) (espresso.JSON[models.ListResponse], error) {
-    return func(ctx context.Context, query *espresso.Query[models.ListQuery]) (espresso.JSON[models.ListResponse], error) {
+func ListUsers(state *app.State) func(ctx context.Context, query *extractor.Query[models.ListQuery]) (espresso.JSON[models.ListResponse], error) {
+    return func(ctx context.Context, query *extractor.Query[models.ListQuery]) (espresso.JSON[models.ListResponse], error) {
         users, total, err := state.UserService.List(ctx, query.Data)
         if err != nil {
             return espresso.JSON[models.ListResponse]{}, errors.Internal("failed to list users")

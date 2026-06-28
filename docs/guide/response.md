@@ -15,7 +15,7 @@ type User struct {
     Email string `json:"email"`
 }
 
-func getUser(ctx context.Context, req *espresso.Path[UserPath]) (espresso.JSON[User], error) {
+func getUser(ctx context.Context, req *extractor.Path[UserPath]) (espresso.JSON[User], error) {
     user := findUser(req.Data.ID)
     return espresso.JSON[User]{Data: user}, nil
 }
@@ -53,7 +53,7 @@ func notFound() espresso.Text {
 Status-only response (no body):
 
 ```go
-func deleteHandler(ctx context.Context, req *espresso.Path[ID]) (espresso.Status, error) {
+func deleteHandler(ctx context.Context, req *extractor.Path[ID]) (espresso.Status, error) {
     deleteResource(req.Data.ID)
     return espresso.Status(http.StatusNoContent), nil // 204
 }
@@ -186,7 +186,7 @@ func (b BinaryResponse) WriteResponse(w http.ResponseWriter) error {
 }
 
 // Usage
-func downloadHandler(ctx context.Context, req *espresso.Path[FileReq]) (BinaryResponse, error) {
+func downloadHandler(ctx context.Context, req *extractor.Path[FileReq]) (BinaryResponse, error) {
     data, err := getFile(req.Data.ID)
     if err != nil {
         return BinaryResponse{}, err
@@ -213,7 +213,7 @@ func (s StreamingResponse) WriteResponse(w http.ResponseWriter) error {
 }
 
 // Usage
-func streamVideoHandler(ctx context.Context, req *espresso.Path[VideoReq]) (StreamingResponse, error) {
+func streamVideoHandler(ctx context.Context, req *extractor.Path[VideoReq]) (StreamingResponse, error) {
     stream, err := getVideoStream(req.Data.ID)
     if err != nil {
         return StreamingResponse{}, err
@@ -245,7 +245,7 @@ func (h HTMLResponse) WriteResponse(w http.ResponseWriter) error {
 }
 
 // Usage
-func pageHandler(ctx context.Context, req *espresso.Path[PageReq]) (HTMLResponse, error) {
+func pageHandler(ctx context.Context, req *extractor.Path[PageReq]) (HTMLResponse, error) {
     body := renderTemplate(req.Data.Slug)
     return HTMLResponse{Body: body}, nil
 }
@@ -304,7 +304,7 @@ return espresso.Status(http.StatusServiceUnavailable)  // 503
 ## Redirects
 
 ```go
-func redirectHandler(ctx context.Context, req *espresso.Path[Req]) (espresso.Text, error) {
+func redirectHandler(ctx context.Context, req *extractor.Path[Req]) (espresso.Text, error) {
     // For redirects, you can write headers directly
     return espresso.Text{}, nil
 }
@@ -320,7 +320,7 @@ func (r Redirect) WriteResponse(w http.ResponseWriter) error {
     return nil
 }
 
-func handler(ctx context.Context, req *espresso.Path[Req]) (Redirect, error) {
+func handler(ctx context.Context, req *extractor.Path[Req]) (Redirect, error) {
     return Redirect{URL: "/new-location"}, nil
 }
 ```

@@ -43,6 +43,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     on the router (`(*OpenAPIRouter).Errors()`); `RegisterHandler` still returns the
     error directly.
 
+- **Docs: corrected extractor generics to their `extractor.X[T]` package and
+  added a snippet-compile guard** (v2.3 task-04). The documentation site taught
+  `espresso.Path[T]`, `espresso.Query[T]`, `espresso.Form[T]`,
+  `espresso.Header[T]`, and `espresso.XML[T]` as if those generics were exported
+  from the root package — they are not; they live in the `extractor` package
+  (type aliases in `extractor/extractor.go`). A reader copying a snippet verbatim
+  hit `undefined: espresso.Path`. All such references across `docs/` (9 files) are
+  now rewritten to `extractor.X[T]`, the self-contained `package main` programs
+  that use them gained the `github.com/suryakencana007/espresso/v2/extractor`
+  import, and two `package main` upload examples in `docs/examples/file-upload.md`
+  dropped an unused `net/http` import so they compile. Root-package symbols
+  (`JSON`, `Text`, `Status`, the `Err*` constructors, `WS`, `SSEStream`, the
+  coffee aliases, state helpers, …) were left untouched. Two new guards lock this
+  in: `TestDocsConsistency/extractor_generics_qualified_with_extractor_pkg`
+  asserts no `espresso.{Path,Query,Form,Header,XML}[` reference remains in
+  `docs/`, and `TestDocsSnippetsCompile` extracts every self-contained,
+  extractor-importing `package main` fence from `docs/` and `go build`s it in a
+  hermetic temp dir (no network) so a non-compiling published program fails CI.
+
 ### Added
 
 - **`openapi.Generator.AddSecurityScheme(name, scheme)` registers security
