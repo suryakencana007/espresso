@@ -62,6 +62,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   extractor-importing `package main` fence from `docs/` and `go build`s it in a
   hermetic temp dir (no network) so a non-compiling published program fails CI.
 
+- **WebSocket long-lived integration tests no longer hang on client-side
+  ping** (v2.3 task-05). `TestLongLived_WS_StableConnection` and
+  `TestLongLived_WS_100Concurrent` (`tests/integration/longlived_test.go`)
+  dialed a `coder/websocket` connection but never read from it. Because
+  `coder/websocket` has no background read pump, incoming control frames —
+  including the **pong** that `conn.Ping` blocks on — are only processed from
+  the read path, so the stable-connection test failed at its 3s ping deadline.
+  Both tests now call `conn.CloseRead(ctx)` immediately after the dial (the
+  library-documented idiom for read-less clients), starting a background reader
+  that drains control frames while discarding data frames. This is a
+  **test-harness fix only** — no framework behavior changed; the server-side
+  `readLoop` (`websocket.go`) already drains the connection and auto-replies
+  pong correctly.
+
 ### Added
 
 - **`openapi.Generator.AddSecurityScheme(name, scheme)` registers security

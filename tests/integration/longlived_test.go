@@ -145,6 +145,10 @@ func TestLongLived_WS_StableConnection(t *testing.T) {
 	if resp != nil && resp.Body != nil {
 		_ = resp.Body.Close()
 	}
+	// coder/websocket has no background read pump: control frames (the pong that
+	// Ping blocks on) are only drained from the read path. This client never reads
+	// application messages, so CloseRead starts a background reader to process them.
+	conn.CloseRead(ctx)
 	defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 	ticker := time.NewTicker(5 * time.Second)
@@ -299,6 +303,9 @@ func TestLongLived_WS_100Concurrent(t *testing.T) {
 			if resp != nil && resp.Body != nil {
 				_ = resp.Body.Close()
 			}
+			// Read-less client: drain control frames in the background (see
+			// TestLongLived_WS_StableConnection for the rationale).
+			conn.CloseRead(ctx)
 			defer func() { _ = conn.Close(websocket.StatusNormalClosure, "") }()
 
 			<-ctx.Done()
