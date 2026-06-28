@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-06-28
+
+A correctness release — **Dial It In** — that makes Espresso's behavior
+match its documented and expected contract; no new feature surface.
+Service-layer errors now map to the right HTTP status (#42), every
+framework error path emits the one canonical JSON envelope (#43), and the
+reflection dispatch path rejects an unsupported two-extractor signature at
+registration instead of panicking per-request (#41) — all backed by new
+status-code / handler-signature / doc-consistency verification matrices
+(#44). See the per-change **Upgrade from v2.1** notes below before bumping.
+
 ### Changed
 
 - **Service-layer errors now map to their contract HTTP status instead of
@@ -102,6 +113,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Closes the last open friction item from Barista's feedback log
   (F-08, see [`roadmaps/USAGE_ESPRESSO.md`](roadmaps/USAGE_ESPRESSO.md#f-08))
   — application-layer pattern, framework ships guidance not API.
+
+### Internal
+
+- **Verification matrices** (v2.2 task-04, #44): added table-driven
+  `TestErrorStatusMatrix` (asserts HTTP status + the canonical envelope for
+  every error origin — extractor, handler, the three service-layer errors,
+  panic, auth, rate-limit), `TestHandlerSignatureMatrix` (every supported
+  reflection / typed / coffee-alias handler shape, plus the two-extractor
+  registration panic and a guard that the request-time "this is a bug" panic
+  is unreachable), and `TestDocsConsistency` (guards against re-introducing
+  removed SSE symbols or the false two-extractor godoc claim). Tests only; no
+  production change.
 
 ## [2.1.0] - 2026-05-12
 
