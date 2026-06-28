@@ -202,22 +202,11 @@ func (r *OpenAPIRouter) ServeHTTP(w http.ResponseWriter, req *http.Request) {
 	r.router.ServeHTTP(w, req)
 }
 
-// AutoRegister registers all routes from a Router to OpenAPI.
-// Useful when you want to separate route definition from OpenAPI generation.
-//
-// Example:
-//
-//	router := espresso.Portafilter().
-//	    Get("/users", getUsers).
-//	    Post("/users", createUser)
-//
-//	gen := openapi.New("My API", "1.0.0")
-//	espresso.AutoRegister(gen, router, map[string][]openapi.OperationOption{
-//	    "GET /users":    {openapi.Tags("users")},
-//	    "POST /users":   {openapi.Tags("users"), openapi.Summary("Create user")},
-//	})
-func AutoRegister(gen *openapi.Generator, router *Router, optsMap map[string][]openapi.OperationOption) {
-}
+// Genuine route auto-registration — walking a live *Router and registering each
+// of its routes into an OpenAPI spec — is possible future work. The previous
+// AutoRegister symbol was a no-op stub whose godoc promised this behavior but did
+// nothing, so it was removed in v2.3 (task-03) rather than left to mislead
+// callers. Use RegisterHandler (below) or the OpenAPIRouter fluent API for now.
 
 // RegisterHandler registers a single handler to OpenAPI with explicit options.
 // Use this when automatic introspection is not enough.
