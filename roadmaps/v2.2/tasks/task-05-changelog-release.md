@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** Tasks 1, 2, 3, 4 must be merged
 
+> **Status: ✅ Shipped 2026-06-28.** Delivered via #45 — tagged v2.2.0; docs synced in #46.
+
 ## Context
 
 Final gate before tagging v2.2.0. Promotes `[Unreleased]` to `[2.2.0] - <date>`, bumps the version chip + `package.json`, runs the full quality-gate set, tags, and publishes the GitHub release. Single atomic commit (mirrors v2.0 task-07 / v2.1 task-06).
@@ -12,18 +14,18 @@ v2.2 is a correctness pass, so the CHANGELOG leans on **Changed** more than **Ad
 
 ## Acceptance Criteria
 
-- [ ] `CHANGELOG.md` has a complete `[2.2.0] - 2026-MM-DD` section covering Tasks 1, 2, 3 (with Task 4 noted as a verification/testing entry).
-- [ ] The status-code mapping (Task 2) and the error-envelope unification (Task 3) appear under `Changed` with explicit before/after.
-- [ ] The two-extractor fix (Task 1) appears under `Added` if approach A shipped, or `Fixed` if approach B shipped.
-- [ ] A short "Upgrade from v2.1" note documents the status-code change (service-layer validation/circuit-breaker/timeout now 400/503/503 instead of 500) and the auth/rate-limit `text/plain` → JSON change.
-- [ ] `package.json` version bumped to `2.2.0`.
-- [ ] `docs/.vitepress/config.ts` version chip updated to `v2.2.0`.
-- [ ] `[Unreleased]` retained empty for v2.2.x / v2.3 work.
-- [ ] `go test ./... -race` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] `bench/` module compiles cleanly.
-- [ ] Git tag `v2.2.0` created and pushed.
-- [ ] GitHub release published with the `[2.2.0]` body.
+- [x] `CHANGELOG.md` has a complete `[2.2.0] - 2026-MM-DD` section covering Tasks 1, 2, 3 (with Task 4 noted as a verification/testing entry).
+- [x] The status-code mapping (Task 2) and the error-envelope unification (Task 3) appear under `Changed` with explicit before/after.
+- [x] The two-extractor fix (Task 1) appears under `Added` if approach A shipped, or `Fixed` if approach B shipped.
+- [x] A short "Upgrade from v2.1" note documents the status-code change (service-layer validation/circuit-breaker/timeout now 400/503/503 instead of 500) and the auth/rate-limit `text/plain` → JSON change.
+- [x] `package.json` version bumped to `2.2.0`.
+- [x] `docs/.vitepress/config.ts` version chip updated to `v2.2.0`.
+- [x] `[Unreleased]` retained empty for v2.2.x / v2.3 work.
+- [x] `go test ./... -race` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] `bench/` module compiles cleanly.
+- [x] Git tag `v2.2.0` created and pushed.
+- [x] GitHub release published with the `[2.2.0]` body.
 
 ## Technical Approach
 
@@ -31,10 +33,10 @@ v2.2 is a correctness pass, so the CHANGELOG leans on **Changed** more than **Ad
 
 Walk the v2.2 roadmap. Every task file's Acceptance Criteria boxes are ticked.
 
-- [ ] Task 1: Reflection-path two-extractor handlers
-- [ ] Task 2: Service-layer error → HTTP status mapping
-- [ ] Task 3: Structured-JSON envelope on every error path
-- [ ] Task 4: Status-code matrix + signature + doc/code consistency tests
+- [x] Task 1: Reflection-path two-extractor handlers
+- [x] Task 2: Service-layer error → HTTP status mapping
+- [x] Task 3: Structured-JSON envelope on every error path
+- [x] Task 4: Status-code matrix + signature + doc/code consistency tests
 
 ### Step 5.2 — CHANGELOG
 
@@ -149,11 +151,11 @@ The full test suite (Tasks 1-4), plus the `bench/` module spot-check. No new tes
 
 ## Definition of Done
 
-- [ ] `CHANGELOG.md` `[2.2.0]` section finalized with the ship date.
-- [ ] `package.json` version bumped to `2.2.0`.
-- [ ] Docs version chip updated to `v2.2.0`.
-- [ ] `[Unreleased]` left empty.
-- [ ] Git tag `v2.2.0` pushed.
-- [ ] GitHub release published with the `[2.2.0]` body + upgrade note.
-- [ ] `SESSION_STATE.md` updated to reflect the v2.2.0 ship.
-- [ ] Barista pinged with the status-code / content-type upgrade note.
+- [x] `CHANGELOG.md` `[2.2.0]` section finalized with the ship date.
+- [x] `package.json` version bumped to `2.2.0`.
+- [x] Docs version chip updated to `v2.2.0`.
+- [x] `[Unreleased]` left empty.
+- [x] Git tag `v2.2.0` pushed.
+- [x] GitHub release published with the `[2.2.0]` body + upgrade note.
+- [x] `SESSION_STATE.md` updated to reflect the v2.2.0 ship.
+- [x] Barista pinged with the status-code / content-type upgrade note.

@@ -4,6 +4,8 @@
 **Estimated Effort:** 2 days
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-06-28 (v2.2.0).** Delivered via #41 — approach B (fail-fast at registration).
+
 ## Context
 
 The reflection dispatch path (`Handler(any)` via `router.Get/Post/Handle`) does **not** support `func(ctx, *Req1, *Req2) (T, error)`, even though `CLAUDE.md` and the `Handler` godoc used to claim it. PR #39 already removed the false doc claim — this task closes the gap between the doc and the code by making the behavior coherent.
@@ -20,11 +22,11 @@ The comment at `handler.go:744-745` literally calls the fall-through a "bug." It
 
 ## Acceptance Criteria
 
-- [ ] The request-time `panic("espresso: invalid handler argument - this is a bug")` at `handler.go:744-747` is **unreachable** for any registrable signature (proven by either approach A or B below).
-- [ ] A two-extractor handler — `func(ctx, *Req1, *Req2) (T, error)` — registered via `router.Get/Post/Handle` either: (A) works end-to-end, populating **both** extractors and returning the handler's response; **or** (B) panics at **registration** time with an actionable message naming the typed alternative.
-- [ ] The typed `HandlerCtxReq1Req2Err` / `Lungo` path is **unchanged** — same behavior, same per-pool extraction, no new overhead.
-- [ ] Single-extractor and zero-extractor reflection handlers (`func() T`, `func(*Req) T`, `func(ctx, *Req) (T, error)`, etc.) are unaffected.
-- [ ] `CLAUDE.md` and the `Handler` godoc (`handler.go:55-110`) describe the chosen behavior accurately.
+- [x] The request-time `panic("espresso: invalid handler argument - this is a bug")` at `handler.go:744-747` is **unreachable** for any registrable signature (proven by either approach A or B below).
+- [x] A two-extractor handler — `func(ctx, *Req1, *Req2) (T, error)` — registered via `router.Get/Post/Handle` either: (A) works end-to-end, populating **both** extractors and returning the handler's response; **or** (B) panics at **registration** time with an actionable message naming the typed alternative.
+- [x] The typed `HandlerCtxReq1Req2Err` / `Lungo` path is **unchanged** — same behavior, same per-pool extraction, no new overhead.
+- [x] Single-extractor and zero-extractor reflection handlers (`func() T`, `func(*Req) T`, `func(ctx, *Req) (T, error)`, etc.) are unaffected.
+- [x] `CLAUDE.md` and the `Handler` godoc (`handler.go:55-110`) describe the chosen behavior accurately.
 
 ## Technical Approach
 
@@ -111,9 +113,9 @@ Do not touch `HandlerCtxReq1Req2Err`/`HandlerCtxReq1Req2`/`Lungo`/`LungoNoErr` (
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean (gocyclo on `handlerFunc`/`createHandlerFromInfo` still under the min-15 budget — approach A must not push either over).
-- [ ] Chosen approach (A or B) recorded in the PR description with its trade-off rationale.
-- [ ] CHANGELOG `[Unreleased]` entry: under `Added` if approach A, under `Fixed` if approach B (the per-request "this is a bug" 500 no longer reachable).
-- [ ] `Handler` godoc and `CLAUDE.md` updated to match the shipped behavior.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean (gocyclo on `handlerFunc`/`createHandlerFromInfo` still under the min-15 budget — approach A must not push either over).
+- [x] Chosen approach (A or B) recorded in the PR description with its trade-off rationale.
+- [x] CHANGELOG `[Unreleased]` entry: under `Added` if approach A, under `Fixed` if approach B (the per-request "this is a bug" 500 no longer reachable).
+- [x] `Handler` godoc and `CLAUDE.md` updated to match the shipped behavior.

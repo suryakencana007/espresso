@@ -1,5 +1,9 @@
 # Espresso v2.2.0 — Dial It In
 
+> **Status: shipped 2026-06-28.** Tag [`v2.2.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.2.0).
+> A correctness pass — no new feature surface; upgrade notes are in the CHANGELOG `[2.2.0]` section.
+> This directory is retained for historical reference; future work has its own roadmap.
+
 This directory contains the roadmap and task specifications for Espresso v2.2.0, a **minor** release that ships **no new feature surface**. Dialing in an espresso shot means tuning grind, dose, and time until the pull is actually correct — v2.2 is that pass over Espresso itself: make behavior match contract, lock it with tests, ship nothing new.
 
 ## Why v2.2?

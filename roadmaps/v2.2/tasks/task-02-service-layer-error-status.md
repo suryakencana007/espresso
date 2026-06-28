@@ -4,6 +4,8 @@
 **Estimated Effort:** 2 days
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-06-28 (v2.2.0).** Delivered via #42 — validation→400, circuit-breaker/timeout→503.
+
 ## Context
 
 The 2026-06-27 post-v2.1 analysis (finding F-2) confirmed that errors surfaced through **service layers** (`WithLayers` / `WithLayersTyped`) collapse to HTTP 500 even when a more specific status is the contract. `writeHandlerError` (`error.go:221-229`) special-cases only `*espresso.Error` via `errors.As`; anything else is wrapped as `ErrInternal` → 500:
@@ -34,13 +36,13 @@ Auto-validate-on-**extract** (which already returns 400 via `ErrBadRequest`/`Val
 
 ## Acceptance Criteria
 
-- [ ] A `ValidationLayer` failure (`ErrValidation`) maps to a non-500 status with code `VALIDATION_ERROR` and the underlying field detail preserved (not flattened into a bare message).
-- [ ] A `CircuitBreakerLayer` open-circuit rejection (`*CircuitBreakerError`) maps to HTTP 503 (`SERVICE_UNAVAILABLE`).
-- [ ] A `TimeoutLayer` deadline (`context.DeadlineExceeded`) maps to a non-500 status (503 or 504 — see decision below).
-- [ ] An unknown / unrecognized error still maps to HTTP 500 (`INTERNAL`) — the fallback is unchanged.
-- [ ] Every mapped error emits the canonical structured-JSON envelope (`{"error":{"code","message","details","request_id"}}`) — no text/plain, no bespoke shape.
-- [ ] The existing regression-lock test `TestWithLayersTyped_WithTimeout` (`withlayers_test.go:144-167`), which currently asserts `http.StatusInternalServerError` for a timeout, is updated to the new status, and the change is called out explicitly in the PR description.
-- [ ] CHANGELOG `[Unreleased]` → `Changed` with a before/after for each mapped status, plus a short upgrade note (status codes for layer errors change; clients keying off 500 for these must adjust).
+- [x] A `ValidationLayer` failure (`ErrValidation`) maps to a non-500 status with code `VALIDATION_ERROR` and the underlying field detail preserved (not flattened into a bare message).
+- [x] A `CircuitBreakerLayer` open-circuit rejection (`*CircuitBreakerError`) maps to HTTP 503 (`SERVICE_UNAVAILABLE`).
+- [x] A `TimeoutLayer` deadline (`context.DeadlineExceeded`) maps to a non-500 status (503 or 504 — see decision below).
+- [x] An unknown / unrecognized error still maps to HTTP 500 (`INTERNAL`) — the fallback is unchanged.
+- [x] Every mapped error emits the canonical structured-JSON envelope (`{"error":{"code","message","details","request_id"}}`) — no text/plain, no bespoke shape.
+- [x] The existing regression-lock test `TestWithLayersTyped_WithTimeout` (`withlayers_test.go:144-167`), which currently asserts `http.StatusInternalServerError` for a timeout, is updated to the new status, and the change is called out explicitly in the PR description.
+- [x] CHANGELOG `[Unreleased]` → `Changed` with a before/after for each mapped status, plus a short upgrade note (status codes for layer errors change; clients keying off 500 for these must adjust).
 
 ## Technical Approach
 
@@ -147,9 +149,9 @@ Behavior change (allowed under the v2.0 backward-compat flip, documented): servi
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean (mind `gocyclo` min 15 on `writeHandlerError` / the new helper — keep the translation in its own function).
-- [ ] CHANGELOG `[Unreleased]` → `Changed` with per-status before/after and the upgrade note.
-- [ ] PR description states the two decisions made (validation 400-vs-422, timeout 503-vs-504) and explicitly flags the `TestWithLayersTyped_WithTimeout` assertion change.
-- [ ] PR description confirms auto-validate-on-extract was left untouched.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean (mind `gocyclo` min 15 on `writeHandlerError` / the new helper — keep the translation in its own function).
+- [x] CHANGELOG `[Unreleased]` → `Changed` with per-status before/after and the upgrade note.
+- [x] PR description states the two decisions made (validation 400-vs-422, timeout 503-vs-504) and explicitly flags the `TestWithLayersTyped_WithTimeout` assertion change.
+- [x] PR description confirms auto-validate-on-extract was left untouched.

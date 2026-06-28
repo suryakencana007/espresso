@@ -1,5 +1,7 @@
 # Execution Order for v2.2.0
 
+> **Shipped 2026-06-28** — tag [`v2.2.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.2.0). This records the planned order, which matched the actual execution: task-01 ‖ task-02 (parallel), then task-03, then task-04, then the task-05 release — plus a docs-sync PR (#46) landed before tagging.
+
 This document provides the recommended execution order for the v2.2 roadmap tasks. The schedule is sized for approximately one focused week. v2.2 is a correctness pass — no new feature surface — so the work is narrow but cross-package-sensitive in one spot (Task 3).
 
 ## Overview (planned)
