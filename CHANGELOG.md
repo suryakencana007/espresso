@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **OpenAPI generation correctness — five generation-path defects** (v2.3 task-01).
+  The spec generator emitted specs that silently disagreed with the routes they
+  described. All five fixes are in `openapi/introspect.go` and `router_openapi.go`:
+  - **Custom extractors are now introspected (D2).** The custom-`FromRequest`
+    probe interface was `interface{ Extract(r any) error }`, which no real
+    extractor satisfies (every extractor implements `Extract(*http.Request) error`),
+    so the custom-extractor branch in `Introspect` was dead and custom extractors
+    contributed nothing to the spec. The probe now matches the real contract.
+  - **Extractor classification is no longer prefix-fragile (D8).** `getExtractorKind`
+    classified by `strings.HasPrefix` on the type name, which mis-classified any
+    `Files…`-named type as a single `file` (since `"File"` is a prefix of `"Files"`)
+    and changed classification silently on a rename. Classification now keys off the
+    actual extractor base types (matched by package path + base name, ignoring the
+    generic instantiation), referencing `extractor.PathExtractor`/`QueryExtractor`/etc.
+    concretely so a rename is a compile error. `FileExtractor` and `FilesExtractor`
+    are distinct base types — no more prefix ambiguity.
+  - **Response status codes are documented accurately (D3).** `extractStatusCode`
+    previously always returned `0` (its `//nolint:unparam` admitted as much), so every
+    operation documented `200`. It now returns the documented default (`200`) and
+    honors a response type that declares its status via the new optional
+    `OpenAPIStatusCode() int` interface. The `//nolint:unparam` is removed.
+  - **`RegisterHandler` now attaches the response-body schema (D9).** `registerPath`
+    and `RegisterHandler` were drifted copy-paste twins; only the former wired the
+    response schema, so `RegisterHandler` emitted a bare `200:{description:"Success"}`
+    for handlers with a known response type. Both paths are now unified on a single
+    `openapi.BuildPathOperation` helper that seeds the response under the handler's
+    documented status code (honoring an explicit `openapi.Status("201", …)` over the
+    default) and attaches the response-body schema.
+  - **Introspection failures are surfaced, not silently dropped (D6).** `registerPath`
+    did `if err != nil { return }`, so a route whose handler failed introspection
+    vanished from the spec with no diagnostic. It now logs the failure and records it
+    on the router (`(*OpenAPIRouter).Errors()`); `RegisterHandler` still returns the
+    error directly.
+
 ## [2.2.0] - 2026-06-28
 
 A correctness release — **Dial It In** — that makes Espresso's behavior
