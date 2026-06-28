@@ -43,6 +43,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     on the router (`(*OpenAPIRouter).Errors()`); `RegisterHandler` still returns the
     error directly.
 
+### Added
+
+- **`openapi.Generator.AddSecurityScheme(name, scheme)` registers security
+  schemes so operation-level `Security(...)` references resolve** (v2.3
+  task-02). Previously `components.securitySchemes` was allocated empty and
+  never populated, so a route decorated with `openapi.Security("bearerAuth")`
+  emitted a dangling reference: the operation pointed at `bearerAuth`, but no
+  such scheme was defined anywhere in `components`. The spec failed strict
+  OpenAPI 3.0 validation and the Scalar/Swagger "Authorize" button had nothing
+  to render. `AddSecurityScheme` populates `components.securitySchemes[name]`
+  with a `SecurityScheme` (a minimal subset of the OpenAPI 3.0 Security Scheme
+  Object: `type`, `scheme`, `bearerFormat`, `in`, `name`, `description`). Two
+  ergonomic constructors cover the common cases:
+  - `openapi.BearerScheme("JWT")` → `{type:"http", scheme:"bearer", bearerFormat:"JWT"}`
+  - `openapi.APIKeyHeaderScheme("X-API-Key")` → `{type:"apiKey", in:"header", name:"X-API-Key"}`
+
+  Example:
+
+  ```go
+  gen.AddSecurityScheme("bearerAuth", openapi.BearerScheme("JWT"))
+  gen.AddSecurityScheme("apiKeyAuth", openapi.APIKeyHeaderScheme("X-API-Key"))
+  ```
+
+  `Generator.UnresolvedSecurityRefs()` surfaces (sorted, de-duplicated) any
+  scheme name referenced by an operation but never registered, so a
+  `Security("name")` typo is flagged rather than emitted as a silent dangling
+  reference. OAuth2 flows and OpenID Connect are intentionally out of scope.
+
 ## [2.2.0] - 2026-06-28
 
 A correctness release — **Dial It In** — that makes Espresso's behavior

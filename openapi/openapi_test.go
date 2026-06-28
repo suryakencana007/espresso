@@ -332,6 +332,164 @@ func contains(s, substr string) bool {
 	return len(s) >= len(substr) && (s[:len(substr)] == substr || contains(s[1:], substr))
 }
 
+// securitySchemesFromJSON marshals the generator and pulls
+// components.securitySchemes back out of the round-tripped JSON, so assertions
+// reflect what a consumer of the emitted spec actually sees.
+func securitySchemesFromJSON(t *testing.T, g *Generator) map[string]map[string]any {
+	t.Helper()
+
+	data, err := g.JSON()
+	if err != nil {
+		t.Fatalf("JSON() error = %v", err)
+	}
+
+	var raw struct {
+		Components struct {
+			SecuritySchemes map[string]map[string]any `json:"securitySchemes"`
+		} `json:"components"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	return raw.Components.SecuritySchemes
+}
+
+func TestOpenAPISecurityScheme_Registered(t *testing.T) {
+	g := New("Test API", "1.0.0")
+	g.AddSecurityScheme("bearerAuth", BearerScheme("JWT"))
+
+	schemes := securitySchemesFromJSON(t, g)
+	bearer, ok := schemes["bearerAuth"]
+	if !ok {
+		t.Fatal("expected securitySchemes[bearerAuth] to be present")
+	}
+	if bearer["type"] != "http" {
+		t.Errorf("expected type 'http', got %v", bearer["type"])
+	}
+	if bearer["scheme"] != "bearer" {
+		t.Errorf("expected scheme 'bearer', got %v", bearer["scheme"])
+	}
+	if bearer["bearerFormat"] != "JWT" {
+		t.Errorf("expected bearerFormat 'JWT', got %v", bearer["bearerFormat"])
+	}
+}
+
+func TestOpenAPISecurityScheme_ApiKeyHeader(t *testing.T) {
+	g := New("Test API", "1.0.0")
+	g.AddSecurityScheme("apiKeyAuth", APIKeyHeaderScheme("X-API-Key"))
+
+	schemes := securitySchemesFromJSON(t, g)
+	apiKey, ok := schemes["apiKeyAuth"]
+	if !ok {
+		t.Fatal("expected securitySchemes[apiKeyAuth] to be present")
+	}
+	if apiKey["type"] != "apiKey" {
+		t.Errorf("expected type 'apiKey', got %v", apiKey["type"])
+	}
+	if apiKey["in"] != "header" {
+		t.Errorf("expected in 'header', got %v", apiKey["in"])
+	}
+	if apiKey["name"] != "X-API-Key" {
+		t.Errorf("expected name 'X-API-Key', got %v", apiKey["name"])
+	}
+}
+
+// TestOpenAPISecuredRoute_DanglingBeforeRegistration pins the pre-fix behavior:
+// a Security("bearerAuth")-decorated route with no registered scheme leaves a
+// dangling reference that UnresolvedSecurityRefs surfaces.
+func TestOpenAPISecuredRoute_DanglingBeforeRegistration(t *testing.T) {
+	op := Operation{Summary: "Secured"}
+	ApplyOptions(&op, Security("bearerAuth"))
+
+	g := New("Test API", "1.0.0")
+	g.AddPath("GET", "/secured", op)
+
+	schemes := securitySchemesFromJSON(t, g)
+	if _, ok := schemes["bearerAuth"]; ok {
+		t.Fatal("expected securitySchemes[bearerAuth] to be absent before registration")
+	}
+
+	missing := g.UnresolvedSecurityRefs()
+	if len(missing) != 1 || missing[0] != "bearerAuth" {
+		t.Fatalf("expected dangling reference [bearerAuth], got %v", missing)
+	}
+}
+
+func TestOpenAPISecuredRoute_ReferenceResolves(t *testing.T) {
+	op := Operation{Summary: "Secured"}
+	ApplyOptions(&op, Security("bearerAuth"))
+
+	g := New("Test API", "1.0.0")
+	g.AddSecurityScheme("bearerAuth", BearerScheme("JWT"))
+	g.AddPath("GET", "/secured", op)
+
+	schemes := securitySchemesFromJSON(t, g)
+	if _, ok := schemes["bearerAuth"]; !ok {
+		t.Fatal("expected securitySchemes[bearerAuth] to be present after registration")
+	}
+
+	if missing := g.UnresolvedSecurityRefs(); len(missing) != 0 {
+		t.Fatalf("expected no dangling references, got %v", missing)
+	}
+}
+
+func TestOpenAPISecurity_StrictResolution(t *testing.T) {
+	bearerOp := Operation{Summary: "Bearer route"}
+	ApplyOptions(&bearerOp, Security("bearerAuth"))
+	apiKeyOp := Operation{Summary: "API key route"}
+	ApplyOptions(&apiKeyOp, Security("apiKeyAuth"))
+
+	g := New("Test API", "1.0.0")
+	g.AddSecurityScheme("bearerAuth", BearerScheme("JWT"))
+	g.AddSecurityScheme("apiKeyAuth", APIKeyHeaderScheme("X-API-Key"))
+	g.AddPath("GET", "/bearer", bearerOp)
+	g.AddPath("POST", "/apikey", apiKeyOp)
+
+	if missing := g.UnresolvedSecurityRefs(); len(missing) != 0 {
+		t.Fatalf("expected every security reference to resolve, dangling: %v", missing)
+	}
+
+	// Inverse check against the emitted JSON: every name in any op.Security is
+	// defined in components.securitySchemes.
+	data, err := g.JSON()
+	if err != nil {
+		t.Fatalf("JSON() error = %v", err)
+	}
+	var spec Spec
+	if err := json.Unmarshal(data, &spec); err != nil {
+		t.Fatalf("json.Unmarshal() error = %v", err)
+	}
+	defined := securitySchemesFromJSON(t, g)
+	for path, item := range spec.Paths {
+		for _, op := range []*Operation{item.Get, item.Post, item.Put, item.Delete, item.Patch, item.Options, item.Head} {
+			if op == nil {
+				continue
+			}
+			for _, req := range op.Security {
+				for name := range req {
+					if _, ok := defined[name]; !ok {
+						t.Errorf("path %s references undefined security scheme %q", path, name)
+					}
+				}
+			}
+		}
+	}
+}
+
+func TestOpenAPISecurity_MissingScheme_Surfaced(t *testing.T) {
+	op := Operation{Summary: "Ghost"}
+	ApplyOptions(&op, Security("ghost"))
+
+	g := New("Test API", "1.0.0")
+	g.AddSecurityScheme("bearerAuth", BearerScheme("JWT"))
+	g.AddPath("GET", "/ghost", op)
+
+	missing := g.UnresolvedSecurityRefs()
+	if len(missing) != 1 || missing[0] != "ghost" {
+		t.Fatalf("expected ghost to be surfaced as unresolved, got %v", missing)
+	}
+}
+
 func TestNew(t *testing.T) {
 	g := New("Test API", "1.0.0")
 
