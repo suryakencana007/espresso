@@ -177,6 +177,25 @@ This produces a 500 response:
 }
 ```
 
+## Service-Layer Errors
+
+Errors produced by **service layers** (`WithLayers` / `WithLayersTyped`) are
+mapped to their contract HTTP status automatically (since v2.2) — you do not
+convert them in the handler:
+
+| Layer failure | Status | Code |
+|---|---|---|
+| `Validation` (`servicemiddleware.ErrValidation`) | `400` | `VALIDATION_ERROR` (field detail under `details.errors`) |
+| `CircuitBreaker` open (`*CircuitBreakerError`) | `503` | `SERVICE_UNAVAILABLE` |
+| `Timeout` (`context.DeadlineExceeded`) | `503` | `SERVICE_UNAVAILABLE` |
+
+A handler-returned `*espresso.Error` keeps its own status (that fast path runs
+first), and any unrecognized error still maps to `500 INTERNAL`. All of these
+emit the same canonical envelope shown above.
+
+> This covers errors surfaced through the service-**layer** boundary.
+> Auto-validation on *extraction* already returns `400` and is unaffected.
+
 ## Error Code Naming Convention
 
 Use `UPPER_SNAKE_CASE` for error codes. Group by domain:
