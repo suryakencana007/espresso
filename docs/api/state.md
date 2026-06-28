@@ -106,7 +106,7 @@ func listUsers(ctx context.Context, req *espresso.JSON[Query]) (espresso.JSON[[]
 Using MustGetState:
 
 ```go
-func getUser(ctx context.Context, req *espresso.Path[UserPath]) (espresso.JSON[User], error) {
+func getUser(ctx context.Context, req *extractor.Path[UserPath]) (espresso.JSON[User], error) {
     state := espresso.MustGetState[AppState](ctx)
     user := state.DB.FindUser(req.Data.ID)
     return espresso.JSON[User]{Data: user}, nil

@@ -52,7 +52,7 @@ func listUsers(ctx context.Context, req *espresso.JSON[ListQuery]) (espresso.JSO
 Panics if state is not found or wrong type:
 
 ```go
-func getUser(ctx context.Context, req *espresso.Path[UserPath]) (espresso.JSON[User], error) {
+func getUser(ctx context.Context, req *extractor.Path[UserPath]) (espresso.JSON[User], error) {
     state := espresso.MustGetState[AppState](ctx)
     user := state.DB.FindUser(req.Data.ID)
     return espresso.JSON[User]{Data: user}, nil
@@ -112,7 +112,7 @@ type UserPath struct {
 }
 
 // Handlers
-func listUsers(ctx context.Context, query *espresso.Query[ListQuery]) (espresso.JSON[[]User], error) {
+func listUsers(ctx context.Context, query *extractor.Query[ListQuery]) (espresso.JSON[[]User], error) {
     state := espresso.MustGetState[AppState](ctx)
     
     limit := state.Config.MaxResults
@@ -128,7 +128,7 @@ func listUsers(ctx context.Context, query *espresso.Query[ListQuery]) (espresso.
     return espresso.JSON[[]User]{Data: users}, nil
 }
 
-func getUser(ctx context.Context, path *espresso.Path[UserPath]) (espresso.JSON[User], error) {
+func getUser(ctx context.Context, path *extractor.Path[UserPath]) (espresso.JSON[User], error) {
     state := espresso.MustGetState[AppState](ctx)
     
     // Try cache first

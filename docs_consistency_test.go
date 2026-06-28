@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -56,6 +57,55 @@ var docsScanSkip = map[string]bool{
 func TestDocsConsistency(t *testing.T) {
 	t.Run("forbidden_symbols_in_docs_examples", testDocsForbiddenSymbols)
 	t.Run("handler_godoc_two_extractor_claim", testHandlerGodocClaim)
+	t.Run("extractor_generics_qualified_with_extractor_pkg", testDocsExtractorQualifier)
+}
+
+// extractorGenericRe matches a root-package qualification of an extractor
+// generic (espresso.Path[, espresso.Query[, …]). Those generics are exported by
+// the extractor package, not the root package, so a doc using espresso.X[ would
+// not compile. The negation here is intentional: the root JSON response generic
+// (espresso.JSON[) is correct and must NOT match.
+var extractorGenericRe = regexp.MustCompile(`espresso\.(Path|Query|Form|Header|XML)\[`)
+
+// testDocsExtractorQualifier asserts no docs file qualifies an extractor generic
+// with the root espresso package — the guard for the v2.3 task-04 sweep. It scans
+// raw file content (not just fences) so a stray reference anywhere trips it.
+func testDocsExtractorQualifier(t *testing.T) {
+	docsRoot := "docs"
+	if _, err := os.Stat(docsRoot); err != nil {
+		t.Skipf("docs/ not present (%v); skipping extractor-qualifier scan", err)
+	}
+
+	err := filepath.WalkDir(docsRoot, func(path string, d os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if name := d.Name(); name == ".vitepress" || name == "node_modules" || name == "dist" || name == "public" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if !strings.HasSuffix(d.Name(), ".md") {
+			return nil
+		}
+		content, readErr := os.ReadFile(path) //nolint:gosec // path comes from a trusted docs/ walk
+		if readErr != nil {
+			return readErr
+		}
+		rel := filepath.ToSlash(path)
+		for i, line := range strings.Split(string(content), "\n") {
+			if m := extractorGenericRe.FindString(line); m != "" {
+				t.Errorf("extractor generic qualified with root package at %s:%d: %q "+
+					"(use extractor.%s)", rel, i+1, strings.TrimSpace(line),
+					strings.TrimSuffix(strings.TrimPrefix(m, "espresso."), "["))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking docs/: %v", err)
+	}
 }
 
 // testDocsForbiddenSymbols walks docs/, and for every non-skipped markdown file

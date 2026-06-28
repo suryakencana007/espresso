@@ -37,7 +37,7 @@ type Pagination struct {
     Sort    string `query:"sort"`
 }
 
-func listUsers(ctx context.Context, req *espresso.Query[Pagination]) (Response, error) {
+func listUsers(ctx context.Context, req *extractor.Query[Pagination]) (Response, error) {
     page := req.Data.Page
     if page == 0 {
         page = 1 // Default
@@ -66,7 +66,7 @@ type UserPath struct {
     ID int64 `path:"id,required"`
 }
 
-func getUser(ctx context.Context, req *espresso.Path[UserPath]) (Response, error) {
+func getUser(ctx context.Context, req *extractor.Path[UserPath]) (Response, error) {
     user := findUser(req.Data.ID)
     return espresso.JSON[User]{Data: user}, nil
 }
@@ -84,7 +84,7 @@ type LoginForm struct {
     Password string `form:"password,required"`
 }
 
-func login(ctx context.Context, req *espresso.Form[LoginForm]) (Response, error) {
+func login(ctx context.Context, req *extractor.Form[LoginForm]) (Response, error) {
     // Authenticate user
     return espresso.JSON[Token]{Data: token}, nil
 }
@@ -102,7 +102,7 @@ type AuthHeaders struct {
     RequestID     string `header:"X-Request-ID"`
 }
 
-func handler(ctx context.Context, req *espresso.Header[AuthHeaders]) (Response, error) {
+func handler(ctx context.Context, req *extractor.Header[AuthHeaders]) (Response, error) {
     token := req.Data.Authorization
     // ...
 }
@@ -141,9 +141,9 @@ type XMLRequest struct {
     Value   string   `xml:"value"`
 }
 
-func handler(ctx context.Context, req *espresso.XML[XMLRequest]) (Response, error) {
+func handler(ctx context.Context, req *extractor.XML[XMLRequest]) (Response, error) {
     // req.Data contains parsed XML
-    return espresso.XML[XMLResponse]{Data: response}, nil
+    return extractor.XML[XMLResponse]{Data: response}, nil
 }
 
 router.Post("/xml", espresso.Doppio(handler))

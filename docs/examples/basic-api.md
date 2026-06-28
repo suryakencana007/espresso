@@ -82,7 +82,7 @@ func NewUserHandler() *UserHandler {
 }
 
 // List returns all users
-func (h *UserHandler) List(ctx context.Context, query *espresso.Query[models.ListQuery]) (espresso.JSON[[]models.User], error) {
+func (h *UserHandler) List(ctx context.Context, query *extractor.Query[models.ListQuery]) (espresso.JSON[[]models.User], error) {
     page := query.Data.Page
     if page < 1 {
         page = 1
@@ -104,7 +104,7 @@ func (h *UserHandler) List(ctx context.Context, query *espresso.Query[models.Lis
 }
 
 // Get returns a single user
-func (h *UserHandler) Get(ctx context.Context, path *espresso.Path[models.UserPath]) (espresso.JSON[models.User], error) {
+func (h *UserHandler) Get(ctx context.Context, path *extractor.Path[models.UserPath]) (espresso.JSON[models.User], error) {
     user, ok := h.users[path.Data.ID]
     if !ok {
         return espresso.JSON[models.User]{}, &espresso.Error{
@@ -132,7 +132,7 @@ func (h *UserHandler) Create(ctx context.Context, req *espresso.JSON[models.Crea
 }
 
 // Update updates an existing user
-func (h *UserHandler) Update(ctx context.Context, path *espresso.Path[models.UserPath], req *espresso.JSON[models.UpdateUserReq]) (espresso.JSON[models.User], error) {
+func (h *UserHandler) Update(ctx context.Context, path *extractor.Path[models.UserPath], req *espresso.JSON[models.UpdateUserReq]) (espresso.JSON[models.User], error) {
     user, ok := h.users[path.Data.ID]
     if !ok {
         return espresso.JSON[models.User]{}, &espresso.Error{
@@ -152,7 +152,7 @@ func (h *UserHandler) Update(ctx context.Context, path *espresso.Path[models.Use
 }
 
 // Delete removes a user
-func (h *UserHandler) Delete(ctx context.Context, path *espresso.Path[models.UserPath]) (espresso.Status, error) {
+func (h *UserHandler) Delete(ctx context.Context, path *extractor.Path[models.UserPath]) (espresso.Status, error) {
     if _, ok := h.users[path.Data.ID]; !ok {
         return 0, &espresso.Error{
             StatusCode: http.StatusNotFound,
@@ -207,7 +207,7 @@ For handlers that need multiple extractors, use Lungo or manual extraction:
 // Using Lungo (path + JSON body)
 func (h *UserHandler) Update(
     ctx context.Context,
-    path *espresso.Path[models.UserPath],
+    path *extractor.Path[models.UserPath],
     req *espresso.JSON[models.UpdateUserReq],
 ) (espresso.JSON[models.User], error) {
     // path.Data.ID contains path parameter
@@ -407,10 +407,10 @@ Once running, access:
 
 ```go
 // Path parameter detected from extractor.Path[T]
-func Get(ctx context.Context, path *espresso.Path[UserPath]) (espresso.JSON[User], error)
+func Get(ctx context.Context, path *extractor.Path[UserPath]) (espresso.JSON[User], error)
 
 // Query parameters detected from extractor.Query[T]
-func List(ctx context.Context, query *espresso.Query[ListQuery]) (espresso.JSON[[]User], error)
+func List(ctx context.Context, query *extractor.Query[ListQuery]) (espresso.JSON[[]User], error)
 
 // Request body detected from espresso.JSON[T]
 func Create(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error)

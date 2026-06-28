@@ -291,6 +291,7 @@ import (
     "reflect"
     
     "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
     "github.com/suryakencana007/espresso/v2/openapi"
 )
 
@@ -313,7 +314,7 @@ func getUsers(ctx context.Context) (espresso.JSON[[]User], error) {
     return espresso.JSON[[]User]{Data: []User{{ID: 1, Name: "John"}}}, nil
 }
 
-func getUser(ctx context.Context, path *espresso.Path[UserPath]) (espresso.JSON[User], error) {
+func getUser(ctx context.Context, path *extractor.Path[UserPath]) (espresso.JSON[User], error) {
     return espresso.JSON[User]{Data: User{ID: path.Data.ID, Name: "John"}}, nil
 }
 
