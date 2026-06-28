@@ -273,43 +273,48 @@ router.Post("/upload/multiple", espresso.Doppio(handler))
 
 ## Combining Extractors
 
-Use multiple extractors in a single handler:
+A handler can take **two** extractors. Two-extractor handlers must be
+registered with the typed `espresso.Lungo()` constructor (or
+`espresso.HandlerCtxReq1Req2Err`): the reflection path
+(`router.Get/Post/Handle`) carries a single request slot, so it **panics at
+registration** if a handler declares a second extractor.
 
 ```go
-type UserRequest struct {
-    // Path parameter
+import "github.com/suryakencana007/espresso/v2/extractor"
+
+type UserPath struct {
     ID int64 `path:"id,required"`
 }
 
 type UserQuery struct {
-    // Query parameters
     Fields string `query:"fields"`
 }
 
 func getUser(
     ctx context.Context,
-    path *espresso.Path[UserRequest],
-    query *espresso.Query[UserQuery],
-) (Response, error) {
-    user := findUser(path.Data.ID)
+    path *extractor.Path[UserPath],
+    query *extractor.Query[UserQuery],
+) (espresso.JSON[User], error) {
+    user := findUser(path.Data.ID, query.Data.Fields)
     return espresso.JSON[User]{Data: user}, nil
 }
 
-// Currently requires manual extraction until multi-extractor support
-func getUserHandler(ctx context.Context, req *espresso.JSON[struct{}]) (Response, error) {
-    // Extract path params manually
-    r := espresso.RequestFromContext(ctx)
-    id := r.PathValue("id")
-    
-    // Extract query params
-    var query UserQuery
-    if err := (&espresso.QueryExtractor[UserQuery]{Data: query}).Extract(r); err != nil {
-        return nil, err
-    }
-    
-    // Process...
-}
+// Register with Lungo — both extractors are populated before the handler runs.
+router.Get("/users/{id}", espresso.Lungo(getUser))
 ```
+
+::: warning
+Registering a two-extractor handler via the reflection path
+(`router.Get/Post/Handle`) panics at startup:
+
+```
+espresso: reflection handler has 2 FromRequest arguments;
+two-extractor handlers require HandlerCtxReq1Req2Err (or its Lungo alias)
+```
+
+Use `espresso.Lungo()`. For three or more inputs, combine the fields into a
+single extractor struct and use a one-extractor handler.
+:::
 
 ## Error Handling
 

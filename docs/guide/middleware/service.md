@@ -78,19 +78,24 @@ States:
 - **Open**: Rejects all requests, returns `CircuitBreakerError`
 - **Half-Open**: Allows limited requests to test recovery
 
+Since **v2.2**, an open-circuit rejection (`*CircuitBreakerError`) is mapped to
+**503 Service Unavailable** automatically — let the error propagate from the
+layer and the framework emits the canonical JSON envelope with code
+`SERVICE_UNAVAILABLE`. No handler-side check is required:
+
 ```go
-// Handle circuit breaker errors
 func handler(ctx context.Context, req *espresso.JSON[Req]) (Response, error) {
     res, err := service.Call(ctx, req.Data)
-    if servicemiddleware.IsCircuitBreakerError(err) {
-        return espresso.JSON[ErrorRes]{
-            StatusCode: http.StatusServiceUnavailable,
-            Data: ErrorRes{Message: "Service temporarily unavailable"},
-        }, nil
+    if err != nil {
+        return Response{}, err // open circuit → framework maps to 503
     }
-    // ...
+    return Response{Data: res}, nil
 }
 ```
+
+If you want *custom* handling instead of the default 503, you can still branch
+on `servicemiddleware.IsCircuitBreakerError(err)` and return your own
+`*espresso.Error`.
 
 ### Concurrency Limit Layer
 
