@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -102,6 +103,35 @@ type Schema struct {
 	Ref                  string             `json:"$ref,omitempty"`
 }
 
+// SecurityScheme mirrors the OpenAPI 3.0 Security Scheme Object (minimal subset).
+//
+// Only the fields needed by the two common schemes are modeled. OAuth2 flows and
+// OpenID Connect are intentionally out of scope for v2.3. Use the constructors
+// for the documented cases:
+//
+//	BearerScheme("JWT")             // HTTP bearer / JWT: {type:"http", scheme:"bearer", bearerFormat:"JWT"}
+//	APIKeyHeaderScheme("X-API-Key") // apiKey in header:  {type:"apiKey", in:"header", name:"X-API-Key"}
+type SecurityScheme struct {
+	Type         string `json:"type"`                   // "http", "apiKey", ...
+	Scheme       string `json:"scheme,omitempty"`       // "bearer" for http
+	BearerFormat string `json:"bearerFormat,omitempty"` // "JWT"
+	In           string `json:"in,omitempty"`           // "header" for apiKey
+	Name         string `json:"name,omitempty"`         // header name for apiKey
+	Description  string `json:"description,omitempty"`
+}
+
+// BearerScheme returns an HTTP bearer security scheme. bearerFormat is optional
+// (commonly "JWT") and is omitted from the spec when empty.
+func BearerScheme(bearerFormat string) SecurityScheme {
+	return SecurityScheme{Type: "http", Scheme: "bearer", BearerFormat: bearerFormat}
+}
+
+// APIKeyHeaderScheme returns an apiKey security scheme carried in a request
+// header. headerName is the header the key is read from (e.g. "X-API-Key").
+func APIKeyHeaderScheme(headerName string) SecurityScheme {
+	return SecurityScheme{Type: "apiKey", In: "header", Name: headerName}
+}
+
 // Generator generates OpenAPI specs from routes.
 type Generator struct {
 	spec *Spec
@@ -126,7 +156,7 @@ func New(title, version string) *Generator {
 			Paths: make(map[string]PathItem),
 			Components: map[string]any{
 				"schemas":         make(map[string]*Schema),
-				"securitySchemes": make(map[string]any),
+				"securitySchemes": make(map[string]SecurityScheme),
 			},
 		},
 	}
@@ -205,6 +235,63 @@ func (g *Generator) AddSchema(name string, schema *Schema) *Generator {
 	}
 	schemas[name] = schema
 	return g
+}
+
+// AddSecurityScheme registers a named security scheme under
+// components.securitySchemes. Operations reference it by name via the
+// Security("name") option; registering the scheme here is what turns that
+// reference into a resolvable, strict-validation-clean spec instead of a
+// dangling reference.
+//
+// Use the constructors for the two documented cases:
+//
+//	gen.AddSecurityScheme("bearerAuth", openapi.BearerScheme("JWT"))
+//	gen.AddSecurityScheme("apiKeyAuth", openapi.APIKeyHeaderScheme("X-API-Key"))
+//
+// OAuth2 flows and OpenID Connect are out of scope for v2.3.
+func (g *Generator) AddSecurityScheme(name string, scheme SecurityScheme) *Generator {
+	schemes, ok := g.spec.Components["securitySchemes"].(map[string]SecurityScheme)
+	if !ok {
+		schemes = make(map[string]SecurityScheme)
+		g.spec.Components["securitySchemes"] = schemes
+	}
+	schemes[name] = scheme
+	return g
+}
+
+// UnresolvedSecurityRefs returns, sorted and de-duplicated, every scheme name
+// referenced by any operation's Security requirement that has no matching entry
+// in components.securitySchemes. An empty result means every reference resolves.
+//
+// It surfaces dangling references explicitly rather than emitting them silently,
+// so callers (and the verification matrix) can flag a Security("name") that names
+// a scheme nobody registered.
+func (g *Generator) UnresolvedSecurityRefs() []string {
+	defined, _ := g.spec.Components["securitySchemes"].(map[string]SecurityScheme)
+
+	seen := make(map[string]struct{})
+	var missing []string
+	for _, item := range g.spec.Paths {
+		for _, op := range []*Operation{item.Get, item.Post, item.Put, item.Delete, item.Patch, item.Options, item.Head} {
+			if op == nil {
+				continue
+			}
+			for _, req := range op.Security {
+				for name := range req {
+					if _, ok := defined[name]; ok {
+						continue
+					}
+					if _, dup := seen[name]; dup {
+						continue
+					}
+					seen[name] = struct{}{}
+					missing = append(missing, name)
+				}
+			}
+		}
+	}
+	sort.Strings(missing)
+	return missing
 }
 
 // Schema generates a schema from type and adds it to components.
