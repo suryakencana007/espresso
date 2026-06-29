@@ -73,23 +73,68 @@ func handler(ctx context.Context, req *espresso.JSON[Req], state espresso.State[
 
 ## Complete Example
 
+The program below is self-contained — it uses an in-memory `*Store` in place of
+a real database/cache so it compiles and runs as written. Swap `Store` for your
+own `*sql.DB` / cache client in production.
+
 ```go
 package main
 
 import (
     "context"
-    "database/sql"
-    "log"
-    
+    "encoding/json"
+    "net/http"
+    "sync"
+
     "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
     httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
-    "github.com/redis/go-redis/v9"
 )
+
+// Store is a tiny in-memory user store standing in for a database + cache.
+type Store struct {
+    mu     sync.RWMutex
+    users  map[int64]User
+    cache  map[int64][]byte // marshaled User cache, keyed by ID
+    nextID int64
+}
+
+func NewStore() *Store {
+    return &Store{users: make(map[int64]User), cache: make(map[int64][]byte), nextID: 1}
+}
+
+func (s *Store) List(limit int) []User {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+    out := make([]User, 0, len(s.users))
+    for _, u := range s.users {
+        if len(out) >= limit {
+            break
+        }
+        out = append(out, u)
+    }
+    return out
+}
+
+func (s *Store) Find(id int64) (User, bool) {
+    s.mu.RLock()
+    defer s.mu.RUnlock()
+    u, ok := s.users[id]
+    return u, ok
+}
+
+func (s *Store) Create(u User) User {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    u.ID = s.nextID
+    s.users[u.ID] = u
+    s.nextID++
+    return u
+}
 
 // Application state
 type AppState struct {
-    DB     *sql.DB
-    Cache  *redis.Client
+    Store  *Store
     Config Config
 }
 
@@ -111,59 +156,59 @@ type UserPath struct {
     ID int64 `path:"id,required"`
 }
 
+type ListQuery struct {
+    Page int `query:"page"`
+}
+
+type CreateUserReq struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
 // Handlers
 func listUsers(ctx context.Context, query *extractor.Query[ListQuery]) (espresso.JSON[[]User], error) {
     state := espresso.MustGetState[AppState](ctx)
-    
+
     limit := state.Config.MaxResults
     if limit <= 0 {
         limit = 10
     }
-    
-    users, err := state.DB.QueryUsers(ctx, limit)
-    if err != nil {
-        return espresso.JSON[[]User]{}, err
-    }
-    
-    return espresso.JSON[[]User]{Data: users}, nil
+
+    return espresso.JSON[[]User]{Data: state.Store.List(limit)}, nil
 }
 
 func getUser(ctx context.Context, path *extractor.Path[UserPath]) (espresso.JSON[User], error) {
     state := espresso.MustGetState[AppState](ctx)
-    
+
     // Try cache first
-    cached, err := state.Cache.Get(ctx, "user:"+string(path.Data.ID)).Result()
-    if err == nil {
+    if cached, ok := state.Store.cache[path.Data.ID]; ok {
         var user User
-        json.Unmarshal([]byte(cached), &user)
-        return espresso.JSON[User]{Data: user}, nil
+        if err := json.Unmarshal(cached, &user); err == nil {
+            return espresso.JSON[User]{Data: user}, nil
+        }
     }
-    
-    // Query database
-    user, err := state.DB.FindUser(ctx, path.Data.ID)
-    if err != nil {
-        return espresso.JSON[User]{}, err
+
+    user, ok := state.Store.Find(path.Data.ID)
+    if !ok {
+        return espresso.JSON[User]{}, espresso.ErrNotFound("user not found")
     }
-    
+
     // Cache result
-    data, _ := json.Marshal(user)
-    state.Cache.Set(ctx, "user:"+string(path.Data.ID), data, 5*time.Minute)
-    
+    if data, err := json.Marshal(user); err == nil {
+        state.Store.cache[path.Data.ID] = data
+    }
+
     return espresso.JSON[User]{Data: user}, nil
 }
 
 func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
     state := espresso.MustGetState[AppState](ctx)
-    
-    user := User{
+
+    user := state.Store.Create(User{
         Name:  req.Data.Name,
         Email: req.Data.Email,
-    }
-    
-    if err := state.DB.CreateUser(ctx, &user); err != nil {
-        return espresso.JSON[User]{}, err
-    }
-    
+    })
+
     return espresso.JSON[User]{
         StatusCode: http.StatusCreated,
         Data:       user,
@@ -171,31 +216,19 @@ func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espress
 }
 
 func main() {
-    // Initialize dependencies
-    db, err := sql.Open("postgres", "postgres://...")
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer db.Close()
-    
-    redisClient := redis.NewClient(&redis.Options{
-        Addr: "localhost:6379",
-    })
-    
     config := Config{
         AppName:    "MyAPI",
         Version:    "1.0.0",
         Debug:      true,
         MaxResults: 100,
     }
-    
+
     // Create application state
     state := AppState{
-        DB:     db,
-        Cache:  redisClient,
+        Store:  NewStore(),
         Config: config,
     }
-    
+
     // Create router with state
     router := espresso.Portafilter().
         Use(httpmiddleware.RequestIDMiddleware()).
@@ -205,7 +238,7 @@ func main() {
         Get("/users", espresso.Doppio(listUsers)).
         Get("/users/{id}", espresso.Doppio(getUser)).
         Post("/users", espresso.Doppio(createUser))
-    
+
     router.Brew()
 }
 ```

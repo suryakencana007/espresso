@@ -223,19 +223,54 @@ func (s *AppState) GetData(key string) (string, bool) {
 
 ## Complete Example
 
+The program below is self-contained: `DB` is a tiny in-memory store standing in
+for a real database. Replace it with your own `*sql.DB` (or repository) in
+production.
+
 ```go
 package main
 
 import (
     "context"
-    "database/sql"
     "net/http"
+    "sync"
     
     "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
 )
 
+// DB is a minimal in-memory user store standing in for a real database.
+type DB struct {
+    mu     sync.RWMutex
+    users  map[int]User
+    nextID int
+}
+
+func initDB() *DB {
+    return &DB{users: make(map[int]User), nextID: 1}
+}
+
+func (d *DB) FindUser(id int) (User, error) {
+    d.mu.RLock()
+    defer d.mu.RUnlock()
+    u, ok := d.users[id]
+    if !ok {
+        return User{}, espresso.ErrNotFound("user not found")
+    }
+    return u, nil
+}
+
+func (d *DB) CreateUser(name, email string) (User, error) {
+    d.mu.Lock()
+    defer d.mu.Unlock()
+    u := User{ID: d.nextID, Name: name, Email: email}
+    d.users[u.ID] = u
+    d.nextID++
+    return u, nil
+}
+
 type AppState struct {
-    DB     *sql.DB
+    DB     *DB
     Config Config
 }
 
@@ -263,8 +298,8 @@ func main() {
 
     espresso.Portafilter().
         WithState(appState).
-        Get("/users/{id}", getUser).
-        Post("/users", createUser).
+        Get("/users/{id}", espresso.Doppio(getUser)).
+        Post("/users", espresso.Doppio(createUser)).
         Brew(espresso.WithAddr(":8080"))
 }
 

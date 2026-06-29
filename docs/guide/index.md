@@ -55,11 +55,19 @@ package main
 
 import (
     "context"
+    "net/http"
+
     "github.com/suryakencana007/espresso/v2"
     httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 )
 
 type CreateUserReq struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+type User struct {
+    ID    int64  `json:"id"`
     Name  string `json:"name"`
     Email string `json:"email"`
 }

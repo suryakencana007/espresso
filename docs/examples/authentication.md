@@ -345,7 +345,6 @@ package main
 import (
     "context"
     "fmt"
-    "net/http"
     "time"
     
     "github.com/golang-jwt/jwt/v5"
@@ -363,15 +362,16 @@ func main() {
     router.Post("/login", espresso.Doppio(loginHandler))
     
     // Protected routes (JWT required)
-    protected := espresso.Portafilter()
-    protected.Use(httpmiddleware.JWTConfig{
+    jwtConfig := httpmiddleware.JWTConfig{
         Secret: string(jwtSecret),
         SigningMethod: "HS256",
         TokenLookup: "header:Authorization",
         TokenHeader: "Bearer",
         ContextKey: "user",
         ClaimsExtractor: extractClaims,
-    })
+    }
+    protected := espresso.Portafilter()
+    protected.Use(httpmiddleware.JWTMiddleware(jwtConfig))
     
     protected.Get("/profile", espresso.Doppio(getProfile))
     
@@ -387,8 +387,8 @@ func main() {
     router.Brew(espresso.WithAddr(":8080"))
 }
 
-func healthHandler(ctx context.Context) string {
-    return "OK"
+func healthHandler(ctx context.Context) espresso.Text {
+    return espresso.Text{Body: "OK"}
 }
 
 func extractClaims(token string) (map[string]any, error) {

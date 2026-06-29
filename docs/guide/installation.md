@@ -18,7 +18,11 @@ Create a simple `main.go`:
 ```go
 package main
 
-import "github.com/suryakencana007/espresso/v2"
+import (
+    "context"
+
+    "github.com/suryakencana007/espresso/v2"
+)
 
 func main() {
     espresso.Portafilter().
