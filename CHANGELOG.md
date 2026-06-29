@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-06-29
+
+A correctness/quality release — **Backflush** — that makes the OpenAPI
+generator trustworthy and clears the deferred debt the post-v2.1 analysis
+surfaced. The only new runtime surface is the additive
+`openapi.AddSecurityScheme` API; everything else corrects behavior or tests.
+The generated spec now reflects the registered routes accurately — custom
+extractors are introspected (#52), status codes are real, security references
+resolve (#49), and response schemas appear on both registration paths — the
+spec endpoint is served correctly (JSON error envelope on failure, cached,
+version-pinned Scalar UI; #53), the docs compile (#51), and the long-lived
+WebSocket integration suite is green again (#50). The `AutoRegister` no-op
+stub was removed. A consolidated spec-correctness matrix locks it all (#54).
+
+**Upgrade from v2.2:**
+
+- **`AutoRegister` is removed.** It was an exported no-op that did nothing;
+  delete any call to it. Use `RegisterHandler` or the `OpenAPIRouter` fluent
+  API. (Real route auto-registration is possible future work, not committed.)
+- **Secured specs must register their schemes.** A route using
+  `openapi.Security("bearerAuth")` now needs a matching
+  `gen.AddSecurityScheme("bearerAuth", openapi.BearerScheme("JWT"))` (or
+  `APIKeyHeaderScheme`) so the reference resolves; `UnresolvedSecurityRefs()`
+  surfaces any that don't. Previously such references were emitted dangling.
+- **The Scalar docs UI is pinned** to `@scalar/api-reference@1.25.122` via
+  `openapi.ScalarVersion`. It still loads from an external CDN — offline /
+  air-gapped / strict-CSP deployments should self-host the bundle and bump the
+  pin deliberately.
+
 ### Fixed
 
 - **OpenAPI generation correctness — five generation-path defects** (v2.3 task-01).
