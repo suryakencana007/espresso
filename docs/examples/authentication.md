@@ -345,7 +345,6 @@ package main
 import (
     "context"
     "fmt"
-    "net/http"
     "time"
     
     "github.com/golang-jwt/jwt/v5"
