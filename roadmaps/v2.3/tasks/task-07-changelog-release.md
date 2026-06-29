@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** Tasks 1, 2, 3, 4, 5, 6 must be merged
 
+> **Status: ✅ Shipped 2026-06-29.** Delivered via #55 — tagged v2.3.0; GitHub release published.
+
 ## Context
 
 Final gate before tagging v2.3.0. Promotes `[Unreleased]` to `[2.3.0] - <date>`, bumps the version chip + `package.json`, runs the full quality-gate set, tags, and publishes the GitHub release. Single atomic commit (mirrors v2.0 task-07 / v2.1 task-06 / v2.2 task-05).
@@ -12,21 +14,21 @@ v2.3 is the "Backflush" release — a correctness/quality cleanup that clears th
 
 ## Acceptance Criteria
 
-- [ ] `CHANGELOG.md` has a complete `[2.3.0] - 2026-MM-DD` section covering Tasks 1, 2, 3, 4, 5 (with Task 6 noted as a verification/testing entry).
-- [ ] The OpenAPI generation/serving correctness fixes (Tasks 1, 3) appear under `Fixed` with concrete before/after.
-- [ ] The `AddSecurityScheme` API (Task 2) appears under `Added`.
-- [ ] The `AutoRegister` no-op stub removal (Task 3) appears under `Removed`.
-- [ ] The docs type-reference sweep (Task 4) and the WebSocket integration-test fix (Task 5) appear under `Fixed`.
-- [ ] A short "Upgrade from v2.2" note documents the `AddSecurityScheme` requirement for secured specs and the `AutoRegister` removal (callers of the no-op simply delete the call).
-- [ ] `package.json` version bumped to `2.3.0`.
-- [ ] `docs/.vitepress/config.ts` version chip updated to `v2.3.0`.
-- [ ] `[Unreleased]` retained empty for v2.3.x / v2.4 work.
-- [ ] `go test ./... -race` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] `go test -tags=integration ./tests/integration/...` clean (Task 5 fix landed).
-- [ ] `bench/` module compiles cleanly.
-- [ ] Git tag `v2.3.0` created and pushed.
-- [ ] GitHub release published with the `[2.3.0]` body.
+- [x] `CHANGELOG.md` has a complete `[2.3.0] - 2026-MM-DD` section covering Tasks 1, 2, 3, 4, 5 (with Task 6 noted as a verification/testing entry).
+- [x] The OpenAPI generation/serving correctness fixes (Tasks 1, 3) appear under `Fixed` with concrete before/after.
+- [x] The `AddSecurityScheme` API (Task 2) appears under `Added`.
+- [x] The `AutoRegister` no-op stub removal (Task 3) appears under `Removed`.
+- [x] The docs type-reference sweep (Task 4) and the WebSocket integration-test fix (Task 5) appear under `Fixed`.
+- [x] A short "Upgrade from v2.2" note documents the `AddSecurityScheme` requirement for secured specs and the `AutoRegister` removal (callers of the no-op simply delete the call).
+- [x] `package.json` version bumped to `2.3.0`.
+- [x] `docs/.vitepress/config.ts` version chip updated to `v2.3.0`.
+- [x] `[Unreleased]` retained empty for v2.3.x / v2.4 work.
+- [x] `go test ./... -race` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] `go test -tags=integration ./tests/integration/...` clean (Task 5 fix landed).
+- [x] `bench/` module compiles cleanly.
+- [x] Git tag `v2.3.0` created and pushed.
+- [x] GitHub release published with the `[2.3.0]` body.
 
 ## Technical Approach
 
@@ -34,12 +36,12 @@ v2.3 is the "Backflush" release — a correctness/quality cleanup that clears th
 
 Walk the v2.3 roadmap. Every task file's Acceptance Criteria boxes are ticked.
 
-- [ ] Task 1: OpenAPI generation correctness
-- [ ] Task 2: OpenAPI security schemes
-- [ ] Task 3: OpenAPI serving hardening + remove `AutoRegister` stub
-- [ ] Task 4: Docs type-reference sweep + snippet-compile check
-- [ ] Task 5: Fix WebSocket long-lived integration test
-- [ ] Task 6: OpenAPI spec-correctness matrix + suites green
+- [x] Task 1: OpenAPI generation correctness
+- [x] Task 2: OpenAPI security schemes
+- [x] Task 3: OpenAPI serving hardening + remove `AutoRegister` stub
+- [x] Task 4: Docs type-reference sweep + snippet-compile check
+- [x] Task 5: Fix WebSocket long-lived integration test
+- [x] Task 6: OpenAPI spec-correctness matrix + suites green
 
 ### Step 7.2 — CHANGELOG
 
@@ -162,11 +164,11 @@ The full test suite (Tasks 1-6) plus the integration suite, plus the `bench/` mo
 
 ## Definition of Done
 
-- [ ] `CHANGELOG.md` `[2.3.0]` section finalized with the ship date.
-- [ ] `package.json` version bumped to `2.3.0`.
-- [ ] Docs version chip updated to `v2.3.0`.
-- [ ] `[Unreleased]` left empty.
-- [ ] Git tag `v2.3.0` pushed from the merge commit.
-- [ ] GitHub release published with the `[2.3.0]` body + upgrade note.
-- [ ] `SESSION_STATE.md` updated to reflect the v2.3.0 ship.
-- [ ] Barista pinged with the OpenAPI correctness / `AddSecurityScheme` / `AutoRegister`-removal upgrade note.
+- [x] `CHANGELOG.md` `[2.3.0]` section finalized with the ship date.
+- [x] `package.json` version bumped to `2.3.0`.
+- [x] Docs version chip updated to `v2.3.0`.
+- [x] `[Unreleased]` left empty.
+- [x] Git tag `v2.3.0` pushed from the merge commit.
+- [x] GitHub release published with the `[2.3.0]` body + upgrade note.
+- [x] `SESSION_STATE.md` updated to reflect the v2.3.0 ship.
+- [x] Barista pinged with the OpenAPI correctness / `AddSecurityScheme` / `AutoRegister`-removal upgrade note.

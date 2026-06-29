@@ -4,6 +4,8 @@
 **Estimated Effort:** 1.5 days
 **Dependencies:** Tasks 1, 2 (shares `openapi/openapi.go` with Task 2 and `router_openapi.go` with Task 1)
 
+> **Status: ✅ Shipped 2026-06-29 (v2.3.0).** Delivered via #53 — serving hardening (envelope/cache/Scalar pin) + AutoRegister removed.
+
 ## Context
 
 Tasks 1 and 2 make the *generated spec* correct. This task makes the *serving and surface* of that spec trustworthy: the failure path, the per-request cost, the docs UI delivery, and one API symbol that openly lies about what it does. A 2026-06-28 verify-and-scope pass generated a real spec, served it, and inspected the handler/serving code; the four findings below were each confirmed against the source.
@@ -20,12 +22,12 @@ This task is **P1, not P0** because each finding is a hardening/correctness clea
 
 ## Acceptance Criteria
 
-- [ ] The spec-generation failure path no longer emits `text/plain`: on a marshal failure, `Handler()` writes the canonical `{"error":{"code","message","details","request_id"}}` envelope with `Content-Type: application/json` and an appropriate 5xx status, produced via the stdlib-only `internal/errorenvelope` leaf.
-- [ ] The `openapi` package still does **not** import the root `espresso` package (no import cycle introduced); the envelope is built only from `internal/errorenvelope`.
-- [ ] The marshaled spec is generated **once** and served from cached bytes on subsequent requests — a single marshal regardless of request count, justified by the spec being immutable after route registration.
-- [ ] The Scalar UI bundle URL in `scalar.go:18` is pinned to a specific `@version` (not `latest`), and the offline / air-gapped / strict-CSP limitation is documented (self-host guidance) at the call site or in the docs.
-- [ ] The `AutoRegister` symbol and its godoc (`router_openapi.go:234-249`) are **deleted**; the package compiles with no remaining reference to it.
-- [ ] Real auto-registration is recorded as possible future work (CHANGELOG/note), explicitly **not** shipped in v2.3.
+- [x] The spec-generation failure path no longer emits `text/plain`: on a marshal failure, `Handler()` writes the canonical `{"error":{"code","message","details","request_id"}}` envelope with `Content-Type: application/json` and an appropriate 5xx status, produced via the stdlib-only `internal/errorenvelope` leaf.
+- [x] The `openapi` package still does **not** import the root `espresso` package (no import cycle introduced); the envelope is built only from `internal/errorenvelope`.
+- [x] The marshaled spec is generated **once** and served from cached bytes on subsequent requests — a single marshal regardless of request count, justified by the spec being immutable after route registration.
+- [x] The Scalar UI bundle URL in `scalar.go:18` is pinned to a specific `@version` (not `latest`), and the offline / air-gapped / strict-CSP limitation is documented (self-host guidance) at the call site or in the docs.
+- [x] The `AutoRegister` symbol and its godoc (`router_openapi.go:234-249`) are **deleted**; the package compiles with no remaining reference to it.
+- [x] Real auto-registration is recorded as possible future work (CHANGELOG/note), explicitly **not** shipped in v2.3.
 
 ## Technical Approach
 
@@ -117,9 +119,9 @@ Delete the no-op body (`router_openapi.go:248-249`) **and** its misleading godoc
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `openapi` is confirmed to not import the root `espresso` package (no cycle introduced by the D1 fix).
-- [ ] `go test -race ./...` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CHANGELOG `[Unreleased]` entries drafted: `Changed` for the failure-path envelope and the Scalar pin; `Removed` for `AutoRegister` (with the "no-op; real auto-registration is future work" note).
-- [ ] PR description records the chosen Scalar version pin, the cache-immutability assumption, and the confirmation that the failure path no longer emits `text/plain`.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `openapi` is confirmed to not import the root `espresso` package (no cycle introduced by the D1 fix).
+- [x] `go test -race ./...` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] CHANGELOG `[Unreleased]` entries drafted: `Changed` for the failure-path envelope and the Scalar pin; `Removed` for `AutoRegister` (with the "no-op; real auto-registration is future work" note).
+- [x] PR description records the chosen Scalar version pin, the cache-immutability assumption, and the confirmation that the failure path no longer emits `text/plain`.

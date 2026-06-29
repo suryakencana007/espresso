@@ -1,5 +1,9 @@
 # Espresso v2.3.0 — Backflush
 
+> **Status: shipped 2026-06-29.** Tag [`v2.3.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.3.0).
+> A correctness/quality pass — see the CHANGELOG `[2.3.0]` for upgrade notes.
+> This directory is retained for historical reference; future work has its own roadmap.
+
 This directory contains the roadmap and task specifications for Espresso v2.3.0, a **minor** release that is a correctness/quality cleanup with **one tiny additive API** (security-scheme registration) and otherwise **no new feature surface**. Backflushing an espresso machine runs clean water back through the group head to clear built-up coffee residue — v2.3 is that cycle for Espresso: flush out the accumulated correctness debt the v2.2 analysis surfaced and deferred, so the generated artifacts and docs can be trusted again.
 
 ## Why v2.3?

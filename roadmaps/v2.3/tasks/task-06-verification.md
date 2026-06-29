@@ -4,6 +4,8 @@
 **Estimated Effort:** 1 day
 **Dependencies:** Tasks 1, 2, 3, 4, 5
 
+> **Status: ✅ Shipped 2026-06-29 (v2.3.0).** Delivered via #54 — consolidated spec-correctness matrix + import-direction guard.
+
 ## Context
 
 Tasks 1-5 are five independent correctness fixes spread across the OpenAPI
@@ -32,21 +34,21 @@ last because it asserts the *combined* post-fix behavior of Tasks 1-5.
 
 ## Acceptance Criteria
 
-- [ ] A table-driven `TestOpenAPISpecCorrectness` builds one `*Router` that exercises, on distinct routes, the full extractor/handler matrix and then generates the spec **once**, asserting per row against the generated document:
-  - [ ] a `extractor.Path[T]` route — the path parameter appears under the operation's `parameters` with `in: path`.
-  - [ ] a `extractor.Query[T]` route — the query parameter appears under `parameters` with `in: query`.
-  - [ ] a `JSON[T]` body route — the operation has a `requestBody` whose schema references the request type.
-  - [ ] a **custom** `FromRequest` extractor route (Task 1, D2) — it is introspected: its params and/or requestBody are present, NOT silently empty.
-  - [ ] a route classified by a user type whose name shares a prefix with a built-in (e.g. a type named `Files...` / `Format...`, Task 1, D8) — classified correctly, NOT mis-bucketed by name prefix.
-- [ ] `TestOpenAPISpecCorrectness_StatusCodes` asserts real status codes are documented (Task 1, D3): a `201`-returning POST documents `"201"` (not `"200"`); a `Status`/`Text` route documents its real code; the default `JSON[T]` route still documents `"200"`. No row asserts a spurious `"200"`-only responses map for a non-200 handler.
-- [ ] `TestOpenAPISecurityRefsResolve` asserts every `security` reference on every operation resolves to a key present in `components.securitySchemes` (Task 2, D4): a route secured via `Security("bearerAuth")` produces a non-dangling reference, and `components.securitySchemes["bearerAuth"]` is a defined scheme. Walk all operations; fail on any reference with no matching component.
-- [ ] `TestOpenAPIResponseSchemaBothPaths` asserts response schemas are present for routes registered via **both** `registerPath` and `RegisterHandler` (Task 1, D9): neither path emits a bare `200:{description:"Success"}` with no schema; both attach the response-body schema.
-- [ ] `TestOpenAPINoRouteSilentlyDropped` asserts every registered route appears as a path in the generated spec (Task 1, D6): registering a route whose introspection would previously have been swallowed does NOT make the route vanish; the count of documented paths equals the count of registered routes.
-- [ ] `TestOpenAPIFailurePathEnvelope` asserts the spec-generation failure path returns the canonical JSON envelope (Task 3, D1): `Content-Type: application/json`, body decodes into `{"error":{"code","message","details","request_id"}}` with a non-empty `code`; no row asserts a `text/plain` body.
-- [ ] `TestOpenAPIServedFromCache` asserts the spec is marshaled once and served from cached bytes (Task 3, D7): two successive requests to the spec handler return byte-identical bodies and the marshal cost is incurred once (e.g. via a marshal-count probe or by asserting the cached bytes are reused).
-- [ ] `TestAutoRegisterRemoved` (or equivalent) confirms the no-op `AutoRegister` stub is gone (Task 3, D5): a source/godoc guard fails if the symbol or its misleading "registers all routes" godoc reappears.
-- [ ] The full unit suite passes under `-race`.
-- [ ] The `-tags=integration` suite passes (green after the Task 5 WebSocket harness fix).
+- [x] A table-driven `TestOpenAPISpecCorrectness` builds one `*Router` that exercises, on distinct routes, the full extractor/handler matrix and then generates the spec **once**, asserting per row against the generated document:
+  - [x] a `extractor.Path[T]` route — the path parameter appears under the operation's `parameters` with `in: path`.
+  - [x] a `extractor.Query[T]` route — the query parameter appears under `parameters` with `in: query`.
+  - [x] a `JSON[T]` body route — the operation has a `requestBody` whose schema references the request type.
+  - [x] a **custom** `FromRequest` extractor route (Task 1, D2) — it is introspected: its params and/or requestBody are present, NOT silently empty.
+  - [x] a route classified by a user type whose name shares a prefix with a built-in (e.g. a type named `Files...` / `Format...`, Task 1, D8) — classified correctly, NOT mis-bucketed by name prefix.
+- [x] `TestOpenAPISpecCorrectness_StatusCodes` asserts real status codes are documented (Task 1, D3): a `201`-returning POST documents `"201"` (not `"200"`); a `Status`/`Text` route documents its real code; the default `JSON[T]` route still documents `"200"`. No row asserts a spurious `"200"`-only responses map for a non-200 handler.
+- [x] `TestOpenAPISecurityRefsResolve` asserts every `security` reference on every operation resolves to a key present in `components.securitySchemes` (Task 2, D4): a route secured via `Security("bearerAuth")` produces a non-dangling reference, and `components.securitySchemes["bearerAuth"]` is a defined scheme. Walk all operations; fail on any reference with no matching component.
+- [x] `TestOpenAPIResponseSchemaBothPaths` asserts response schemas are present for routes registered via **both** `registerPath` and `RegisterHandler` (Task 1, D9): neither path emits a bare `200:{description:"Success"}` with no schema; both attach the response-body schema.
+- [x] `TestOpenAPINoRouteSilentlyDropped` asserts every registered route appears as a path in the generated spec (Task 1, D6): registering a route whose introspection would previously have been swallowed does NOT make the route vanish; the count of documented paths equals the count of registered routes.
+- [x] `TestOpenAPIFailurePathEnvelope` asserts the spec-generation failure path returns the canonical JSON envelope (Task 3, D1): `Content-Type: application/json`, body decodes into `{"error":{"code","message","details","request_id"}}` with a non-empty `code`; no row asserts a `text/plain` body.
+- [x] `TestOpenAPIServedFromCache` asserts the spec is marshaled once and served from cached bytes (Task 3, D7): two successive requests to the spec handler return byte-identical bodies and the marshal cost is incurred once (e.g. via a marshal-count probe or by asserting the cached bytes are reused).
+- [x] `TestAutoRegisterRemoved` (or equivalent) confirms the no-op `AutoRegister` stub is gone (Task 3, D5): a source/godoc guard fails if the symbol or its misleading "registers all routes" godoc reappears.
+- [x] The full unit suite passes under `-race`.
+- [x] The `-tags=integration` suite passes (green after the Task 5 WebSocket harness fix).
 
 ## Technical Approach
 
@@ -130,9 +132,9 @@ The integration run must be green on this machine after the Task 5
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `go test -tags=integration ./tests/integration/... -timeout=2h` clean on this machine (green after Task 5).
-- [ ] `golangci-lint run ./...` clean (gocyclo min 15; keep the matrix drivers table-driven so per-function cyclomatic complexity stays under the threshold).
-- [ ] Project coverage does not regress below the established minimum; the new matrix measurably raises coverage of the `openapi/` introspection, status-code derivation, security-scheme population, the unified registration helper, and the cached-bytes serving path.
-- [ ] PR description lists the spec-correctness matrix and the two suite-green gates, and notes that this task adds tests only — no production code changes.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `go test -tags=integration ./tests/integration/... -timeout=2h` clean on this machine (green after Task 5).
+- [x] `golangci-lint run ./...` clean (gocyclo min 15; keep the matrix drivers table-driven so per-function cyclomatic complexity stays under the threshold).
+- [x] Project coverage does not regress below the established minimum; the new matrix measurably raises coverage of the `openapi/` introspection, status-code derivation, security-scheme population, the unified registration helper, and the cached-bytes serving path.
+- [x] PR description lists the spec-correctness matrix and the two suite-green gates, and notes that this task adds tests only — no production code changes.
