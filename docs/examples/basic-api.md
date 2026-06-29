@@ -66,6 +66,7 @@ import (
     "net/http"
     
     "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
     "myapp/models"
 )
 

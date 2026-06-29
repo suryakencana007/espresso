@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -21,31 +22,33 @@ import (
 // self-contained ```go fences from docs/ and `go build`s each one so that class
 // of error cannot silently return.
 //
-// SCOPE — self-contained fences that exercise the extractor package. The rule
-// has three clauses, ALL required:
+// SCOPE — self-contained fences that exercise the espresso module. The rule has
+// three clauses, ALL required:
 //
 //  1. The fence's first meaningful line is `package main` — a runnable program,
 //     not a library fragment (`package foo`) or a bare signature/body.
 //  2. Every import resolves offline within this module — stdlib (verified
 //     against `go list std`, not a dotted-host heuristic) or
 //     github.com/suryakencana007/espresso/v2/.... Fences importing fictional
-//     helpers (myapp/..., your-app/...) or third-party deps are skipped.
-//  3. The fence imports the extractor package. This narrows the gate to exactly
-//     the programs the v2.3 task-04 sweep makes load-bearing: a published
-//     program that uses extractor.X[T] and must compile. Illustrative
-//     package-main snippets that elide helper definitions (undefined User, a
-//     missing net/http import, …) are out of scope by design — this guard is
-//     for the extractor regression, not a lint of every doc snippet.
+//     helpers (myapp/..., your-app/...) or third-party deps (redis, golang-jwt,
+//     …) are skipped: they cannot be `go build`-ed hermetically.
+//  3. The fence references the espresso module — either by importing one of its
+//     packages OR by *using* an `espresso.`/`extractor.` qualified identifier in
+//     the body. This is the v2.3 task-04 hardening (PR #51 follow-up): the
+//     original gate keyed on the *extractor import* alone, so a program that
+//     USED extractor.X[T] but forgot to `import ".../extractor"` was silently
+//     skipped — exactly the missing-import class the guard is meant to catch.
+//     Detecting espresso/extractor by usage (not just by import) puts those
+//     programs back in scope, so a dropped import now fails to compile and trips
+//     CI. Illustrative package-main snippets that only reach fictional/third-
+//     party packages remain out of scope by clause 2.
 //
 // The build runs inside a temp directory created UNDER the module root so the
 // snippet is part of this module: `go build` then resolves espresso/extractor/
 // openapi from the local go.mod and module cache. It is hermetic — no network,
 // no go.mod synthesis — because the fence's imports are already module deps.
 
-const (
-	modulePath    = "github.com/suryakencana007/espresso/v2"
-	extractorPath = modulePath + "/extractor"
-)
+const modulePath = "github.com/suryakencana007/espresso/v2"
 
 func TestDocsSnippetsCompile(t *testing.T) {
 	docsRoot := "docs"
@@ -147,9 +150,15 @@ func goFences(content string) []string {
 	return fences
 }
 
-// isSelfContained reports whether a fence is an in-scope extractor program per
-// the three-clause rule in the package doc: package-main, all imports resolvable
-// offline within this module, and the extractor package imported.
+// espressoUsageRe matches a qualified use of the espresso or extractor package
+// (e.g. `espresso.Portafilter`, `extractor.Query[`). The leading boundary class
+// keeps it from matching `myespresso.X` or a field selector `x.extractor.Y`.
+var espressoUsageRe = regexp.MustCompile(`(^|[^\w.])(espresso|extractor)\.`)
+
+// isSelfContained reports whether a fence is an in-scope espresso-module program
+// per the three-clause rule in the package doc: package-main, all imports
+// resolvable offline within this module, and a reference to the espresso module
+// (by import or by qualified usage of espresso./extractor.).
 func isSelfContained(fence string, stdlib map[string]bool) bool {
 	if !startsWithPackageMain(fence) {
 		return false
@@ -159,17 +168,20 @@ func isSelfContained(fence string, stdlib map[string]bool) bool {
 	if err != nil {
 		return false
 	}
-	importsExtractor := false
+	importsModule := false
 	for _, imp := range f.Imports {
 		p := strings.Trim(imp.Path.Value, `"`)
 		if !importResolvable(p, stdlib) {
 			return false
 		}
-		if p == extractorPath {
-			importsExtractor = true
+		if p == modulePath || strings.HasPrefix(p, modulePath+"/") {
+			importsModule = true
 		}
 	}
-	return importsExtractor
+	// Clause 3: reference the espresso module by import OR by usage. The
+	// usage path is what catches a program that calls extractor.X[T] but
+	// dropped its `import ".../extractor"` — a missing-import regression.
+	return importsModule || espressoUsageRe.MatchString(fence)
 }
 
 // startsWithPackageMain reports whether the first non-blank, non-comment line of

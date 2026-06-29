@@ -204,6 +204,7 @@ package main
 
 import (
     "context"
+    "fmt"
     "log"
     "os"
     "os/signal"
@@ -409,6 +410,7 @@ import (
     "net/http"
     
     "github.com/suryakencana007/espresso/v2"
+    "github.com/suryakencana007/espresso/v2/extractor"
     
     "myapp/internal/app"
     "myapp/internal/errors"

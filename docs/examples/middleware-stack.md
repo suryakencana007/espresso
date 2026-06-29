@@ -7,7 +7,7 @@ This example shows how to configure a complete production middleware stack.
 Espresso provides two levels of middleware:
 
 1. **HTTP Middleware** - Operates on raw HTTP requests (Use)
-2. **Service Layers** - Operates on typed requests (PostWith, GetWith)
+2. **Service Layers** - Operates on typed requests (WithLayers)
 
 ## Production HTTP Middleware
 
@@ -91,11 +91,7 @@ For typed request/response handling:
 ```go
 import servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 
-type UserService struct {
-    db *sql.DB
-}
-
-func (s UserService) Call(ctx context.Context, req CreateUserReq) (User, error) {
+func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
     // Business logic
 }
 
@@ -105,11 +101,11 @@ func main() {
         Use(httpmiddleware.LoggingMiddleware())
     
     // With service layers
-    router.PostWith("/api/users", UserService{},
-        servicemiddleware.TimeoutLayer[CreateUserReq, User](30*time.Second),
-        servicemiddleware.ValidationLayer[CreateUserReq, User](UserValidator{}),
-        servicemiddleware.MetricsLayer[CreateUserReq, User](metricsCollector, "UserService"),
-    )
+    router.Post("/api/users", espresso.WithLayers(createUser,
+        espresso.Timeout(30*time.Second),
+        espresso.Validation(UserValidator{}),
+        espresso.Metrics(metricsCollector, "UserService"),
+    ))
     
     router.Brew()
 }
@@ -130,9 +126,9 @@ func main() {
     
     router := espresso.Portafilter()
     
-    router.PostWith("/api/external", ExternalService{},
-        servicemiddleware.CircuitBreakerLayer[Req, Res](cbConfig),
-    )
+    router.Post("/api/external", espresso.WithLayers(externalHandler,
+        espresso.CircuitBreaker(cbConfig),
+    ))
     
     router.Brew()
 }
@@ -152,17 +148,17 @@ Retry transient failures:
 func main() {
     router := espresso.Portafilter()
     
-    router.PostWith("/api/unstable", UnstableService{},
+    router.Post("/api/unstable", espresso.WithLayers(callUnstable,
         // Timeout after 30s total
-        servicemiddleware.TimeoutLayer[Req, Res](30*time.Second),
+        espresso.Timeout(30*time.Second),
         
         // Retry up to 3 times with exponential backoff
-        servicemiddleware.RetryLayer[Req, Res](
-            3,                                      // max retries
-            100*time.Millisecond,                   // initial backoff
-            servicemiddleware.BackoffExponential,   // double each time
+        espresso.Retry(
+            3,                                    // max retries
+            100*time.Millisecond,                 // initial backoff
+            servicemiddleware.BackoffExponential, // double each time
         ),
-    )
+    ))
     
     router.Brew()
 }
@@ -292,9 +288,9 @@ func main() {
     
     router := espresso.Portafilter()
     
-    router.PostWith("/api/users", UserService{},
-        servicemiddleware.MetricsLayer[CreateUserReq, User](metrics, "UserService"),
-    )
+    router.Post("/api/users", espresso.WithLayers(createUser,
+        espresso.Metrics(metrics, "UserService"),
+    ))
     
     // Expose metrics endpoint
     router.Get("/metrics", prometheusHandler())
@@ -311,12 +307,47 @@ Complete example:
 package main
 
 import (
+    "context"
     "time"
     
     "github.com/suryakencana007/espresso/v2"
     httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
     servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
+
+type CreateUserReq struct {
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+type User struct {
+    ID    int64  `json:"id"`
+    Name  string `json:"name"`
+    Email string `json:"email"`
+}
+
+type ExternalReq struct {
+    Query string `json:"query"`
+}
+
+type ExternalRes struct {
+    Result string `json:"result"`
+}
+
+func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
+    return espresso.JSON[User]{Data: User{Name: req.Data.Name, Email: req.Data.Email}}, nil
+}
+
+func callExternal(ctx context.Context, req *espresso.JSON[ExternalReq]) (espresso.JSON[ExternalRes], error) {
+    return espresso.JSON[ExternalRes]{Data: ExternalRes{Result: "ok"}}, nil
+}
+
+// noopMetrics is a minimal MetricsCollector stub. Swap it for a Prometheus
+// collector in production (see the "Metrics Collection" section above).
+type noopMetrics struct{}
+
+func (noopMetrics) RecordRequest(string, time.Duration, error) {}
+func (noopMetrics) RecordActiveRequests(string, int)           {}
 
 func main() {
     // Rate limiter
@@ -329,6 +360,8 @@ func main() {
         Timeout:          30*time.Second,
         SuccessThreshold: 3,
     }
+    
+    metrics := noopMetrics{}
     
     // HTTP middleware stack
     router := espresso.Portafilter().
@@ -343,18 +376,17 @@ func main() {
     router.Get("/health", func() string { return "OK" })
     
     // API routes (with service layers)
-    router.PostWith("/api/users", UserService{},
-        servicemiddleware.TimeoutLayer[CreateUserReq, User](30*time.Second),
-        servicemiddleware.MetricsLayer[CreateUserReq, User](metrics, "UserService"),
-    )
+    router.Post("/api/users", espresso.WithLayers(createUser,
+        espresso.Timeout(30*time.Second),
+        espresso.Metrics(metrics, "UserService"),
+    ))
     
     // External API (with circuit breaker + retry)
-    router.PostWith("/api/external", ExternalService{},
-        servicemiddleware.TimeoutLayer[Req, Res](10*time.Second),
-        servicemiddleware.RetryLayer[Req, Res](3, 100*time.Millisecond, 
-            servicemiddleware.BackoffExponential),
-        servicemiddleware.CircuitBreakerLayer[Req, Res](cbConfig),
-    )
+    router.Post("/api/external", espresso.WithLayers(callExternal,
+        espresso.Timeout(10*time.Second),
+        espresso.Retry(3, 100*time.Millisecond, servicemiddleware.BackoffExponential),
+        espresso.CircuitBreaker(cbConfig),
+    ))
     
     router.Brew(espresso.WithAddr(":8080"))
 }

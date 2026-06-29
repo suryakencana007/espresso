@@ -14,6 +14,23 @@ type Service[Req any, Res any] interface {
 type Layer[Req any, Res any] func(Service[Req, Res]) Service[Req, Res]
 ```
 
+## Applying Layers
+
+Service layers are attached to a route with `espresso.WithLayers`, which wraps a
+typed handler (`func(ctx, *Req) (Res, error)`) in the supplied `LayerConfig`
+chain and returns an `http.HandlerFunc`. Register it with the normal
+`router.Get/Post/Put/Delete/Patch` methods:
+
+```go
+func WithLayers(handler any, layers ...LayerConfig) http.HandlerFunc
+```
+
+The `espresso.*` `LayerConfig` constructors (`Timeout`, `Retry`,
+`CircuitBreaker`, `ConcurrencyLimit`, `Validation`, `Logging`, `Metrics`) are
+type-erased, so the same layer set composes across handlers with different
+`Req`/`Res` types — the concrete `Layer[Req, Res]` is materialized at binding
+time.
+
 ## Built-in Layers
 
 ### Timeout Layer
@@ -21,14 +38,12 @@ type Layer[Req any, Res any] func(Service[Req, Res]) Service[Req, Res]
 Enforce timeouts on service calls:
 
 ```go
-import servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
-
 func main() {
     router := espresso.Portafilter()
     
-    router.PostWith("/users", UserService{},
-        servicemiddleware.TimeoutLayer[CreateUserReq, User](5*time.Second),
-    )
+    router.Post("/users", espresso.WithLayers(createUser,
+        espresso.Timeout(5*time.Second),
+    ))
     
     router.Brew()
 }
@@ -39,13 +54,13 @@ func main() {
 Retry failed operations with backoff:
 
 ```go
-router.PostWith("/api", ExternalService{},
-    servicemiddleware.RetryLayer[Req, Res](
-        3,                        // max retries
-        100*time.Millisecond,     // initial backoff
+router.Post("/api", espresso.WithLayers(callExternal,
+    espresso.Retry(
+        3,                                    // max retries
+        100*time.Millisecond,                 // initial backoff
         servicemiddleware.BackoffExponential, // strategy
     ),
-)
+))
 ```
 
 Backoff strategies:
@@ -68,9 +83,9 @@ cbConfig := servicemiddleware.CircuitBreakerConfig{
     SuccessThreshold: 3,              // Close after 3 successes
 }
 
-router.PostWith("/users", UserService{},
-    servicemiddleware.CircuitBreakerLayer[CreateUserReq, User](cbConfig),
-)
+router.Post("/users", espresso.WithLayers(createUser,
+    espresso.CircuitBreaker(cbConfig),
+))
 ```
 
 States:
@@ -102,9 +117,9 @@ on `servicemiddleware.IsCircuitBreakerError(err)` and return your own
 Limit concurrent requests:
 
 ```go
-router.PostWith("/expensive", ExpensiveService{},
-    servicemiddleware.ConcurrencyLimitLayer[Req, Res](100), // Max 100 concurrent
-)
+router.Post("/expensive", espresso.WithLayers(runExpensive,
+    espresso.ConcurrencyLimit(100), // Max 100 concurrent
+))
 ```
 
 Requests exceeding the limit wait in a queue.
@@ -126,19 +141,22 @@ func (v UserValidator) Validate(ctx context.Context, req CreateUserReq) error {
     return nil
 }
 
-router.PostWith("/users", UserService{},
-    servicemiddleware.ValidationLayer[CreateUserReq, User](UserValidator{}),
-)
+router.Post("/users", espresso.WithLayers(createUser,
+    espresso.Validation(UserValidator{}),
+))
 ```
+
+The `espresso.Validation` type parameter is the request type the validator
+accepts; Go infers it from the validator argument in most call sites.
 
 ### Logging Layer
 
 Log service execution:
 
 ```go
-router.PostWith("/users", UserService{},
-    servicemiddleware.LoggingLayer[CreateUserReq, User](log.Logger, "UserService"),
-)
+router.Post("/users", espresso.WithLayers(createUser,
+    espresso.Logging(log.Logger, "UserService"),
+))
 
 // Output:
 // INFO service=UserService latency=15.234ms "Request processed"
@@ -161,9 +179,9 @@ func (c PrometheusCollector) RecordActiveRequests(service string, delta int) {
     activeRequests.Add(float64(delta))
 }
 
-router.PostWith("/users", UserService{},
-    servicemiddleware.MetricsLayer[CreateUserReq, User](collector, "UserService"),
-)
+router.Post("/users", espresso.WithLayers(createUser,
+    espresso.Metrics(collector, "UserService"),
+))
 ```
 
 ## Combining Layers
@@ -177,14 +195,13 @@ func main() {
     
     router := espresso.Portafilter()
     
-    router.PostWith("/users", UserService{},
-        // Order: Timeout -> Retry -> CircuitBreaker -> Validation -> Service
-        servicemiddleware.TimeoutLayer[CreateUserReq, User](30*time.Second),
-        servicemiddleware.RetryLayer[CreateUserReq, User](3, 100*time.Millisecond, 
-            servicemiddleware.BackoffExponential),
-        servicemiddleware.CircuitBreakerLayer[CreateUserReq, User](cbConfig),
-        servicemiddleware.ValidationLayer[CreateUserReq, User](validator),
-    )
+    router.Post("/users", espresso.WithLayers(createUser,
+        // Order: Timeout -> Retry -> CircuitBreaker -> Validation -> Handler
+        espresso.Timeout(30*time.Second),
+        espresso.Retry(3, 100*time.Millisecond, servicemiddleware.BackoffExponential),
+        espresso.CircuitBreaker(cbConfig),
+        espresso.Validation(validator),
+    ))
     
     router.Brew()
 }
@@ -262,30 +279,29 @@ func CacheLayer[Req any, Res any](cache Cache, ttl time.Duration) servicemiddlew
 
 ## Reusing Layer Stacks
 
-Define reusable layer stacks:
+`espresso.Layers(...)` builds a type-erased `LayerStack` you can define once and
+reuse across handlers with different `Req`/`Res` types:
 
 ```go
 // Common layers for external API calls
-func ExternalServiceLayers[Req, Res any](serviceName string) []servicemiddleware.Layer[Req, Res] {
-    return []servicemiddleware.Layer[Req, Res]{
-        servicemiddleware.TimeoutLayer[Req, Res](10*time.Second),
-        servicemiddleware.RetryLayer[Req, Res](3, 100*time.Millisecond, 
-            servicemiddleware.BackoffExponential),
-        servicemiddleware.CircuitBreakerLayer[Req, Res](
-            servicemiddleware.CircuitBreakerConfig{
-                ServiceName:      serviceName,
-                FailureThreshold: 5,
-                Timeout:          30*time.Second,
-                SuccessThreshold: 3,
-            }),
-        servicemiddleware.LoggingLayer[Req, Res](log.Logger, serviceName),
-    }
+func ExternalServiceLayers(serviceName string) espresso.LayerStack {
+    return espresso.Layers(
+        espresso.Timeout(10*time.Second),
+        espresso.Retry(3, 100*time.Millisecond, servicemiddleware.BackoffExponential),
+        espresso.CircuitBreaker(servicemiddleware.CircuitBreakerConfig{
+            ServiceName:      serviceName,
+            FailureThreshold: 5,
+            Timeout:          30*time.Second,
+            SuccessThreshold: 3,
+        }),
+        espresso.Logging(log.Logger, serviceName),
+    )
 }
 
 // usage
-router.PostWith("/api/external", ExternalService{},
-    ExternalServiceLayers[Req, Res]("external-api")...,
-)
+router.Post("/api/external", espresso.WithLayers(callExternal,
+    ExternalServiceLayers("external-api")...,
+))
 ```
 
 ## Service Interface

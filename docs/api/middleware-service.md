@@ -146,6 +146,24 @@ type ErrValidation struct {
 }
 ```
 
+## Registering Layers
+
+The `servicemiddleware.*Layer` constructors above produce typed
+`Layer[Req, Res]` values. Application code rarely instantiates them directly;
+instead it registers a handler with the type-erased `espresso.*` `LayerConfig`
+constructors via `espresso.WithLayers`, which materializes the concrete
+`Layer[Req, Res]` at binding time:
+
+| Layer constructor | `LayerConfig` constructor |
+|-------------------|---------------------------|
+| `TimeoutLayer` | `espresso.Timeout` |
+| `RetryLayer` | `espresso.Retry` |
+| `CircuitBreakerLayer` | `espresso.CircuitBreaker` |
+| `ConcurrencyLimitLayer` | `espresso.ConcurrencyLimit` |
+| `MetricsLayer` | `espresso.Metrics` |
+| `LoggingLayer` | `espresso.Logging` |
+| `ValidationLayer` | `espresso.Validation` |
+
 ## Example
 
 ```go
@@ -159,12 +177,11 @@ func main() {
     
     router := espresso.Portafilter()
     
-    router.PostWith("/users", UserService{},
-        servicemiddleware.TimeoutLayer[CreateUserReq, User](30*time.Second),
-        servicemiddleware.RetryLayer[CreateUserReq, User](3, 100*time.Millisecond, 
-            servicemiddleware.BackoffExponential),
-        servicemiddleware.CircuitBreakerLayer[CreateUserReq, User](cbConfig),
-    )
+    router.Post("/users", espresso.WithLayers(createUser,
+        espresso.Timeout(30*time.Second),
+        espresso.Retry(3, 100*time.Millisecond, servicemiddleware.BackoffExponential),
+        espresso.CircuitBreaker(cbConfig),
+    ))
     
     router.Brew()
 }

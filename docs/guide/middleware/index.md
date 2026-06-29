@@ -39,21 +39,20 @@ Use for:
 - Authentication (token validation)
 - Request ID generation
 
-### Service Layers (PostWith, GetWith, etc.)
+### Service Layers (WithLayers)
 
-Runs **after** extraction, operates on typed `Req/Res` pairs.
+Runs **after** extraction, operates on typed `Req/Res` pairs. Attach them to a
+route by wrapping the handler in `espresso.WithLayers(handler, layers...)`:
 
 ```go
-type UserService struct{}
-
-func (s UserService) Call(ctx context.Context, req CreateUserReq) (User, error) {
+func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
     // Business logic
 }
 
-router.Post("/users", UserService{},
-    servicemiddleware.TimeoutLayer[CreateUserReq, User](5*time.Second),
-    servicemiddleware.RetryLayer[CreateUserReq, User](3, 100*time.Millisecond, servicemiddleware.BackoffExponential),
-)
+router.Post("/users", espresso.WithLayers(createUser,
+    espresso.Timeout(5*time.Second),
+    espresso.Retry(3, 100*time.Millisecond, servicemiddleware.BackoffExponential),
+))
 ```
 
 Use for:
@@ -95,11 +94,11 @@ For service layers:
 
 ```go
 // Layers are applied in order provided
-PostWith("/api", handler, 
+router.Post("/api", espresso.WithLayers(handler,
     layer1, // Outermost
     layer2, // Middle
     layer3, // Innermost
-)
+))
 ```
 
 ## Common Patterns
@@ -124,10 +123,10 @@ func main() {
     router.Get("/health", func() string { return "ok" })
     
     // API routes with service layers
-    router.PostWith("/users", UserService{},
-        servicemiddleware.TimeoutLayer[CreateUserReq, User](30*time.Second),
-        servicemiddleware.CircuitBreakerLayer[CreateUserReq, User](cbConfig),
-    )
+    router.Post("/users", espresso.WithLayers(createUser,
+        espresso.Timeout(30*time.Second),
+        espresso.CircuitBreaker(cbConfig),
+    ))
     
     router.Brew()
 }
