@@ -153,6 +153,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Security("name")` typo is flagged rather than emitted as a silent dangling
   reference. OAuth2 flows and OpenID Connect are intentionally out of scope.
 
+### Internal
+
+- Added the consolidated OpenAPI spec-correctness matrix
+  (`TestOpenAPISpecCorrectnessMatrix`, tests only) that builds one router across
+  both registration paths and locks the combined v2.3 generation/serving behavior
+  (extractors, real status codes, resolvable security refs, response schemas, no
+  dropped routes, the JSON failure envelope, cache-stable serving), plus an
+  `openapi`-does-not-import-root import-direction guard (v2.3 task-06).
+
 ## [2.2.0] - 2026-06-28
 
 A correctness release — **Dial It In** — that makes Espresso's behavior
