@@ -4,6 +4,8 @@
 **Estimated Effort:** 1.5 days
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-06-29 (v2.3.0).** Delivered via #49 — AddSecurityScheme + Bearer/APIKey constructors + UnresolvedSecurityRefs.
+
 ## Context
 
 The 2026-06-28 verify-and-scope pass (finding D4) confirmed against a real generated spec that the OpenAPI generator advertises operation-level security it never defines. `Security("bearerAuth")` (`openapi/options.go:45`) sets `op.Security` to reference a scheme **by name**, but `components.securitySchemes` is allocated **empty** at `openapi/openapi.go:129` and is **never populated**. The result is a **dangling reference**: the operation points at `bearerAuth`, but `bearerAuth` is not defined anywhere in `components`.
@@ -19,13 +21,13 @@ This finding was confirmed by generating a real spec with a `Security(...)`-deco
 
 ## Acceptance Criteria
 
-- [ ] A security-scheme registration API exists on the `Generator` (and/or an `OpenAPIRouter` option) — minimal surface, e.g. `AddSecurityScheme(name string, scheme SecurityScheme)`.
-- [ ] Registering a scheme populates `components.securitySchemes[name]` in the generated spec.
-- [ ] A generated spec in which **every** `op.Security` reference resolves to a defined scheme — strict-validation clean, no dangling references.
-- [ ] At least the two common schemes are documented and expressible: HTTP **bearer** (JWT) and **apiKey** in header.
-- [ ] The empty-allocation site (`openapi/openapi.go:129`) is wired to the registration API rather than left as a never-populated map.
-- [ ] `op.Security` set via `Security("name")` (`openapi/options.go:45`) names a scheme that the spec actually defines; if a referenced name has no registered scheme, the mismatch is surfaced (logged or flagged), not emitted silently as a dangling reference.
-- [ ] CHANGELOG `[Unreleased]` → `Added` for the new `AddSecurityScheme` API, with a short example of registering bearer JWT and an apiKey header scheme.
+- [x] A security-scheme registration API exists on the `Generator` (and/or an `OpenAPIRouter` option) — minimal surface, e.g. `AddSecurityScheme(name string, scheme SecurityScheme)`.
+- [x] Registering a scheme populates `components.securitySchemes[name]` in the generated spec.
+- [x] A generated spec in which **every** `op.Security` reference resolves to a defined scheme — strict-validation clean, no dangling references.
+- [x] At least the two common schemes are documented and expressible: HTTP **bearer** (JWT) and **apiKey** in header.
+- [x] The empty-allocation site (`openapi/openapi.go:129`) is wired to the registration API rather than left as a never-populated map.
+- [x] `op.Security` set via `Security("name")` (`openapi/options.go:45`) names a scheme that the spec actually defines; if a referenced name has no registered scheme, the mismatch is surfaced (logged or flagged), not emitted silently as a dangling reference.
+- [x] CHANGELOG `[Unreleased]` → `Added` for the new `AddSecurityScheme` API, with a short example of registering bearer JWT and an apiKey header scheme.
 
 ## Technical Approach
 
@@ -103,10 +105,10 @@ Update the Step 2.1 characterization test so that, after registering `bearerAuth
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] A generated spec passes strict OpenAPI 3.0 validation for the `security` / `securitySchemes` relationship — no dangling references (asserted in the verification matrix, Task 6).
-- [ ] CHANGELOG `[Unreleased]` → `Added` for `AddSecurityScheme`, with bearer-JWT and apiKey-header examples.
-- [ ] PR description records the registration-surface decision (Generator method vs. router option) and the mismatch-handling decision.
-- [ ] godoc on `AddSecurityScheme` / `SecurityScheme` documents the two common schemes (bearer JWT, apiKey header) and notes OAuth2/OIDC are out of scope for v2.3.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] A generated spec passes strict OpenAPI 3.0 validation for the `security` / `securitySchemes` relationship — no dangling references (asserted in the verification matrix, Task 6).
+- [x] CHANGELOG `[Unreleased]` → `Added` for `AddSecurityScheme`, with bearer-JWT and apiKey-header examples.
+- [x] PR description records the registration-surface decision (Generator method vs. router option) and the mismatch-handling decision.
+- [x] godoc on `AddSecurityScheme` / `SecurityScheme` documents the two common schemes (bearer JWT, apiKey header) and notes OAuth2/OIDC are out of scope for v2.3.

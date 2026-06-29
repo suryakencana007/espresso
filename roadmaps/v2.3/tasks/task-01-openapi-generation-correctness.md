@@ -4,6 +4,8 @@
 **Estimated Effort:** 3 days
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-06-29 (v2.3.0).** Delivered via #52 — five generation-path defects fixed.
+
 ## Context
 
 The OpenAPI generator emits specs that are quietly wrong. A 2026-06-28 verify-and-scope pass generated a real spec from registered routes and inspected it; five correctness defects in the generation path were confirmed against live code. None throws — every one degrades the spec silently, so the generated artifact disagrees with the routes it claims to describe. v2.3's thesis is **trustworthy generated artifacts**: when generator output disagrees with reality, fix the generator and lock it with a spec-inspection test. This task fixes the five generation-path defects; serving-path issues (D1, D5, D7, D10) belong to Task 3.
@@ -24,12 +26,12 @@ These compound: D2 and D8 mean the parameter/body side of the spec is incomplete
 
 ## Acceptance Criteria
 
-- [ ] The custom-`FromRequest` probe interface at `introspect.go:50` is `interface{ Extract(*http.Request) error }`, matching the real extractor contract; a custom extractor that is not a built-in is introspected and contributes to the spec (D2).
-- [ ] Extractor classification keys off the actual extractor types (reflecting against `extractor.PathExtractor[…]`/`QueryExtractor[…]`/… or a kind-reporting interface), not `strings.HasPrefix` on the type name; a `Files…`-named type classifies as files (or its true kind), not files-as-file, and renaming an extractor type produces a compile signal rather than a silent mis-classification (D8).
-- [ ] `extractStatusCode` derives the real status from the response type: `JSON[T]` → its `StatusCode` field when set, else `200`; `Status`/`Text` → their carried status; unknown/dynamic → a documented default. A handler returning a 201 response documents as `201`, not `200` (D3); the `//nolint:unparam` at `introspect.go:239` is removed because the function now returns meaningful values.
-- [ ] `registerPath` and `RegisterHandler` share one helper so **both** attach the response-body schema; `RegisterHandler` no longer emits a bare `200:{description:"Success"}` for a handler with a known response type (D9).
-- [ ] `registerPath` no longer silently drops routes on introspection failure — the error is surfaced (logged and/or recorded on the router) (D6); `RegisterHandler` keeps returning the error.
-- [ ] The typed extraction/handler dispatch paths and existing public OpenAPI API signatures are unchanged (no breaking changes; v2.0 compat flip still stands — additive only here).
+- [x] The custom-`FromRequest` probe interface at `introspect.go:50` is `interface{ Extract(*http.Request) error }`, matching the real extractor contract; a custom extractor that is not a built-in is introspected and contributes to the spec (D2).
+- [x] Extractor classification keys off the actual extractor types (reflecting against `extractor.PathExtractor[…]`/`QueryExtractor[…]`/… or a kind-reporting interface), not `strings.HasPrefix` on the type name; a `Files…`-named type classifies as files (or its true kind), not files-as-file, and renaming an extractor type produces a compile signal rather than a silent mis-classification (D8).
+- [x] `extractStatusCode` derives the real status from the response type: `JSON[T]` → its `StatusCode` field when set, else `200`; `Status`/`Text` → their carried status; unknown/dynamic → a documented default. A handler returning a 201 response documents as `201`, not `200` (D3); the `//nolint:unparam` at `introspect.go:239` is removed because the function now returns meaningful values.
+- [x] `registerPath` and `RegisterHandler` share one helper so **both** attach the response-body schema; `RegisterHandler` no longer emits a bare `200:{description:"Success"}` for a handler with a known response type (D9).
+- [x] `registerPath` no longer silently drops routes on introspection failure — the error is surfaced (logged and/or recorded on the router) (D6); `RegisterHandler` keeps returning the error.
+- [x] The typed extraction/handler dispatch paths and existing public OpenAPI API signatures are unchanged (no breaking changes; v2.0 compat flip still stands — additive only here).
 
 ## Technical Approach
 
@@ -113,9 +115,9 @@ Keep both public signatures (`registerPath` private, `RegisterHandler(gen, metho
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean (the removed `//nolint:unparam` no longer flagged; gocyclo on the new shared helper and `getExtractorKind` under the min-15 budget).
-- [ ] The chosen D8 classification approach (type-set match vs kind interface) is recorded in the PR description with its rationale.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: custom extractors now introspected (D2); response status codes documented accurately (D3); `RegisterHandler` attaches response schemas (D9); introspection failures surfaced not dropped (D6); extractor classification no longer prefix-fragile (D8).
-- [ ] No public OpenAPI API signature changed; no breaking change to extraction or handler dispatch.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean (the removed `//nolint:unparam` no longer flagged; gocyclo on the new shared helper and `getExtractorKind` under the min-15 budget).
+- [x] The chosen D8 classification approach (type-set match vs kind interface) is recorded in the PR description with its rationale.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: custom extractors now introspected (D2); response status codes documented accurately (D3); `RegisterHandler` attaches response schemas (D9); introspection failures surfaced not dropped (D6); extractor classification no longer prefix-fragile (D8).
+- [x] No public OpenAPI API signature changed; no breaking change to extraction or handler dispatch.

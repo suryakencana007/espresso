@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-06-29 (v2.3.0).** Delivered via #50 — read-less WS client fix (conn.CloseRead); framework unchanged.
+
 ## Context
 
 `TestLongLived_WS_StableConnection` (`tests/integration/longlived_test.go` ~154-169)
@@ -47,11 +49,11 @@ keep the pattern from being copied back in.
 
 ## Acceptance Criteria
 
-- [ ] `TestLongLived_WS_StableConnection` calls `conn.CloseRead(ctx)` immediately after a successful `Dial` (before the ping loop), using the dial context.
-- [ ] `TestLongLived_WS_100Concurrent` applies the same `conn.CloseRead(ctx)` after each goroutine's successful `Dial`, before it blocks on `<-ctx.Done()`.
-- [ ] No `espresso` production code is modified — the diff is confined to `tests/integration/longlived_test.go`.
-- [ ] `go test -tags=integration ./tests/integration/...` passes on this machine (default 30s duration; not flaky across repeated runs).
-- [ ] The ping loop's behavior is otherwise unchanged (same interval, same deadline) — the only change is making the client drain control frames.
+- [x] `TestLongLived_WS_StableConnection` calls `conn.CloseRead(ctx)` immediately after a successful `Dial` (before the ping loop), using the dial context.
+- [x] `TestLongLived_WS_100Concurrent` applies the same `conn.CloseRead(ctx)` after each goroutine's successful `Dial`, before it blocks on `<-ctx.Done()`.
+- [x] No `espresso` production code is modified — the diff is confined to `tests/integration/longlived_test.go`.
+- [x] `go test -tags=integration ./tests/integration/...` passes on this machine (default 30s duration; not flaky across repeated runs).
+- [x] The ping loop's behavior is otherwise unchanged (same interval, same deadline) — the only change is making the client drain control frames.
 
 ## Technical Approach
 
@@ -131,8 +133,8 @@ already correct.
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -tags=integration ./tests/integration/...` passes on this machine, non-flaky across at least two consecutive runs.
-- [ ] The diff touches **only** `tests/integration/longlived_test.go`; `websocket.go` (and the rest of the framework) is **unchanged** — the PR description states this explicitly and notes the server-side `readLoop` (`websocket.go:150`) was already correct.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed` records the integration-test correction (read-less WS client added `CloseRead`), explicitly noting it is a test-harness fix, not a behavior change.
-- [ ] `golangci-lint run ./...` clean (the integration package builds under the `integration` build tag).
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -tags=integration ./tests/integration/...` passes on this machine, non-flaky across at least two consecutive runs.
+- [x] The diff touches **only** `tests/integration/longlived_test.go`; `websocket.go` (and the rest of the framework) is **unchanged** — the PR description states this explicitly and notes the server-side `readLoop` (`websocket.go:150`) was already correct.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed` records the integration-test correction (read-less WS client added `CloseRead`), explicitly noting it is a test-harness fix, not a behavior change.
+- [x] `golangci-lint run ./...` clean (the integration package builds under the `integration` build tag).

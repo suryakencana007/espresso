@@ -1,5 +1,7 @@
 # Execution Order for v2.3.0
 
+> **Shipped 2026-06-29** — tag [`v2.3.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.3.0). This records the planned order; actual execution matched it (task-01 ‖ 02 ‖ 04 ‖ 05 parallel, then 03, then 06, then the 07 release).
+
 This document provides the recommended execution order for the v2.3 roadmap tasks. The schedule is sized for approximately one-and-a-half focused weeks. v2.3 is a correctness/quality cleanup pass — the headline is making the OpenAPI generator trustworthy — with one tiny additive API (security schemes) and two small cleanups (a docs type-reference sweep and a one-line WebSocket integration-test fix). The work is narrow but cross-file-sensitive in one spot (Task 3, which lands on files shared with Tasks 1 and 2).
 
 ## Overview (planned)

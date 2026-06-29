@@ -4,6 +4,8 @@
 **Estimated Effort:** 1 day
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-06-29 (v2.3.0).** Delivered via #51 — extractor-generics sweep + snippet-compile guard.
+
 ## Context
 
 The documentation site teaches `espresso.Path[T]`, `espresso.Query[T]`, `espresso.Form[T]`, `espresso.Header[T]`, and `espresso.XML[T]` as if those generic extractor types are exported from the root package. They are not. Those types live in the **`extractor`** package — confirmed at `extractor/extractor.go:417-426` (plus the `XML` alias at `extractor.go:429`), where they are declared as type aliases:
@@ -56,11 +58,11 @@ This is a confirmed inventory, not a guess. A `2026-06-28` grep across `docs/` p
 
 ## Acceptance Criteria
 
-- [ ] Every `espresso.Path[`, `espresso.Query[`, `espresso.Form[`, `espresso.Header[`, and `espresso.XML[` reference in `docs/` is rewritten to its `extractor.X[` equivalent, across the files in the inventory above.
-- [ ] Where a rewritten snippet is a whole, self-contained program (a `package main` fence), it imports `github.com/suryakencana007/espresso/v2/extractor` (alongside the existing root import) so the snippet still compiles after the rewrite.
-- [ ] No correct root-package symbol is touched (see the do-not-rewrite list in Step 4.2).
-- [ ] A docs-snippet-compile check exists that extracts self-contained ` ```go ` fences from `docs/` and `go build`s them; it passes.
-- [ ] A grep for `espresso\.(Path|Query|Form|Header|XML)\[` over `docs/` returns **zero** matches.
+- [x] Every `espresso.Path[`, `espresso.Query[`, `espresso.Form[`, `espresso.Header[`, and `espresso.XML[` reference in `docs/` is rewritten to its `extractor.X[` equivalent, across the files in the inventory above.
+- [x] Where a rewritten snippet is a whole, self-contained program (a `package main` fence), it imports `github.com/suryakencana007/espresso/v2/extractor` (alongside the existing root import) so the snippet still compiles after the rewrite.
+- [x] No correct root-package symbol is touched (see the do-not-rewrite list in Step 4.2).
+- [x] A docs-snippet-compile check exists that extracts self-contained ` ```go ` fences from `docs/` and `go build`s them; it passes.
+- [x] A grep for `espresso\.(Path|Query|Form|Header|XML)\[` over `docs/` returns **zero** matches.
 
 ## Technical Approach
 
@@ -123,9 +125,9 @@ Wire it as a small Go test (or a `tools/`/`cmd/` helper invoked from CI — auth
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `grep -rE 'espresso\.(Path|Query|Form|Header|XML)\[' docs/` returns nothing.
-- [ ] The docs-snippet-compile check is committed and green in CI (or runnable locally per the documented command).
-- [ ] No correct root symbol (`JSON`, `Text`, `Status`, `Err*`, `WS`, `SSEStream`, `Stream`, `StreamSimple`, `Event`, coffee aliases, `Handler*`, state helpers, `Validation`, `SetDefaultValidator`) was rewritten.
-- [ ] CHANGELOG `[Unreleased]` → `Fixed` (docs) entry drafted noting the corrected `extractor.X[T]` references and the new snippet-compile guard.
-- [ ] `bun run docs:build` still succeeds (the rewrite did not break VitePress rendering).
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `grep -rE 'espresso\.(Path|Query|Form|Header|XML)\[' docs/` returns nothing.
+- [x] The docs-snippet-compile check is committed and green in CI (or runnable locally per the documented command).
+- [x] No correct root symbol (`JSON`, `Text`, `Status`, `Err*`, `WS`, `SSEStream`, `Stream`, `StreamSimple`, `Event`, coffee aliases, `Handler*`, state helpers, `Validation`, `SetDefaultValidator`) was rewritten.
+- [x] CHANGELOG `[Unreleased]` → `Fixed` (docs) entry drafted noting the corrected `extractor.X[T]` references and the new snippet-compile guard.
+- [x] `bun run docs:build` still succeeds (the rewrite did not break VitePress rendering).
