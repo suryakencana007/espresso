@@ -39,6 +39,7 @@ type SSEStream struct {
 	w           http.ResponseWriter
 	flusher     http.Flusher
 	ctx         context.Context
+	cancel      context.CancelFunc
 	mu          sync.Mutex
 	closed      atomic.Bool
 	eventID     atomic.Uint64
@@ -151,9 +152,13 @@ func (s *SSEStream) Context() context.Context {
 }
 
 // Close closes the stream. Safe to call multiple times.
-// After Close, all Send calls return an error.
+// After Close, all Send calls return an error, and the stream's Context
+// is canceled so handlers blocked on <-Context().Done() wake up.
 func (s *SSEStream) Close() error {
 	s.closed.Store(true)
+	if s.cancel != nil {
+		s.cancel()
+	}
 	return nil
 }
 
@@ -360,6 +365,7 @@ func serveStream(w http.ResponseWriter, r *http.Request, cfg *streamConfig, h fu
 		w:           w,
 		flusher:     flusher,
 		ctx:         ctx,
+		cancel:      cancel,
 		lastEventID: r.Header.Get("Last-Event-ID"),
 	}
 
@@ -454,7 +460,12 @@ func (r *sseStreamRegistry) remove(s *SSEStream) {
 	delete(r.streams, s)
 }
 
-func (r *sseStreamRegistry) closeAll(reason string) {
+// closeAll cancels every registered stream's context so blocked handlers
+// wake up and return; the HTTP server's Shutdown then drains their
+// completion. The reason parameter is retained for signature stability
+// but is no longer emitted as a final comment — writing to the response
+// after the handler has returned races with net/http's finishRequest.
+func (r *sseStreamRegistry) closeAll(_ string) {
 	if r == nil {
 		return
 	}
@@ -466,7 +477,6 @@ func (r *sseStreamRegistry) closeAll(reason string) {
 	r.mu.RUnlock()
 
 	for _, s := range streams {
-		_ = s.Comment("shutdown: " + reason)
 		_ = s.Close()
 	}
 }
