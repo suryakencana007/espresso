@@ -102,11 +102,7 @@ func walkStruct(rv reflect.Value, path string, errs *espresso.FieldErrors) {
 		name := jsonName(field)
 
 		if tag := field.Tag.Get("validate"); tag != "" {
-			for _, rule := range parseRules(tag) {
-				if msg, ok := applyRule(fieldVal, rule); !ok {
-					_ = errs.AddFieldError(name, msg, safeInterface(fieldVal), path)
-				}
-			}
+			applyRulesToField(fieldVal, parseRules(tag), name, path, errs)
 		}
 
 		// Recurse into nested structures
@@ -139,6 +135,26 @@ func walkStruct(rv reflect.Value, path string, errs *espresso.FieldErrors) {
 					walkStruct(elem, fmt.Sprintf("%s[%d]", nextPath, j), errs)
 				}
 			}
+		}
+	}
+}
+
+// applyRulesToField dispatches each parsed rule against a struct field. For
+// pointer fields, `required` operates on the pointer itself (checking
+// IsNil), and every other rule sees the dereferenced element value. A nil
+// pointer skips non-required rules — matches the documented "Nil pointer
+// fields are skipped" contract at docs/guide/validation.md.
+func applyRulesToField(fieldVal reflect.Value, rules []rule, name, path string, errs *espresso.FieldErrors) {
+	for _, r := range rules {
+		target := fieldVal
+		if target.Kind() == reflect.Pointer && r.name != "required" {
+			if target.IsNil() {
+				continue
+			}
+			target = target.Elem()
+		}
+		if msg, ok := applyRule(target, r); !ok {
+			_ = errs.AddFieldError(name, msg, safeInterface(target), path)
 		}
 	}
 }
