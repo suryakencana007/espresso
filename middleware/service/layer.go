@@ -2,11 +2,35 @@ package servicemiddleware
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
 	"github.com/rs/zerolog"
 )
+
+// abandonedByTimeoutErr signals that TimeoutLayer returned from the select
+// on ctx.Done while a handler goroutine is still executing with the request
+// pointer. Callers that own pooled request storage (root package's
+// applyLayersAndConvert) must detect this signal and NOT return the request
+// struct to the pool — the abandoned goroutine may still be reading it,
+// and re-pooling the struct would race the next request's Extract into it.
+// The wrapped error is the original ctx.Err(): DeadlineExceeded when the
+// timeout fired, or Canceled when the caller's context was canceled.
+type abandonedByTimeoutErr struct{ err error }
+
+func (e *abandonedByTimeoutErr) Error() string { return e.err.Error() }
+func (e *abandonedByTimeoutErr) Unwrap() error { return e.err }
+
+// IsAbandonedByTimeout reports whether err was produced by TimeoutLayer
+// after abandoning a still-running handler goroutine. The typed handler
+// wrapper uses this to skip returning the request struct to sync.Pool,
+// preventing a data race between the abandoned goroutine and the next
+// request's Extract.
+func IsAbandonedByTimeout(err error) bool {
+	var target *abandonedByTimeoutErr
+	return errors.As(err, &target)
+}
 
 // Service represents a typed request/response service.
 type Service[Req any, Res any] interface {
@@ -47,6 +71,16 @@ func LoggingLayer[Req any, Res any](logger zerolog.Logger, serviceName string) L
 }
 
 // TimeoutLayer applies a timeout to service calls.
+//
+// When the deadline fires (or the caller's context is canceled), the layer
+// returns from its select while the inner goroutine may still be executing.
+// The returned error wraps the underlying context.Err() in an
+// abandonedByTimeoutErr sentinel so callers that own pooled request storage
+// can detect the abandonment and skip returning the request to the pool —
+// see IsAbandonedByTimeout. Callers that only care about the semantic error
+// (i.e. status-code mapping via translateLayerError) can rely on
+// errors.Is(err, context.DeadlineExceeded) / errors.Is(err, context.Canceled)
+// working normally through the sentinel's Unwrap.
 func TimeoutLayer[Req any, Res any](timeout time.Duration) Layer[Req, Res] {
 	return func(next Service[Req, Res]) Service[Req, Res] {
 		return serviceFunc[Req, Res](func(ctx context.Context, req Req) (Res, error) {
@@ -67,7 +101,7 @@ func TimeoutLayer[Req any, Res any](timeout time.Duration) Layer[Req, Res] {
 			select {
 			case <-ctx.Done():
 				var zero Res
-				return zero, ctx.Err()
+				return zero, &abandonedByTimeoutErr{err: ctx.Err()}
 			case r := <-ch:
 				return r.res, r.err
 			}
