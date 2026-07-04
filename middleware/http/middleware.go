@@ -309,7 +309,11 @@ func (l *TokenBucketLimiter) allowGlobal() bool {
 
 	now := time.Now()
 	elapsed := now.Sub(l.lastRefill)
-	refill := int(elapsed.Seconds()) * l.rate / int(time.Second.Seconds())
+	// Refill in nanoseconds so fractional seconds are credited. The previous
+	// implementation used int(elapsed.Seconds()) which truncated to 0 for any
+	// call arriving <1s after the last, while lastRefill still advanced —
+	// starving all traffic under sustained sub-second load.
+	refill := int(int64(elapsed) * int64(l.rate) / int64(time.Second))
 
 	l.tokens = min(l.tokens+refill, l.capacity)
 	l.lastRefill = now
@@ -344,7 +348,8 @@ func (l *TokenBucketLimiter) allowPerKey(key string) bool {
 
 	now := time.Now()
 	elapsed := now.Sub(bucket.lastRefill)
-	refill := int(elapsed.Seconds()) * l.rate / int(time.Second.Seconds())
+	// See allowGlobal for the rationale on nanosecond math.
+	refill := int(int64(elapsed) * int64(l.rate) / int64(time.Second))
 
 	bucket.tokens = min(bucket.tokens+refill, l.capacity)
 	bucket.lastRefill = now

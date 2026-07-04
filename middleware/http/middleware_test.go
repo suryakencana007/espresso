@@ -418,6 +418,49 @@ func TestTokenBucketLimiter(t *testing.T) {
 			t.Error("expected user2 to refill independently")
 		}
 	})
+
+	// Regression: pre-fix the refill math computed
+	//   refill := int(elapsed.Seconds()) * l.rate / int(time.Second.Seconds())
+	// which truncated to 0 for any elapsed < 1s while advancing lastRefill,
+	// starving all traffic under sustained sub-second load. At rate=100/s,
+	// cap=5, 30 requests spaced 100ms apart admitted only the initial 5
+	// tokens then rejected the remaining 25. Fix credits fractional seconds
+	// via int64(elapsed) * int64(rate) / int64(time.Second).
+	t.Run("global bucket refills under sustained sub-second traffic", func(t *testing.T) {
+		limiter := NewTokenBucketLimiter(100, 5)
+		admitted := 0
+		for range 30 {
+			if limiter.Allow("") {
+				admitted++
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		// 100 rps allowed, 10 rps offered over 3s: ~30 admissions expected.
+		// Pre-fix: exactly 5 (initial cap). Guard both directions.
+		if admitted < 25 {
+			t.Errorf("global limiter starved sub-second traffic: admitted=%d, expected ~30", admitted)
+		}
+		if admitted > 32 {
+			t.Errorf("global limiter over-credited: admitted=%d, expected ~30", admitted)
+		}
+	})
+
+	t.Run("per-key bucket refills under sustained sub-second traffic", func(t *testing.T) {
+		limiter := NewTokenBucketLimiterPerKey(100, 5)
+		admitted := 0
+		for range 30 {
+			if limiter.Allow("k") {
+				admitted++
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+		if admitted < 25 {
+			t.Errorf("per-key limiter starved sub-second traffic: admitted=%d, expected ~30", admitted)
+		}
+		if admitted > 32 {
+			t.Errorf("per-key limiter over-credited: admitted=%d, expected ~30", admitted)
+		}
+	})
 }
 
 func TestSlidingWindowLimiter(t *testing.T) {
