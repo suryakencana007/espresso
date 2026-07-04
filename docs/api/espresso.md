@@ -46,49 +46,66 @@ func (r *Router) Brew(opts ...ServerOption)
 
 Context-only handler (no request body, no error). Lightweight enough for
 health checks while still allowing access to request-scoped state via
-`MustGetState[T]`. Since v1.6: takes `context.Context` (previously `func() T`).
+`MustGetState[T]`. Since v2.0: takes `context.Context` (previously `func() T`).
 
 ```go
-func Ristretto[T any](f func(context.Context) T) http.HandlerFunc
+func Ristretto[Res IntoResponse](f func(context.Context) Res) http.HandlerFunc
 ```
+
+`Res` must satisfy `IntoResponse` — a bare `string` return type will not
+compile. Use `espresso.Text{Body: "..."}` for plain-text responses.
 
 Example:
 
 ```go
-router.Get("/health", espresso.Ristretto(func(ctx context.Context) string {
+router.Get("/health", espresso.Ristretto(func(ctx context.Context) espresso.Text {
     state := espresso.MustGetState[AppState](ctx)
     if err := state.DB.PingContext(ctx); err != nil {
-        return "db unreachable"
+        return espresso.Text{Body: "db unreachable", StatusCode: 503}
     }
-    return "OK"
+    return espresso.Text{Body: "OK"}
 }))
 ```
 
-If your handler needs to return an error, use `Doppio` or `HandlerCtx` instead.
+If your handler needs to return an error, use `Doppio` (or the typed
+`HandlerCtxErr[Res]` family) instead. See also `RistrettoNoErr`,
+`RistrettoErr` for variants.
 
 ### Solo
 
-Single-argument handler (context only):
+Single-extractor handler (extractor argument, no context):
 
 ```go
-func Solo[T any](f func(context.Context) T) http.HandlerFunc
+func Solo[Req FromRequest, Res IntoResponse](fn func(Req) (Res, error)) http.HandlerFunc
 ```
+
+`Req` must implement `FromRequest` (typically a pointer to a built-in
+extractor like `*espresso.JSON[T]` or `*extractor.Query[T]`). The `error`
+return is mandatory — extractor failures surface here, and `nil` succeeds.
 
 Example:
 
 ```go
-router.Get("/time", espresso.Solo(func(ctx context.Context) espresso.Text {
-    return espresso.Text{Body: time.Now().String()}
+router.Post("/users", espresso.Solo(func(req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
+    return espresso.JSON[User]{Data: User{ID: 1, Name: req.Data.Name}}, nil
 }))
 ```
 
+For handlers that need `context.Context` (state, tracing, cancellation),
+use `Doppio` instead. For a single-argument handler that only needs `ctx`
+(no extractor), use `Ristretto`.
+
 ### Doppio
 
-Two-argument handler (most common):
+Two-argument handler (`context.Context` + one extractor). The most common
+shape for request-body-driven endpoints.
 
 ```go
-func Doppio[T any, Req any](f func(context.Context, *Req) T) http.HandlerFunc
+func Doppio[Req FromRequest, Res IntoResponse](fn func(context.Context, Req) (Res, error)) http.HandlerFunc
 ```
+
+The `(Res, error)` return is mandatory. `Req` must implement `FromRequest`
+(a pointer to a built-in extractor is the common case).
 
 Example:
 
@@ -96,27 +113,38 @@ Example:
 router.Post("/users", espresso.Doppio(createUser))
 
 func createUser(ctx context.Context, req *espresso.JSON[CreateUserReq]) (espresso.JSON[User], error) {
-    // req.Data contains parsed JSON
+    // req.Data contains parsed JSON, already auto-validated if a default
+    // validator is installed via espresso.SetDefaultValidator.
     return espresso.JSON[User]{Data: user}, nil
 }
 ```
 
 ### Lungo
 
-Three-argument handler (context + two extractors):
+Three-argument handler (`context.Context` + two extractors). This is the
+only supported two-extractor path — the reflection path (`router.Post(path, fn)`
+without `espresso.Lungo(...)`) rejects two-extractor signatures at registration
+by design (fail-fast introduced in v2.2).
 
 ```go
-func Lungo[T any, Req1 any, Req2 any](f func(context.Context, *Req1, *Req2) (T, error)) http.HandlerFunc
+func Lungo[Req1 FromRequest, Req2 FromRequest, Res IntoResponse](fn func(context.Context, Req1, Req2) (Res, error)) http.HandlerFunc
 ```
+
+`LungoNoErr` is the no-error variant for handlers that cannot fail.
 
 Example:
 
 ```go
 router.Put("/users/{id}", espresso.Lungo(updateUser))
 
-func updateUser(ctx context.Context, path *extractor.Path[UserPath], req *espresso.JSON[UpdateUserReq]) (espresso.JSON[User], error) {
-    // path.Data.ID contains path parameter
-    // req.Data contains request body
+func updateUser(
+    ctx context.Context,
+    path *extractor.Path[UserPath],
+    req *espresso.JSON[UpdateUserReq],
+) (espresso.JSON[User], error) {
+    // path.Data.ID contains the path parameter
+    // req.Data contains the request body
+    return espresso.JSON[User]{Data: User{ID: path.Data.ID, Name: req.Data.Name}}, nil
 }
 ```
 
@@ -322,20 +350,119 @@ registration time with a descriptive message. See
 
 ## Server Options
 
+Passed to `router.Brew(opts...)` or `router.BrewContext(ctx, opts...)` to
+tune the embedded `http.Server`.
+
 ### WithAddr
 
-Custom address:
+Address to bind. Defaults to `":8080"`.
 
 ```go
 func WithAddr(addr string) ServerOption
 ```
 
-### WithServer
+### WithReadTimeout
 
-Custom HTTP server:
+Maximum duration for reading the entire request, including the body.
+Defaults to 30 seconds.
 
 ```go
-func WithServer(srv *http.Server) ServerOption
+func WithReadTimeout(d time.Duration) ServerOption
+```
+
+### WithReadHeaderTimeout
+
+Maximum duration allowed for reading request headers. Defaults to
+10 seconds. Set independently of `WithReadTimeout` when large bodies
+are legitimate but slow clients still need to be cut off.
+
+```go
+func WithReadHeaderTimeout(d time.Duration) ServerOption
+```
+
+### WithWriteTimeout
+
+Maximum duration before timing out writes of the response. Defaults to
+10 seconds. **Note:** long-lived SSE streams are affected — a
+follow-up (v2.4 task-04b) will make SSE handlers automatically clear
+this per-connection.
+
+```go
+func WithWriteTimeout(d time.Duration) ServerOption
+```
+
+### WithIdleTimeout
+
+Maximum duration to wait for the next request on a keep-alive
+connection. Defaults to 120 seconds.
+
+```go
+func WithIdleTimeout(d time.Duration) ServerOption
+```
+
+### WithShutdownTimeout
+
+Maximum duration `gracefulShutdown` will wait for in-flight requests
+to drain after `Brew`/`BrewContext` begins shutdown. Defaults to
+10 seconds.
+
+```go
+func WithShutdownTimeout(d time.Duration) ServerOption
+```
+
+## Server Lifecycle
+
+### Brew
+
+Blocks until the server receives `SIGINT`, `SIGTERM`, or `SIGQUIT`,
+then runs the full graceful shutdown sequence: registered `OnShutdown`
+hooks (in order) → SSE registry close → WebSocket close (code 1001) →
+`http.Server.Shutdown` (drain up to `ShutdownTimeout`).
+
+```go
+func (r *Router) Brew(opts ...ServerOption)
+```
+
+### BrewContext
+
+Programmatic variant of `Brew` — shuts down when `ctx` is canceled,
+then runs the same sequence with a fresh timeout (uncancelled parent
+via `context.WithoutCancel`, so hooks and `Shutdown` see a live ctx).
+Returns the first server error, or `nil` on clean shutdown.
+
+```go
+func (r *Router) BrewContext(ctx context.Context, opts ...ServerOption) error
+```
+
+Idiomatic usage with signal-driven shutdown:
+
+```go
+ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+defer stop()
+if err := router.BrewContext(ctx, espresso.WithAddr(":8080")); err != nil {
+    slog.Error("server error", "error", err)
+}
+```
+
+### OnShutdown
+
+Registers a hook that runs during graceful shutdown, before SSE/WS
+close and `http.Server.Shutdown`. Hooks run in registration order;
+each is panic-recovered and error-logged so one bad hook does not
+prevent the others. Use for closing databases, flushing metrics,
+draining queues.
+
+```go
+func (r *Router) OnShutdown(hook ShutdownHook) *Router
+type ShutdownHook func(ctx context.Context) error
+```
+
+Example:
+
+```go
+router.OnShutdown(func(ctx context.Context) error {
+    return db.Close(ctx)
+})
 ```
 
 ## Interfaces

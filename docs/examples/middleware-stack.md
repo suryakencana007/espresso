@@ -66,13 +66,15 @@ func main() {
 
 ## Middleware Order
 
-The order matters! Middleware runs in reverse order:
+The order matters! Middleware runs **in the order registered** — the first
+`Use()` call is the outermost wrapper and executes first, the last is the
+innermost. A request flows through wrappers in registration order:
 
 ```
-Request -> RateLimit -> Compress -> CORS -> Logging -> Recover -> RequestID -> Handler
+Request -> RequestID -> Recover -> Logging -> CORS -> Compress -> RateLimit -> Handler
 ```
 
-Recommended order:
+Recommended order (matches the flow above — register in this sequence):
 
 | Position | Middleware | Why |
 |----------|------------|-----|
