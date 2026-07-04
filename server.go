@@ -163,7 +163,12 @@ func (r *Router) BrewContext(ctx context.Context, opts ...ServerOption) error {
 		return err
 	}
 
-	r.gracefulShutdown(ctx, srv, cfg.ShutdownTimeout)
+	// Detach cancellation before deriving the shutdown deadline. Passing the
+	// already-canceled ctx would make context.WithTimeout return an expired
+	// context: OnShutdown hooks would see ctx.Err()==context.Canceled, and
+	// srv.Shutdown would return immediately without draining in-flight
+	// requests — voiding the documented shutdown sequence.
+	r.gracefulShutdown(context.WithoutCancel(ctx), srv, cfg.ShutdownTimeout)
 	return nil
 }
 

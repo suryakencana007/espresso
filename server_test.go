@@ -2,6 +2,8 @@ package espresso
 
 import (
 	"context"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -345,6 +347,154 @@ func TestShutdown_BrewContextIntegration(t *testing.T) {
 
 	if !hookCalled.Load() {
 		t.Error("expected shutdown hook to be called")
+	}
+}
+
+// TestShutdown_BrewContextDrainsInFlightRequest is the audit's repro for the
+// v2.4 task-04 defect: BrewContext used to pass its own canceled ctx as the
+// parent of gracefulShutdown's WithTimeout, yielding an already-expired
+// shutdown ctx. OnShutdown hooks saw ctx.Err()==context.Canceled, and
+// srv.Shutdown returned in ~0s without draining the in-flight request.
+//
+// This test starts BrewContext on a random port, fires a 500 ms handler
+// request, cancels the BrewContext ctx while the request is in flight, and
+// asserts (a) the request completes with 200 + expected body, (b) BrewContext
+// returned only after the request finished, and (c) the OnShutdown hook
+// received a context with no error and a future deadline (proving the
+// shutdown ctx was freshly derived from an uncancelled parent).
+//
+//nolint:gocyclo // regression test intentionally covers three separate assertions across three goroutines
+func TestShutdown_BrewContextDrainsInFlightRequest(t *testing.T) {
+	var (
+		hookErr      atomic.Value // stores error interface (nil-safe via typed load below)
+		hookDeadline atomic.Value // stores time.Time
+		hookCalled   atomic.Bool
+	)
+
+	// Bind to an ephemeral port and read it back so the test client knows
+	// where to connect. Use a listener + share its address rather than
+	// WithAddr(":0") because BrewContext does not expose the resolved port.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	_ = ln.Close() // release for BrewContext to reuse
+
+	router := Portafilter().
+		OnShutdown(func(ctx context.Context) error {
+			hookCalled.Store(true)
+			if err := ctx.Err(); err != nil {
+				hookErr.Store(err)
+			}
+			if d, ok := ctx.Deadline(); ok {
+				hookDeadline.Store(d)
+			}
+			return nil
+		}).
+		Get("/slow", Ristretto(func(ctx context.Context) Text {
+			// Hold the handler open for 500 ms so shutdown fires while it
+			// is in flight. Use ctx.Done as a safety net so the test does
+			// not hang if shutdown incorrectly kills the request.
+			select {
+			case <-time.After(500 * time.Millisecond):
+			case <-ctx.Done():
+			}
+			return Text{Body: "drained"}
+		}))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	brewDone := make(chan error, 1)
+	go func() { brewDone <- router.BrewContext(ctx, WithAddr(addr), WithShutdownTimeout(3*time.Second)) }()
+
+	// Wait for the server to be listening.
+	deadline := time.Now().Add(2 * time.Second)
+	var httpErr error
+	for time.Now().Before(deadline) {
+		conn, err := net.DialTimeout("tcp", addr, 50*time.Millisecond)
+		if err == nil {
+			_ = conn.Close()
+			break
+		}
+		httpErr = err
+		time.Sleep(20 * time.Millisecond)
+	}
+	if httpErr != nil && time.Now().After(deadline) {
+		cancel()
+		<-brewDone
+		t.Fatalf("server never came up: %v", httpErr)
+	}
+
+	// Fire the in-flight request in a goroutine, then cancel BrewContext.
+	respCh := make(chan struct {
+		body   string
+		status int
+		err    error
+	}, 1)
+	go func() {
+		client := &http.Client{Timeout: 5 * time.Second}
+		resp, err := client.Get("http://" + addr + "/slow")
+		if err != nil {
+			respCh <- struct {
+				body   string
+				status int
+				err    error
+			}{err: err}
+			return
+		}
+		defer func() { _ = resp.Body.Close() }()
+		b, _ := io.ReadAll(resp.Body)
+		respCh <- struct {
+			body   string
+			status int
+			err    error
+		}{body: string(b), status: resp.StatusCode}
+	}()
+
+	// Let the handler start.
+	time.Sleep(80 * time.Millisecond)
+	cancelStart := time.Now()
+	cancel()
+
+	// Assertion 1: the request drains.
+	select {
+	case r := <-respCh:
+		if r.err != nil {
+			t.Fatalf("in-flight request errored (pre-fix behavior): %v", r.err)
+		}
+		if r.status != http.StatusOK {
+			t.Errorf("expected drained response 200, got %d body=%q", r.status, r.body)
+		}
+		if r.body != "drained" {
+			t.Errorf("expected body 'drained', got %q", r.body)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("in-flight request never returned")
+	}
+
+	// Assertion 2: BrewContext returned only after the request completed.
+	brewErr := <-brewDone
+	if brewErr != nil {
+		t.Errorf("BrewContext returned error: %v", brewErr)
+	}
+	shutdownElapsed := time.Since(cancelStart)
+	if shutdownElapsed < 300*time.Millisecond {
+		t.Errorf("BrewContext returned in %v after cancel — pre-fix behavior (no drain); expected ≥300ms", shutdownElapsed)
+	}
+
+	// Assertion 3: hook saw a live context.
+	if !hookCalled.Load() {
+		t.Fatal("shutdown hook never called")
+	}
+	if e := hookErr.Load(); e != nil {
+		t.Errorf("shutdown hook saw canceled ctx (pre-fix behavior): ctx.Err()=%v", e)
+	}
+	if d, ok := hookDeadline.Load().(time.Time); ok {
+		if !d.After(cancelStart.Add(500 * time.Millisecond)) {
+			t.Errorf("shutdown hook ctx deadline not in the future: %v", d)
+		}
+	} else {
+		t.Error("shutdown hook ctx had no deadline")
 	}
 }
 
