@@ -80,24 +80,31 @@ Use for:
 
 ## Order of Application
 
-Middleware runs in reverse order (last added = first executed):
+Middleware runs in the order registered — **first added is outermost and
+executes first** (`router.go:208-215` wraps last-to-first, so `middleware[0]`
+ends up as the outermost wrapper). A request flows through the wrappers in
+the order they were added; the response unwinds in the reverse order.
 
 ```go
 router := espresso.Portafilter()
-    .Use(mw1()) // Executes 4th (outermost)
-    .Use(mw2()) // Executes 3rd
-    .Use(mw3()) // Executes 2nd
-    .Use(mw4()) // Executes 1st (innermost to handler)
+router.Use(mw1()) // Executes 1st (outermost)
+router.Use(mw2()) // Executes 2nd
+router.Use(mw3()) // Executes 3rd
+router.Use(mw4()) // Executes 4th (innermost to handler)
 ```
 
-For service layers:
+Because middleware is bound at route-registration time (`Get`/`Post`/… snapshot
+the middleware slice as they run), any `Use()` call after registering a route
+does not apply to that route — call `Use()` first, then register routes.
+
+For service layers via `espresso.WithLayers` (or `BuildService`), the same rule
+holds: first added is outermost.
 
 ```go
-// Layers are applied in order provided
 router.Post("/api", espresso.WithLayers(handler,
-    layer1, // Outermost
+    layer1, // Outermost (executes first)
     layer2, // Middle
-    layer3, // Innermost
+    layer3, // Innermost (executes last, closest to handler)
 ))
 ```
 

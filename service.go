@@ -46,21 +46,23 @@ func BuildService[Req any, Res any]() *ServiceBuilder[Req, Res] {
 }
 
 // ServiceBuilder provides a fluent API for building services with middleware layers.
-// Layers are applied in reverse order (last added, first executed) to match
-// the traditional middleware stack behavior.
+// Layers execute in the order added: the first Layer() call is the outermost
+// wrapper (and executes first), matching a traditional middleware stack.
 type ServiceBuilder[Req any, Res any] struct {
 	layers []Layer[Req, Res]
 }
 
 // Layer adds a middleware layer to the builder and returns the builder for chaining.
-// Layers are executed in reverse order: the last added layer is executed first.
+// The first Layer() call is the outermost wrapper and executes first; the last
+// Layer() call is the innermost and executes last (closest to the service).
 func (s *ServiceBuilder[Req, Res]) Layer(layer Layer[Req, Res]) *ServiceBuilder[Req, Res] {
 	s.layers = append(s.layers, layer)
 	return s
 }
 
 // Service wraps the given service with all added layers and returns the final service.
-// Layers are applied from outermost (last added) to innermost (first added).
+// The composition loop iterates last-to-first so that the first-added layer ends up
+// as the outermost wrapper: request flow is layer[0] -> layer[1] -> ... -> service.
 func (s *ServiceBuilder[Req, Res]) Service(svc Service[Req, Res]) Service[Req, Res] {
 	for i := len(s.layers) - 1; i >= 0; i-- {
 		svc = s.layers[i](svc)

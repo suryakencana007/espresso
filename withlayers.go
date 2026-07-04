@@ -388,7 +388,9 @@ func handlerToService[Req FromRequest, Res IntoResponse](handler any) Service[Re
 
 // applyLayersAndConvert applies layers and converts to http.HandlerFunc.
 func applyLayersAndConvert[Req FromRequest, Res IntoResponse](svc Service[Req, Res], layers []LayerConfig) http.HandlerFunc {
-	// Apply layers in reverse order (last added = outermost)
+	// Compose layers so the first-added layer is the outermost wrapper
+	// (executes first). We iterate last-to-first and wrap svc on each step;
+	// after the loop, layers[0] is the outermost.
 	wrapped := svc
 	for i := len(layers) - 1; i >= 0; i-- {
 		layer := buildLayer[Req, Res](layers[i])

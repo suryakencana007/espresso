@@ -23,35 +23,39 @@ type Layer[Req any, Res any] func(Service[Req, Res]) Service[Req, Res]
 // data extraction from HTTP requests. This follows the Axum pattern where request
 // types define how they extract data from the incoming HTTP request.
 //
+// Handlers take extractors by POINTER — a value-typed argument fails to
+// satisfy FromRequest (because every Extract implementation uses a pointer
+// receiver) and the framework panics at route registration.
+//
 // Built-in Extractors (no need to implement Extract manually):
 //
 // For most common cases, use the built-in extractor types instead of implementing
-// FromRequest yourself. These types work bidirectionally - extracting from requests
+// FromRequest yourself. These types work bidirectionally — extracting from requests
 // and serializing responses.
 //
 //	// JSON extraction (most common for APIs)
-//	func handler(ctx context.Context, req JSON[CreateUserReq]) (JSON[UserRes], error) {
+//	func handler(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
 //	    user := req.Data  // Data contains the decoded CreateUserReq struct
 //	    return JSON[UserRes]{Data: UserRes{ID: 1}}, nil
 //	}
 //
 //	// Query parameters
-//	func handler(ctx context.Context, req extractor.Query[SearchReq]) (JSON[Results], error) {
+//	func handler(ctx context.Context, req *extractor.Query[SearchReq]) (JSON[Results], error) {
 //	    params := req.Data  // Data contains decoded query params
 //	    return JSON[Results]{Data: results}, nil
 //	}
 //
 //	// Form data
-//	func handler(ctx context.Context, req extractor.Form[LoginData]) (JSON[Token], error)
+//	func handler(ctx context.Context, req *extractor.Form[LoginData]) (JSON[Token], error)
 //
 //	// Path parameters (router sets these)
-//	func handler(ctx context.Context, req extractor.Path[UserReq]) (JSON[User], error)
+//	func handler(ctx context.Context, req *extractor.Path[UserReq]) (JSON[User], error)
 //
 //	// HTTP headers
-//	func handler(ctx context.Context, req extractor.Header[AuthReq]) (JSON[Data], error)
+//	func handler(ctx context.Context, req *extractor.Header[AuthReq]) (JSON[Data], error)
 //
 //	// Raw body bytes
-//	func handler(ctx context.Context, req extractor.RawBody) (Status, error) {
+//	func handler(ctx context.Context, req *extractor.RawBody) (Status, error) {
 //	    body := req.Data  // []byte
 //	    return Status(http.StatusNoContent), nil
 //	}
@@ -74,7 +78,10 @@ type Layer[Req any, Res any] func(Service[Req, Res]) Service[Req, Res]
 //	    return nil
 //	}
 //
-// IMPORTANT: Always use a POINTER receiver for Extract to properly populate the struct.
+// IMPORTANT: Always use a POINTER receiver for Extract to properly populate
+// the struct — a value receiver silently mutates a copy and every subsequent
+// field read returns the zero value. Handlers must take the extractor by
+// pointer for the same reason.
 type FromRequest interface {
 	Extract(r *http.Request) error
 }
