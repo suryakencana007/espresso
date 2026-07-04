@@ -27,10 +27,10 @@ import (
 	"github.com/suryakencana007/espresso/v2/validator"
 )
 
-// CreateUserReq's `validate:"..."` tags drive the auto-validation. With
-// SetDefaultValidator(validator.AsDefaultValidator()) installed below,
-// every extraction of *espresso.JSON[CreateUserReq] runs validator.Struct
-// on the decoded value and rejects on first failure.
+// CreateUserReq is the request payload; its `validate:"..."` tags drive the
+// auto-validation. With SetDefaultValidator(validator.AsDefaultValidator())
+// installed below, every extraction of *espresso.JSON[CreateUserReq] runs
+// validator.Struct on the decoded value and rejects on first failure.
 type CreateUserReq struct {
 	Name  string `json:"name"  validate:"required,min=3,max=50"`
 	Email string `json:"email" validate:"required,email"`
