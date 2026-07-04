@@ -639,6 +639,68 @@ func TestLoggingMiddleware(t *testing.T) {
 			t.Errorf("expected status 201, got %d", rec.Code)
 		}
 	})
+
+	// Regression: pre-fix statusRecorder embedded http.ResponseWriter and
+	// overrode only WriteHeader — it implemented neither http.Flusher,
+	// http.Hijacker, nor Unwrap() for http.ResponseController. So installing
+	// LoggingMiddleware broke first-party features: SSE routes hit the
+	// w.(http.Flusher) assertion at sse.go:346 and returned 500 "streaming
+	// not supported"; coder/websocket's Accept could not hijack. This test
+	// asserts that after the middleware wraps a Flusher/Hijacker/Pusher
+	// underlying writer, the wrapper still satisfies those interfaces.
+	t.Run("statusRecorder forwards Flusher/Hijacker/Pusher and Unwrap", func(t *testing.T) {
+		// Use a real *http.Server + net.Listen so the underlying
+		// http.response satisfies Flusher and Hijacker (httptest.NewRecorder
+		// implements Flusher but not Hijacker, so we serve for real).
+		var (
+			sawFlusher  bool
+			sawHijacker bool
+			sawUnwrap   bool
+		)
+		handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := w.(http.Flusher); ok {
+				sawFlusher = true
+			}
+			if _, ok := w.(http.Hijacker); ok {
+				sawHijacker = true
+			}
+			// http.ResponseController uses Unwrap() to walk wrapper chains.
+			// SetWriteDeadline returns ErrNotSupported if any wrapper in the
+			// chain lacks Unwrap(); a nil error proves Unwrap() forwards.
+			if err := http.NewResponseController(w).SetWriteDeadline(time.Time{}); err == nil {
+				sawUnwrap = true
+			}
+			w.WriteHeader(http.StatusOK)
+		})
+
+		middleware := LoggingMiddleware()
+		server := middleware(handler)
+
+		ln, err := net.Listen("tcp", "127.0.0.1:0")
+		if err != nil {
+			t.Fatalf("listen: %v", err)
+		}
+		defer func() { _ = ln.Close() }()
+		srv := &http.Server{Handler: server, ReadHeaderTimeout: 5 * time.Second}
+		go func() { _ = srv.Serve(ln) }()
+		defer func() { _ = srv.Close() }()
+
+		resp, err := http.Get("http://" + ln.Addr().String() + "/test")
+		if err != nil {
+			t.Fatalf("get: %v", err)
+		}
+		_ = resp.Body.Close()
+
+		if !sawFlusher {
+			t.Error("statusRecorder must forward http.Flusher (breaks SSE)")
+		}
+		if !sawHijacker {
+			t.Error("statusRecorder must forward http.Hijacker (breaks WS upgrade)")
+		}
+		if !sawUnwrap {
+			t.Error("statusRecorder must implement Unwrap() so http.ResponseController walks the chain")
+		}
+	})
 }
 
 func TestMiddlewareChain(t *testing.T) {
