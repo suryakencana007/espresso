@@ -504,3 +504,33 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.status = code
 	r.ResponseWriter.WriteHeader(code)
 }
+
+// Flush, Hijack, Push, and Unwrap forward to the underlying ResponseWriter so
+// that installing LoggingMiddleware does not break long-lived connections
+// (SSE requires http.Flusher; WebSocket upgrade requires http.Hijacker;
+// http.ResponseController walks the chain via Unwrap()). Without these,
+// SSE routes return 500 "streaming not supported" and WS upgrades fail.
+// Mirrors gzipResponseWriter above.
+func (r *statusRecorder) Flush() {
+	if flusher, ok := r.ResponseWriter.(http.Flusher); ok {
+		flusher.Flush()
+	}
+}
+
+func (r *statusRecorder) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if hijacker, ok := r.ResponseWriter.(http.Hijacker); ok {
+		return hijacker.Hijack()
+	}
+	return nil, nil, fmt.Errorf("responseWriter does not implement http.Hijacker")
+}
+
+func (r *statusRecorder) Push(target string, opts *http.PushOptions) error {
+	if pusher, ok := r.ResponseWriter.(http.Pusher); ok {
+		return pusher.Push(target, opts)
+	}
+	return fmt.Errorf("responseWriter does not implement http.Pusher")
+}
+
+func (r *statusRecorder) Unwrap() http.ResponseWriter {
+	return r.ResponseWriter
+}
