@@ -6,6 +6,8 @@ import (
 	"net/http"
 	"reflect"
 	"sync"
+
+	servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
 )
 
 // WithLayers applies layers to any handler function with type inference.
@@ -420,7 +422,16 @@ func applyLayersAndConvert[Req FromRequest, Res IntoResponse](svc Service[Req, R
 			writeHandlerError(w, r, ErrInternal("invalid pooled request type"))
 			return
 		}
+		// The pool return is conditional (see below) — an abandoned request
+		// under TimeoutLayer must NOT be re-pooled while a goroutine still
+		// references it, or the next request's Extract races the abandoned
+		// read. Track whether to return with a flag so the happy path stays
+		// simple.
+		returnToPool := true
 		defer func() {
+			if !returnToPool {
+				return
+			}
 			resetReq(req)
 			pool.Put(req)
 		}()
@@ -436,6 +447,11 @@ func applyLayersAndConvert[Req FromRequest, Res IntoResponse](svc Service[Req, R
 		// Call service with layers applied
 		res, err := wrapped.Call(r.Context(), req)
 		if err != nil {
+			// A TimeoutLayer that abandoned its goroutine still holds req;
+			// leak this pool slot to GC rather than race the next request.
+			if servicemiddleware.IsAbandonedByTimeout(err) {
+				returnToPool = false
+			}
 			writeHandlerError(w, r, err)
 			return
 		}

@@ -251,6 +251,15 @@ func translateLayerError(err error) (*Error, bool) {
 		return ErrServiceUnavailable("request timed out").Wrap(err), true
 	}
 
+	// TimeoutLayer surfaced context.Canceled (parent context canceled while
+	// a call was in-flight) → 503. Previously mapped to 500 via the fallback,
+	// which reads as an internal error when the actual cause is a client or
+	// caller disconnect. 503 matches the DeadlineExceeded classification
+	// above; both indicate the service could not complete the request.
+	if errors.Is(err, context.Canceled) {
+		return ErrServiceUnavailable("request canceled").Wrap(err), true
+	}
+
 	// ValidationLayer → 400 with preserved field detail when available.
 	// ErrValidation is a value type, so errors.As targets the value.
 	var ve servicemiddleware.ErrValidation

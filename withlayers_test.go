@@ -740,3 +740,92 @@ type UserRes struct {
 }
 
 // User type is already defined in server_test.go
+
+// timeoutRaceReq is used by TestWithLayersTyped_TimeoutNoPoolRace to expose
+// the pre-fix data race. The handler reads req.Marker in a loop after the
+// timeout fires; the framework's pooled request struct is reset+returned
+// (or, post-fix, leaked) — the race detector fires on the pre-fix code
+// when the next request's Extract writes into the same *timeoutRaceReq
+// while the abandoned goroutine is still reading it.
+type timeoutRaceReq struct {
+	Marker string
+}
+
+func (r *timeoutRaceReq) Extract(req *http.Request) error {
+	r.Marker = req.URL.Query().Get("marker")
+	return nil
+}
+
+func (r *timeoutRaceReq) Reset() {
+	r.Marker = ""
+}
+
+// TestWithLayersTyped_TimeoutNoPoolRace is the audit's exact repro for the
+// v2.4 task-01 defect. TimeoutLayer spawns a goroutine and returns on
+// ctx.Done, leaving that goroutine referencing the pooled *timeoutRaceReq.
+// applyLayersAndConvert pre-fix returned the struct to the pool
+// unconditionally; the next request's pool.Get()+Extract wrote into it while
+// the abandoned goroutine's tight read loop was still reading it. Under
+// -race this fires reliably.
+//
+// Post-fix, applyLayersAndConvert checks servicemiddleware.IsAbandonedByTimeout
+// on the returned error and skips pool.Put for that request, leaking one
+// struct to GC rather than reusing it while a goroutine still holds it.
+func TestWithLayersTyped_TimeoutNoPoolRace(t *testing.T) {
+	// Handler reads req.Marker for 80 ms — long enough to outlive the 10 ms
+	// timeout, short enough to complete during the test's wall-clock window.
+	slowRead := func(ctx context.Context, req *timeoutRaceReq) (Text, error) {
+		end := time.Now().Add(80 * time.Millisecond)
+		var seen string
+		for time.Now().Before(end) {
+			seen = req.Marker
+			_ = seen
+		}
+		return Text{Body: "ok"}, nil
+	}
+
+	handler := WithLayersTyped[*timeoutRaceReq, Text](slowRead, Timeout(10*time.Millisecond))
+
+	// Fire enough requests that at least one pool.Get() returns a struct
+	// still held by an abandoned goroutine from the previous request.
+	// 50 iterations is comfortably above the pool churn needed.
+	for i := range 50 {
+		req := httptest.NewRequest(http.MethodGet, "/x?marker=req"+string(rune('0'+i%10)), nil)
+		rec := httptest.NewRecorder()
+		handler(rec, req)
+		// Expected status is 503 (SERVICE_UNAVAILABLE via translateLayerError):
+		// TimeoutLayer surfaces &abandonedByTimeoutErr{context.DeadlineExceeded},
+		// which unwraps to context.DeadlineExceeded and maps through
+		// translateLayerError to ErrServiceUnavailable.
+		if rec.Code != http.StatusServiceUnavailable {
+			t.Fatalf("iter %d: expected status 503 on timeout, got %d body=%s", i, rec.Code, rec.Body.String())
+		}
+	}
+	// The important assertion is implicit — go test -race must not print
+	// WARNING: DATA RACE. Pre-fix, it does; post-fix it does not.
+}
+
+// TestTranslateLayerError_ContextCanceledMapsTo503 locks the secondary
+// behavior change: parent context.Canceled surfacing through TimeoutLayer
+// (or directly from a handler) now maps to 503, not the previous 500
+// fallback. Companion of TestWithLayersTyped_WithTimeout at :145.
+func TestTranslateLayerError_ContextCanceledMapsTo503(t *testing.T) {
+	cancelReturningHandler := func(ctx context.Context, req *JSON[CreateUserReq]) (JSON[UserRes], error) {
+		return JSON[UserRes]{}, context.Canceled
+	}
+
+	httpHandler := WithLayersTyped[*JSON[CreateUserReq], JSON[UserRes]](cancelReturningHandler)
+
+	req := httptest.NewRequest(http.MethodPost, "/users", strings.NewReader(`{"name":"test"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	httpHandler(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("expected status 503 (context.Canceled), got %d", rec.Code)
+	}
+	if code := decodeErrorCode(t, rec); code != "SERVICE_UNAVAILABLE" {
+		t.Errorf("expected error code SERVICE_UNAVAILABLE, got %q", code)
+	}
+}
