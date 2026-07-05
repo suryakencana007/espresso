@@ -7,6 +7,250 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.4.0] - 2026-07-05
+
+A correctness release — **Ground Truth** — that closes the ten P0/P1
+findings the 2026-07-02 alignment audit surfaced against v2.3.0. Nine of
+those were real bugs (a `-race`-reproducible data race in the flagship
+`TimeoutLayer`, a token-bucket that starved under sustained sub-second
+traffic, `LoggingMiddleware` breaking the framework's own SSE and
+WebSocket, `BrewContext` skipping in-flight-request drain, an OpenAPI
+generator that raced its own cache and stack-overflowed on recursive
+types, unbounded JSON body reads, four circuit-breaker state-machine
+defects, `X-Forwarded-For` blindly trusted for rate-limiting, and
+validator rules that failed every non-nil pointer field), and one was a
+truth-in-docs sweep that reworded the "zero-allocation handlers"
+marketing claim against measurement. No new runtime feature; every
+change is either a correctness fix or an additive safety option.
+
+**Upgrade from v2.3:** see
+[`docs/migration-v2.3-to-v2.4.md`](docs/migration-v2.3-to-v2.4.md). Two
+items need action for correctness:
+
+- **`RateLimitMiddleware` no longer trusts `X-Forwarded-For` by default.**
+  Add `httpmiddleware.WithTrustedProxies("your-proxy-cidr/prefix", ...)`
+  if you run behind a reverse proxy — otherwise all requests key on the
+  proxy's IP.
+- **JSON body reads are capped at 1 MB by default.** If any of your
+  routes legitimately accepts larger bodies, set
+  `router.WithJSONBodyLimit(N)`. Otherwise clients hit `413 Payload
+  Too Large`.
+
+Every other v2.4 change is either an internal correctness fix or an
+additive option. Existing apps compile against v2.4 unchanged.
+
+### Added
+
+- **`Router.WithJSONBodyLimit(int64)`** — configure the per-router
+  request-body size cap. Applies to `JSON[T]`, `RawBody`,
+  `RawBodyWithHeaders`, and `XML[T]` extractors. Default is
+  `MaxPayloadSize` (1 MB); non-positive values fall back to the default.
+  Bodies larger than the cap return `413 Payload Too Large` with the
+  canonical error envelope before the handler is invoked (v2.4 task-06,
+  #70).
+- **`espresso.ErrRequestEntityTooLarge(msg string) *Error`** — 413
+  Payload Too Large constructor. Framework extractors return this
+  automatically when the body-size cap is exceeded; handlers can
+  return it directly when their own I/O paths need the same shape.
+- **`httpmiddleware.WithTrustedProxies(cidrs ...string) RateLimitOption`** —
+  opt-in trust for `X-Forwarded-For` when behind a reverse proxy.
+  Accepts CIDR notation or bare IPs (auto-wrapped `/32` for IPv4,
+  `/128` for IPv6). When RemoteAddr's host is in a trusted CIDR and
+  XFF is present, walks the XFF list right-to-left, skipping trusted
+  hops, and returns the first non-trusted address as the client key
+  (RFC 7239) (v2.4 task-08, #69).
+- **`httpmiddleware.WithBucketTTL(d time.Duration) TokenBucketLimiterOption`** —
+  configure the idle-bucket eviction TTL on `TokenBucketLimiterPerKey`
+  (default 10 minutes) (v2.4 task-08, #69).
+- **`(*TokenBucketLimiter).Close() error`** — stop the background
+  sweeper goroutine on per-key limiters. No-op on global limiters, safe
+  to call unconditionally (v2.4 task-08, #69).
+- **`CircuitBreakerConfig.HalfOpenMaxProbes int`** — bounds concurrent
+  probes admitted in the `HalfOpen` state (default 1). Extra requests
+  short-circuit with a `CircuitBreakerError` instead of stampeding the
+  recovering upstream. Zero or negative values are normalized to 1 at
+  layer construction (v2.4 task-07, #68).
+- **`servicemiddleware.IsAbandonedByTimeout(err error) bool`** —
+  detects the sentinel error returned by `TimeoutLayer` when it
+  abandoned a still-running handler goroutine. Framework internal use
+  primarily (v2.4 task-01, #64).
+- **`docs/migration-v2.3-to-v2.4.md`** — release-cycle migration guide
+  covering the two required actions above plus the semantic changes to
+  circuit breaker, validator, and shutdown.
+
+### Changed
+
+- **`RateLimitMiddleware` no longer trusts `X-Forwarded-For` by
+  default; keys on host, not host:port** (v2.4 task-08, #69). Every
+  request keys on the host portion of `r.RemoteAddr` via
+  `net.SplitHostPort` — the pre-v2.4 default of full `host:port` let a
+  client bypass a per-key limiter by reconnecting from a fresh
+  ephemeral port. `X-Forwarded-For` is ignored unless a request's
+  RemoteAddr host is in a `WithTrustedProxies` CIDR. Callers behind a
+  reverse proxy must add the option; direct-Internet-facing callers
+  need no change. **Breaking behavior change.**
+- **`JSON[T].Extract`, `extractor.RawBody`, `extractor.RawBodyWithHeaders`,
+  and `extractor.XML[T]` now respect a configurable body cap** (default
+  1 MB via `MaxPayloadSize`) instead of reading unbounded (v2.4
+  task-06, #70). Existing callers with bodies under 1 MB see no change;
+  callers with larger bodies must set `router.WithJSONBodyLimit(N)`.
+  **Breaking behavior change on request paths using >1 MB bodies.**
+- **`CircuitBreakerLayer` — failures reset on Closed-state success**
+  (v2.4 task-07, #68). In v2.3, `FailureThreshold=5` meant "5 failures
+  ever" (accumulated over process lifetime). v2.4 resets the counter
+  on any successful call while `Closed`, matching Netflix Hystrix's
+  behavior and user intuition.
+- **`BrewContext` drains in-flight requests on ctx cancel** (v2.4
+  task-04a, #62). The programmatic shutdown path previously passed the
+  canceled ctx as the parent of `context.WithTimeout`, yielding an
+  already-expired shutdown ctx — `http.Server.Shutdown` returned in
+  ~0 ms without waiting for in-flight requests, and `OnShutdown` hooks
+  saw a canceled ctx. `BrewContext` now uses `context.WithoutCancel`
+  to derive the shutdown timeout, honoring the documented drain
+  contract.
+- **SSE streams survive the default server `WriteTimeout` (10 s)**
+  (v2.4 task-04b, #67). `serveStream` clears the per-connection write
+  deadline via `http.NewResponseController(w).SetWriteDeadline(time.Time{})`
+  at stream open, so SSE handlers can run indefinitely without the
+  workaround `WithWriteTimeout(0)` — which had disabled DoS protection
+  for all routes. The 10 s default remains in place for non-stream
+  routes.
+- **`context.Canceled` from a service layer maps to `503 Service
+  Unavailable`** (v2.4 task-01, #64). Previously it fell through to
+  the internal-error fallback (500). Now it joins
+  `context.DeadlineExceeded` in the "service unavailable" bucket via
+  `translateLayerError`.
+- **`espresso.CircuitBreakerError` is a type alias for
+  `servicemiddleware.CircuitBreakerError`** (v2.4 task-07, #68). Both
+  packages resolve to the same underlying type, so `errors.As` from
+  either package matches the same instance. Existing users see no
+  surface change.
+- **Truth-in-docs sweep** (v2.4 task-10 across #63 and #72). Corrects
+  audit-flagged doc drifts:
+  - Middleware execution order in `docs/guide/middleware/index.md`
+    (first-registered = outermost = executes first — was documented
+    backwards).
+  - `docs/api/espresso.md` — corrected `Solo`/`Doppio`/`Ristretto`/`Lungo`
+    signatures with actual `FromRequest`/`IntoResponse` constraints
+    and mandatory error returns.
+  - Deleted phantom `WithServer` `ServerOption`; documented the six
+    real server options plus `BrewContext`, `OnShutdown`, `ShutdownHook`.
+  - `docs/api/state.md` — corrected `GetState` return type to
+    `(T, bool)`; added `FromState`, `FromMustState`; deleted phantom
+    exported `StateKey`.
+  - `core.go` + `extractor/doc.go` — value-typed extractor examples
+    rewritten to pointer-typed (the value form panics at registration).
+  - Reworded "zero-allocation handlers" across README, docs/index,
+    docs/guide/index, and `core.go`'s package doc to the defensible
+    pooled-request claim, with measured allocation numbers in the
+    README's Handler Performance table.
+  - Removed false pooling comments from `response.go` and
+    `extractor/extractor.go`.
+  - `WSConfig.ReadTimeout` godoc annotates the field as stored but
+    not-yet-enforced (tracked for a future release).
+- **`docs/api/index.md` overview** — rewrote the State Functions and
+  Handler Functions blocks with correct signatures matching the API
+  reference pages (v2.4 task-11, #73).
+
+### Fixed
+
+- **`TimeoutLayer` no longer races the request-struct pool** (v2.4
+  task-01, #64). The layer spawned a goroutine that could outlive its
+  handler; the outer handler unconditionally reset and re-pooled the
+  request struct, and the next request `Extract`'d into memory the
+  abandoned goroutine still read. `-race` reproduced the race on every
+  test run of the flagship pairing (`WithLayersTyped` + `Timeout`).
+  Fixed by returning a sentinel error that the handler detects to
+  skip the pool return (`servicemiddleware.IsAbandonedByTimeout`); the
+  abandoned struct is leaked to GC rather than reused while a
+  goroutine still holds it.
+- **`TokenBucketLimiter` refill starvation under sustained sub-second
+  traffic** (v2.4 task-02, #60). Both `allowGlobal` and `allowPerKey`
+  truncated `int(elapsed.Seconds())` to zero for any call arriving
+  <1 s after the previous one, while unconditionally advancing
+  `lastRefill = now`. Under ≥1 req/s traffic, tokens were consumed to
+  zero and never replenished. Repro at `rate=100/s, cap=5, 30 requests
+  every 100ms`: pre-fix admitted 5 of 30; post-fix admits ~30 of 30.
+  Fixed by computing refill in nanoseconds via explicit `int64` math.
+- **`LoggingMiddleware`'s `statusRecorder` forwards Flusher/Hijacker/
+  Push/Unwrap** (v2.4 task-03, #61). Pre-fix `statusRecorder` embedded
+  `http.ResponseWriter` and overrode only `WriteHeader`. Any route
+  wrapped by `LoggingMiddleware` failed for SSE (500 "streaming not
+  supported") and WebSocket (non-101 upgrade response). `Unwrap()`
+  additionally lets `http.ResponseController` walk the wrapper chain
+  for future callers using controllers.
+- **`BrewContext` shutdown-drain fix** (v2.4 task-04a, #62 — see
+  Changed for details).
+- **SSE default-WriteTimeout survival** (v2.4 task-04b, #67 — see
+  Changed for details).
+- **`cmd/example/sse` and `cmd/example/websocket` use `BrewContext`
+  correctly** (v2.4 task-04c, #66). Both previously ran `router.Brew`
+  in a goroutine while blocking `main` on their own `signal.NotifyContext`
+  for the same signals `Brew` traps — racing the framework's graceful
+  shutdown against the process exit. Refactored to `main() → run() error`
+  with `BrewContext(ctx, ...)` blocking on `ctx.Done()`.
+- **OpenAPI generator mutate-while-serve race** (v2.4 task-05, #71).
+  Every mutation method (`AddPath`, `AddSchema`, `AddSecurityScheme`,
+  `Server`, `Description`, `SetDescription`) now holds `g.mu` across
+  the spec mutation and the cache invalidation in a single critical
+  section. Pre-fix a concurrent `AddPath` + `Handler.ServeHTTP` under
+  `-race` reliably printed `WARNING: DATA RACE`. The `Generator` godoc
+  claimed "verified under -race" but the existing test only served
+  concurrently after registration completed; the new
+  `TestGenerator_MutateWhileServeRaceFree` locks the real property.
+- **OpenAPI generator no longer stack-overflows on recursive types**
+  (v2.4 task-05, #71). `GenerateSchemaFromType` on any self-referential
+  struct (a tree node, a comment thread, a linked category) previously
+  died with `fatal error: stack overflow`. Now uses a per-call visited-
+  types set: first visit inlines the struct schema, revisits emit
+  `$ref` to `components/schemas/<sanitized-name>`. The exported
+  signature is unchanged.
+- **JSON/RawBody/XML body caps** (v2.4 task-06, #70 — see Changed for
+  details).
+- **Circuit breaker four state-machine defects** (v2.4 task-07, #68):
+  (1) failures reset on Closed-state success; (2) the transitioning
+  probe's success is counted (was previously skipped because
+  `currentState` was captured on goroutine entry, before the
+  `Open→HalfOpen` transition); (3) success and failure paths re-read
+  state under the write lock at the mutation point; (4) half-open
+  admits at most `HalfOpenMaxProbes` (default 1) concurrent probes.
+- **`RateLimitMiddleware` XFF trust + host keying + per-key eviction**
+  (v2.4 task-08, #69 — see Changed for details).
+- **Validator dereferences pointer fields for non-required rules**
+  (v2.4 task-09, #65). Pre-fix, every rule except `required` failed
+  on non-nil `*string`/`*int`/`*float`/`*bool` fields — the canonical
+  Go pattern for optional JSON fields. `email` on a valid `*string`
+  yielded "email rule requires string field"; `min=18` on a valid
+  `*int` yielded "min/max not supported for kind ptr". Now nil
+  pointers skip all rules except `required`, and non-nil pointers are
+  dereferenced so rules see the element value. `required` continues
+  to operate on the pointer itself.
+
+### Testing
+
+- **`testDocsCorrectedClaims` drift guard** (v2.4 task-11, #73). New
+  test in `docs_consistency_test.go` scans each corrected file for
+  the specific pre-fix phrase, failing if a future edit reintroduces
+  it. Covers eleven audit-flagged phrases spanning `README.md`,
+  `docs/index.md`, `docs/guide/index.md`, `docs/guide/middleware/index.md`,
+  `docs/examples/middleware-stack.md`, `docs/api/espresso.md`,
+  `docs/api/state.md`, `docs/api/index.md`, `core.go`, `response.go`,
+  `extractor/extractor.go`, and `openapi/openapi.go`. The guard
+  immediately caught one regression PR #63 missed (`docs/api/index.md:89`
+  still carried the pre-fix `GetState[T any](ctx) (T, error)` signature).
+
+### Under the hood
+
+- New `internal/bodylimit/` package — stdlib-only leaf carrying the
+  request-body-size limit ctx key, middleware, sentinel error, and
+  `ReadAllLimited` helper. Follows the `internal/errorenvelope` and
+  `internal/validatehook` pattern of sharing cross-package plumbing
+  without creating a new dependency direction (extractor stays a leaf
+  sibling of root).
+- `openapi/openapi.go` — `invalidateCache` renamed to
+  `invalidateCacheLocked` to make the lock-holder contract explicit.
+  Callers hold `g.mu` before invoking.
+
 ## [2.3.0] - 2026-06-29
 
 A correctness/quality release — **Backflush** — that makes the OpenAPI
