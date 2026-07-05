@@ -15,52 +15,25 @@ import (
 // CircuitBreaker Error Types
 // ============================================
 
-// CircuitBreakerError is returned when the circuit breaker is open.
-// This custom error type allows users to distinguish between circuit breaker
-// errors and other timeout errors.
-type CircuitBreakerError struct {
-	ServiceName string
-	State       servicemiddleware.CircuitState
-	Message     string
-}
+// CircuitBreakerError is the canonical rejected-by-open-circuit error.
+// It is a type alias for servicemiddleware.CircuitBreakerError so that
+// translateLayerError and user code both see the same underlying type
+// (previously each package defined its own struct, and the root's type
+// was orphan-imported nowhere — a foot-gun waiting for a divergent method).
+type CircuitBreakerError = servicemiddleware.CircuitBreakerError
 
-// Error implements the error interface.
-func (e *CircuitBreakerError) Error() string {
-	if e.Message != "" {
-		return fmt.Sprintf("circuit breaker open for service %s: %s", e.ServiceName, e.Message)
-	}
-	return fmt.Sprintf("circuit breaker open for service %s", e.ServiceName)
-}
-
-// Unwrap returns nil to indicate this is a leaf error.
-func (e *CircuitBreakerError) Unwrap() error {
-	return nil
-}
-
-// Is allows errors.Is to match CircuitBreakerError.
-func (e *CircuitBreakerError) Is(target error) bool {
-	_, ok := target.(*CircuitBreakerError)
-	return ok
-}
-
-// NewCircuitBreakerError creates a new CircuitBreakerError.
+// NewCircuitBreakerError constructs a *CircuitBreakerError. Retained as a
+// root-package convenience so callers do not have to import the
+// servicemiddleware package just to build one.
 func NewCircuitBreakerError(serviceName string, state servicemiddleware.CircuitState, message string) *CircuitBreakerError {
-	return &CircuitBreakerError{
-		ServiceName: serviceName,
-		State:       state,
-		Message:     message,
-	}
+	return servicemiddleware.NewCircuitBreakerError(serviceName, state, message)
 }
 
-// IsCircuitBreakerError checks if an error is a CircuitBreakerError.
+// IsCircuitBreakerError reports whether err is a *CircuitBreakerError.
+// Delegates to servicemiddleware.IsCircuitBreakerError so both entry points
+// resolve against the same canonical type via errors.As.
 func IsCircuitBreakerError(err error) bool {
-	var cbErr *CircuitBreakerError
-	return errors.As(err, &cbErr)
-}
-
-// errorsAs is a helper that mirrors errors.As behavior.
-func errorsAs(err error, target any) bool {
-	return errors.As(err, target)
+	return servicemiddleware.IsCircuitBreakerError(err)
 }
 
 // ============================================
