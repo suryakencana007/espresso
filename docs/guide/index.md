@@ -8,7 +8,7 @@
 
 Like a perfectly pulled espresso shot, this framework delivers:
 
-- **Fast** — Zero-allocation handlers with sync.Pool for request objects
+- **Fast** — Request structs pooled via `sync.Pool`; typed handlers dispatch without per-route reflection
 - **Strong** — Production-ready with battle-tested patterns
 - **Pure** — No magic, just clean Go code with explicit types
 - **Aromatic** — Rich type-safe extractors without manual implementation
@@ -45,7 +45,7 @@ espresso/
 ├── middleware/
 │   ├── http/         # RequestID, CORS, RateLimit, Compress
 │   └── service/      # Timeout, Retry, CircuitBreaker, Logging
-└── pool/             # Buffer pools for zero-allocation
+└── pool/             # Optional `sync.Pool` helpers — user-facing utilities, not consumed by the framework itself
 ```
 
 ## Quick Example

@@ -1,6 +1,8 @@
 // Package espresso provides a production-grade, Axum-style HTTP routing framework for Go.
-// It offers type-safe request extraction, response handling, and middleware composition
-// with zero-allocation object pooling for high-performance applications.
+// It offers type-safe request extraction, response handling, and middleware composition.
+// Request structs are pooled via sync.Pool so typed handlers pay no per-request request-object
+// allocation; full-round-trip allocation counts depend on the extractors and responses used
+// (see README's Handler Performance table for measured numbers).
 package espresso
 
 import "net/http"
@@ -87,7 +89,7 @@ type FromRequest interface {
 }
 
 // Resettable is an optional interface that request types can implement to enable
-// efficient object pooling with zero-allocation reset. This is used by the handler
+// efficient object pooling with allocation-free reset. This is used by the handler
 // to reuse request objects from a sync.Pool.
 //
 // Example:

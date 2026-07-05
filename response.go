@@ -70,9 +70,12 @@ func (j JSON[T]) WriteResponse(w http.ResponseWriter) error {
 	}
 	w.WriteHeader(status)
 
-	// Use pooled buffer for encoding to reduce allocations
-	// For small responses, direct encoding is faster
-	// For large responses, buffered encoding reduces GC pressure
+	// Streaming encode direct to the ResponseWriter — the previous comment
+	// here claimed pooled-buffer encoding which was never implemented; sonic
+	// allocates its own transient buffer per Encode call. If users need to
+	// share encoding state across responses they can wire their own encoder,
+	// but the trade-off (one alloc per response vs global synchronization
+	// overhead) doesn't warrant a framework-level pool.
 	return sonic.ConfigDefault.NewEncoder(w).Encode(j.Data)
 }
 
