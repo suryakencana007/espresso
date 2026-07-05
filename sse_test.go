@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -816,4 +817,100 @@ func parseSSEEvents(t *testing.T, resp *http.Response) []sseEvent {
 	}
 
 	return events
+}
+
+// TestSSE_SurvivesShortWriteTimeout is the v2.4 task-04b regression lock.
+// Before the fix, serveStream did not clear the per-connection write
+// deadline that net/http.Server.WriteTimeout imposed on the whole response.
+// A default WriteTimeout of 10s (defaultConfig.WriteTimeout, server.go:31)
+// therefore killed every SSE stream at ~10s regardless of WithKeepAlive —
+// including cmd/example/sse which serves an infinite ticker. Every SSE
+// test uses httptest.NewServer which sets no WriteTimeout, so CI never
+// saw it.
+//
+// This test starts a REAL http.Server with WriteTimeout=300ms (shortened
+// for speed), opens a stream, and sends events at t=100ms and t=600ms.
+// Pre-fix: the second Send fails because the connection deadline expired
+// at 300ms. Post-fix: serveStream calls
+// http.NewResponseController(w).SetWriteDeadline(time.Time{}) at stream
+// open (clearing the deadline) and both sends succeed.
+func TestSSE_SurvivesShortWriteTimeout(t *testing.T) {
+	sendErrors := make(chan error, 2)
+	handlerDone := make(chan struct{})
+
+	handler := func(ctx context.Context, s *SSEStream) error {
+		defer close(handlerDone)
+		time.Sleep(100 * time.Millisecond)
+		sendErrors <- s.Send(Event{Name: "early", Data: "at-100ms"})
+		// Wait past the 300ms write deadline that would fire pre-fix.
+		time.Sleep(500 * time.Millisecond)
+		sendErrors <- s.Send(Event{Name: "late", Data: "at-600ms"})
+		return nil
+	}
+
+	router := Portafilter().Get("/stream", StreamSimple(handler))
+
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	defer func() { _ = ln.Close() }()
+
+	// WriteTimeout=300ms mirrors defaultConfig.WriteTimeout=10s shape but
+	// runs the test in <1s. ReadHeaderTimeout satisfies the gosec check.
+	srv := &http.Server{
+		Handler:           router,
+		WriteTimeout:      300 * time.Millisecond,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() { _ = srv.Serve(ln) }()
+	defer func() { _ = srv.Close() }()
+
+	url := "http://" + ln.Addr().String() + "/stream"
+	resp, err := http.Get(url) //nolint:noctx // test scope
+	if err != nil {
+		t.Fatalf("GET failed: %v", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
+
+	// Drain the response so the server-side writes have a receiver;
+	// without this the write buffer fills and Send appears to succeed
+	// even when the deadline would kill later writes.
+	body := make(chan []byte, 1)
+	go func() {
+		b, _ := io.ReadAll(resp.Body)
+		body <- b
+	}()
+
+	select {
+	case <-handlerDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("handler did not finish within 2s")
+	}
+	close(sendErrors)
+
+	i := 0
+	for e := range sendErrors {
+		i++
+		if e != nil {
+			// Pre-fix, the second send fails with i/o timeout. The FIRST
+			// send at t=100ms may still succeed pre-fix (well within the
+			// 300ms deadline); the SECOND at t=600ms would not.
+			t.Errorf("Send #%d returned error (SSE killed by WriteTimeout — pre-fix behavior): %v", i, e)
+		}
+	}
+
+	// Sanity: the received body contains both events. Give the drain
+	// goroutine a moment to flush after the server closes the connection.
+	select {
+	case b := <-body:
+		if !strings.Contains(string(b), "at-100ms") {
+			t.Errorf("expected early event in body, got %q", b)
+		}
+		if !strings.Contains(string(b), "at-600ms") {
+			t.Errorf("expected late event in body (post-fix), got %q", b)
+		}
+	case <-time.After(2 * time.Second):
+		t.Error("response body drain did not complete")
+	}
 }

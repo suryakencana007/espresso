@@ -354,6 +354,19 @@ func serveStream(w http.ResponseWriter, r *http.Request, cfg *streamConfig, h fu
 		return
 	}
 
+	// Clear the per-connection write deadline. SSE streams are inherently
+	// long-lived and net/http's http.Server.WriteTimeout covers the entire
+	// response, so a default WriteTimeout of 10s (defaultConfig.WriteTimeout,
+	// server.go:31) would kill every stream at ~10s regardless of
+	// WithKeepAlive. Best-effort: on ResponseWriters whose wrapper chain
+	// does not implement Unwrap() (e.g. a third-party middleware that
+	// pre-dates Go 1.20 http.ResponseController), SetWriteDeadline returns
+	// http.ErrNotSupported and we fall back to the caller's WriteTimeout —
+	// which they can raise via WithWriteTimeout(0) if needed. The framework's
+	// own wrappers (statusRecorder in middleware/http since v2.4 task-03 /
+	// PR #61, gzipResponseWriter) already forward Unwrap.
+	_ = http.NewResponseController(w).SetWriteDeadline(time.Time{})
+
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
 
