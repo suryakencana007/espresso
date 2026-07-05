@@ -36,7 +36,7 @@ func TestCircuitBreakerError_Is(t *testing.T) {
 	t.Run("matches CircuitBreakerError", func(t *testing.T) {
 		err := NewCircuitBreakerError("service", servicemiddleware.StateOpen, "test")
 		var cbErr *CircuitBreakerError
-		if !errorsAs(err, &cbErr) {
+		if !errors.As(err, &cbErr) {
 			t.Error("expected error to be CircuitBreakerError")
 		}
 	})

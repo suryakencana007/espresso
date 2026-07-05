@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -174,27 +175,42 @@ const (
 )
 
 // CircuitBreakerConfig configures circuit breaker behavior.
+//
+// HalfOpenMaxProbes bounds the number of concurrent requests that pass
+// through when the breaker is HalfOpen. Extra requests receive an immediate
+// CircuitBreakerError instead of reaching the wrapped service — the point of
+// half-open is to probe with LIMITED traffic, not to unleash the pending
+// backlog. Default is 1; zero or negative values are normalized to 1 at
+// layer-construction time so misconfiguration cannot open the floodgate.
 type CircuitBreakerConfig struct {
-	ServiceName      string
-	FailureThreshold int
-	Timeout          time.Duration
-	SuccessThreshold int
+	ServiceName       string
+	FailureThreshold  int
+	Timeout           time.Duration
+	SuccessThreshold  int
+	HalfOpenMaxProbes int
 }
 
 // DefaultCircuitBreakerConfig provides sensible defaults.
 var DefaultCircuitBreakerConfig = CircuitBreakerConfig{
-	FailureThreshold: 5,
-	Timeout:          30 * time.Second,
-	SuccessThreshold: 3,
+	FailureThreshold:  5,
+	Timeout:           30 * time.Second,
+	SuccessThreshold:  3,
+	HalfOpenMaxProbes: 1,
 }
 
 // CircuitBreakerState stores mutable runtime circuit breaker state.
+//
+// halfOpenInFlight tracks probe concurrency in HalfOpen and is bounded by
+// CircuitBreakerConfig.HalfOpenMaxProbes. It resets on every Open→HalfOpen
+// transition; leftover counts from a prior half-open attempt do not carry
+// forward because in-flight only matters while in HalfOpen.
 type CircuitBreakerState struct {
-	mu           sync.RWMutex
-	state        CircuitState
-	failures     int
-	successes    int
-	lastFailTime time.Time
+	mu               sync.RWMutex
+	state            CircuitState
+	failures         int
+	successes        int
+	lastFailTime     time.Time
+	halfOpenInFlight atomic.Int64
 }
 
 // CircuitBreakerError indicates a rejected call due to an open circuit.
@@ -230,30 +246,36 @@ func NewCircuitBreakerError(serviceName string, state CircuitState, message stri
 	}
 }
 
-// IsCircuitBreakerError reports whether err is a CircuitBreakerError.
+// IsCircuitBreakerError reports whether err is a *CircuitBreakerError.
 func IsCircuitBreakerError(err error) bool {
 	var cbErr *CircuitBreakerError
-	return errorsAs(err, &cbErr)
-}
-
-func errorsAs(err error, target any) bool {
-	if err == nil {
-		return false
-	}
-	if e, ok := err.(*CircuitBreakerError); ok {
-		if targetPtr, ok := target.(**CircuitBreakerError); ok {
-			*targetPtr = e
-			return true
-		}
-	}
-	return false
+	return errors.As(err, &cbErr)
 }
 
 // ErrCircuitBreakerOpen is a sentinel error for open-circuit rejection.
 var ErrCircuitBreakerOpen = NewCircuitBreakerError("", StateOpen, "circuit breaker is open")
 
 // CircuitBreakerLayer applies circuit breaker protection around a service.
+//
+// State-machine invariants (fixed in v2.4 task-07):
+//   - Successes while StateClosed reset the failure counter; the threshold
+//     is consecutive-ish, not process-lifetime cumulative.
+//   - The transitioning probe (the request that flips Open→HalfOpen) has
+//     its result counted: the outcome-recording path re-reads state under
+//     the write lock rather than trusting a stale currentState captured on
+//     entry.
+//   - Success and failure paths re-check state under the write lock before
+//     mutating; a concurrent state change is observed and the mutation is
+//     tailored to the observed state (Closed/HalfOpen/Open).
+//   - Half-open admits at most HalfOpenMaxProbes concurrent probes; extras
+//     receive an immediate CircuitBreakerError with State=StateHalfOpen and
+//     never reach the wrapped service.
 func CircuitBreakerLayer[Req any, Res any](config CircuitBreakerConfig) Layer[Req, Res] {
+	// Defensive default so misconfiguration cannot admit unlimited probes.
+	if config.HalfOpenMaxProbes <= 0 {
+		config.HalfOpenMaxProbes = 1
+	}
+
 	state := &CircuitBreakerState{state: StateClosed}
 
 	return func(next Service[Req, Res]) Service[Req, Res] {
@@ -262,6 +284,9 @@ func CircuitBreakerLayer[Req any, Res any](config CircuitBreakerConfig) Layer[Re
 			currentState := state.state
 			state.mu.RUnlock()
 
+			// Entry gate: reject fast when Open (unless the timeout has
+			// elapsed, in which case transition to HalfOpen), or acquire
+			// an in-flight probe slot when HalfOpen (D4 — bounded probes).
 			switch currentState {
 			case StateOpen:
 				state.mu.RLock()
@@ -272,38 +297,91 @@ func CircuitBreakerLayer[Req any, Res any](config CircuitBreakerConfig) Layer[Re
 					state.mu.Lock()
 					state.state = StateHalfOpen
 					state.successes = 0
+					state.halfOpenInFlight.Store(0)
 					state.mu.Unlock()
+					// Fall through to acquire a probe slot for THIS request.
+					if state.halfOpenInFlight.Add(1) > int64(config.HalfOpenMaxProbes) {
+						state.halfOpenInFlight.Add(-1)
+						var zero Res
+						return zero, NewCircuitBreakerError(config.ServiceName, StateHalfOpen, "half-open probe capacity exceeded")
+					}
+					defer state.halfOpenInFlight.Add(-1)
 				} else {
 					var zero Res
 					return zero, NewCircuitBreakerError(config.ServiceName, StateOpen, "circuit breaker is open")
 				}
+			case StateHalfOpen:
+				if state.halfOpenInFlight.Add(1) > int64(config.HalfOpenMaxProbes) {
+					state.halfOpenInFlight.Add(-1)
+					var zero Res
+					return zero, NewCircuitBreakerError(config.ServiceName, StateHalfOpen, "half-open probe capacity exceeded")
+				}
+				defer state.halfOpenInFlight.Add(-1)
 			}
 
 			res, err := next.Call(ctx, req)
-
 			if err != nil {
-				state.mu.Lock()
-				state.failures++
-				state.lastFailTime = time.Now()
-				if state.failures >= config.FailureThreshold {
-					state.state = StateOpen
-				}
-				state.mu.Unlock()
+				recordCircuitFailure(state, config)
 				return res, err
 			}
-
-			if currentState == StateHalfOpen {
-				state.mu.Lock()
-				state.successes++
-				if state.successes >= config.SuccessThreshold {
-					state.state = StateClosed
-					state.failures = 0
-				}
-				state.mu.Unlock()
-			}
-
+			recordCircuitSuccess(state, config)
 			return res, nil
 		})
+	}
+}
+
+// recordCircuitFailure applies a failure to the circuit state under the
+// write lock (D3). Behavior is state-dependent, so re-reading the state at
+// the mutation point is load-bearing — a concurrent state change since the
+// call entered is observed and handled correctly:
+//   - Closed: increment failures; if threshold met, transition to Open.
+//   - HalfOpen: any probe failure reverts to Open immediately (reset counters).
+//   - Open: someone else already reopened; slide the lastFailTime window.
+func recordCircuitFailure(state *CircuitBreakerState, config CircuitBreakerConfig) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	switch state.state {
+	case StateClosed:
+		state.failures++
+		state.lastFailTime = time.Now()
+		if state.failures >= config.FailureThreshold {
+			state.state = StateOpen
+		}
+	case StateHalfOpen:
+		state.state = StateOpen
+		state.lastFailTime = time.Now()
+		state.failures = 1
+		state.successes = 0
+	case StateOpen:
+		state.lastFailTime = time.Now()
+	}
+}
+
+// recordCircuitSuccess applies a success to the circuit state under the
+// write lock (D1 + D2 + D3). Rules:
+//   - Closed: reset failures — the counter is consecutive-ish, not
+//     process-lifetime cumulative (D1).
+//   - HalfOpen: increment successes; if threshold met, close and reset
+//     both counters. The transitioning probe's success is counted here
+//     because we read state at the mutation point rather than at
+//     goroutine entry (D2).
+//   - Open: a concurrent failure reopened while this success was in
+//     flight — leave state alone.
+func recordCircuitSuccess(state *CircuitBreakerState, config CircuitBreakerConfig) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	switch state.state {
+	case StateClosed:
+		state.failures = 0
+	case StateHalfOpen:
+		state.successes++
+		if state.successes >= config.SuccessThreshold {
+			state.state = StateClosed
+			state.failures = 0
+			state.successes = 0
+		}
+	case StateOpen:
+		// Stale probe result — no-op.
 	}
 }
 
