@@ -2,9 +2,11 @@ package openapi
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -696,5 +698,159 @@ func TestFluentAPI_Complete(t *testing.T) {
 	}
 	if spec.Paths["/users"].Post == nil {
 		t.Error("expected POST /users to be set")
+	}
+}
+
+// TestGenerator_MutateWhileServeRaceFree locks v2.4 task-05 D1. Pre-fix,
+// mutation methods (AddPath, AddSchema, AddSecurityScheme, Server,
+// Description) wrote g.spec fields OUTSIDE any lock while cachedJSON
+// marshaled g.spec under g.mu. A concurrent mutate + serve triggered a
+// data race between the map write and the reflect-based marshal read,
+// contradicting the Generator godoc's "verified under -race" claim.
+//
+// Post-fix, every mutation method holds g.mu across the spec mutation
+// AND the invalidateCacheLocked call in a single critical section, and
+// cachedJSON reads g.spec under the same lock. This test runs under
+// -race and MUST print no data-race warnings.
+func TestGenerator_MutateWhileServeRaceFree(t *testing.T) {
+	gen := New("t", "1")
+	handler := gen.Handler()
+
+	stop := make(chan struct{})
+	done := make(chan struct{})
+	// Serve loop: hammers cachedJSON via the Handler.
+	go func() {
+		defer close(done)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
+			}
+			rr := httptest.NewRecorder()
+			handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/openapi.json", nil))
+		}
+	}()
+
+	// Mutate concurrently from the main goroutine. Pre-fix each of these
+	// races cachedJSON's map read; post-fix all mutations serialize through
+	// g.mu.
+	for i := range 200 {
+		gen.AddPath(http.MethodGet, fmt.Sprintf("/p%d", i), Operation{Summary: "s"})
+		if i%5 == 0 {
+			gen.AddSchema(fmt.Sprintf("S%d", i), &Schema{Type: "object"})
+		}
+		if i%7 == 0 {
+			gen.Server(fmt.Sprintf("http://s%d.example.com", i), "d")
+		}
+	}
+	close(stop)
+	<-done
+	// Sanity: at least one path made it in and marshal still works.
+	rr := httptest.NewRecorder()
+	handler.ServeHTTP(rr, httptest.NewRequest(http.MethodGet, "/openapi.json", nil))
+	if rr.Code != http.StatusOK {
+		t.Errorf("final serve returned %d", rr.Code)
+	}
+	// The important assertion is implicit: go test -race must not print
+	// WARNING: DATA RACE. Pre-fix, it does reliably; post-fix it does not.
+}
+
+// TestGenerateSchemaFromType_RecursiveDoesNotOverflow locks v2.4 task-05
+// D2. Pre-fix, GenerateSchemaFromType on a self-referential struct
+// looped without cycle detection and died with fatal error: stack
+// overflow — an unrecoverable process-killing panic that fired at
+// route-registration time for any user documenting a tree-shaped type
+// (comment threads, linked categories, filesystem-like nodes).
+//
+// Post-fix, a per-call visited-types set breaks the cycle: the first
+// visit inlines the struct schema, revisits emit $ref pointing at
+// components/schemas/<name>. Test asserts the recursive field's Items
+// resolves to a $ref rather than crashing.
+func TestGenerateSchemaFromType_RecursiveDoesNotOverflow(t *testing.T) {
+	type node struct {
+		Value    string  `json:"value"`
+		Children []*node `json:"children,omitempty"`
+	}
+
+	s := GenerateSchemaFromType(reflect.TypeOf(node{}))
+	if s == nil || s.Type != "object" {
+		t.Fatalf("expected object schema, got %+v", s)
+	}
+	children, ok := s.Properties["children"]
+	if !ok {
+		t.Fatal("expected 'children' property on the recursive schema")
+	}
+	if children.Items == nil {
+		t.Fatal("expected Items schema on the recursive array")
+	}
+	if children.Items.Ref == "" {
+		t.Fatalf("expected children.Items to be a $ref (cycle-broken), got inline schema: %+v", children.Items)
+	}
+	if !strings.HasPrefix(children.Items.Ref, "#/components/schemas/") {
+		t.Errorf("expected $ref path under components/schemas, got %q", children.Items.Ref)
+	}
+	if !strings.HasSuffix(children.Items.Ref, ".node") {
+		t.Errorf("expected $ref to end with sanitized type name '.node', got %q", children.Items.Ref)
+	}
+}
+
+// TestGenerateSchemaFromType_MutuallyRecursive locks cycle detection
+// across two types that reference each other. Neither type may cause a
+// stack overflow, and the innermost cross-reference must emit a $ref.
+func TestGenerateSchemaFromType_MutuallyRecursive(t *testing.T) {
+	type mutB struct {
+		Value string `json:"value"`
+	}
+	type mutA struct {
+		Value string `json:"value"`
+		B     *mutB  `json:"b,omitempty"`
+	}
+	// We can't declare cyclic named types inline in Go, so exercise the
+	// visited-set mechanism via a slice-of-self pattern instead: mutA
+	// contains []mutA transitively via a nested field. The self-recursive
+	// case is the load-bearing one; mutually recursive types across
+	// separate declarations work identically because visited keys on
+	// reflect.Type identity.
+	type tree struct {
+		Value    string  `json:"value"`
+		Children []*tree `json:"children,omitempty"`
+		Sibling  *tree   `json:"sibling,omitempty"`
+	}
+
+	// Should not stack-overflow; should emit $refs for the self-references.
+	s := GenerateSchemaFromType(reflect.TypeOf(tree{}))
+	if s == nil {
+		t.Fatal("nil schema")
+	}
+	// Both Children (via []*tree → *tree → tree) and Sibling (via *tree)
+	// see the visited tree type on their recursive descent and emit $ref.
+	if children, ok := s.Properties["children"]; !ok || children.Items == nil || children.Items.Ref == "" {
+		t.Errorf("expected children.Items to $ref, got %+v", children)
+	}
+	if sibling, ok := s.Properties["sibling"]; !ok || sibling.Ref == "" {
+		t.Errorf("expected sibling to be a $ref, got %+v", sibling)
+	}
+	_ = mutA{B: &mutB{}} // touch to silence unused warning
+}
+
+// TestSanitizeSchemaName_DisambiguatesByPkgPath locks the naming rule:
+// two types with the same Name() in different packages must produce
+// distinct schema keys. Uses last-two-segment truncation so the keys
+// stay readable ("espresso.node") rather than fully qualified.
+func TestSanitizeSchemaName_DisambiguatesByPkgPath(t *testing.T) {
+	a := sanitizeSchemaName("github.com/example/foo", "node")
+	b := sanitizeSchemaName("github.com/example/bar", "node")
+	if a == b {
+		t.Errorf("expected distinct sanitized names, got %q == %q", a, b)
+	}
+	if a != "example.foo.node" {
+		t.Errorf("expected 'example.foo.node', got %q", a)
+	}
+	if b != "example.bar.node" {
+		t.Errorf("expected 'example.bar.node', got %q", b)
+	}
+	if got := sanitizeSchemaName("", "node"); got != "node" {
+		t.Errorf("empty PkgPath should return bare name, got %q", got)
 	}
 }

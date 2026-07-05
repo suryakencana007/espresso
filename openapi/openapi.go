@@ -139,31 +139,35 @@ func APIKeyHeaderScheme(headerName string) SecurityScheme {
 //
 // The marshaled spec is cached: Handler serves the bytes produced by the first
 // successful marshal and reuses them on every subsequent request, since the spec
-// is immutable once route registration completes. Any mutation method
+// is immutable once route registration completes. Every mutation method
 // (Server/AddServer, AddPath, AddSchema, Schema, AddSecurityScheme, Description/
-// SetDescription) invalidates the cache so a later marshal reflects the change —
-// the cache is never stale. Reads and the mutation/invalidation path are guarded
-// by mu, so Handler is safe to serve concurrently while registration is still in
-// flight (verified under -race).
+// SetDescription) holds mu across the spec mutation and the cache invalidation
+// in a single atomic critical section, so a concurrent Handler.ServeHTTP under
+// mu.Lock either sees the fully-mutated spec (and re-marshals) or the previous
+// snapshot (from the cached bytes) — never a torn read. Handler is therefore
+// safe to serve concurrently while registration is still in flight, verified
+// under -race by TestGenerator_MutateWhileServeRaceFree in openapi_test.go.
 type Generator struct {
 	spec *Spec
 
-	// mu guards specBytes/specErr and the invalidation flag below. The cached
-	// bytes are computed lazily on the first marshal and dropped on any mutation.
+	// mu guards spec, specBytes, specErr, and specCached. Held by every
+	// mutation method across the spec mutation and the cache invalidation,
+	// and by cachedJSON around the read/marshal path.
 	mu         sync.Mutex
 	specBytes  []byte
 	specErr    error
 	specCached bool
 }
 
-// invalidateCache drops any cached marshaled spec. It must be called by every
-// method that mutates g.spec so a subsequent marshal does not serve stale bytes.
-func (g *Generator) invalidateCache() {
-	g.mu.Lock()
+// invalidateCacheLocked drops any cached marshaled spec. Assumes the caller
+// already holds g.mu — every mutation method takes the lock before mutating
+// spec state and calls invalidateCacheLocked inside the same critical
+// section, guaranteeing a concurrent cachedJSON either serves the pre-
+// mutation bytes or re-marshals against the post-mutation spec.
+func (g *Generator) invalidateCacheLocked() {
 	g.specBytes = nil
 	g.specErr = nil
 	g.specCached = false
-	g.mu.Unlock()
 }
 
 // cachedJSON returns the marshaled spec, computing and caching it on first call
@@ -213,8 +217,10 @@ func NewGenerator(title, version string) *Generator {
 
 // Description sets the API description.
 func (g *Generator) Description(desc string) *Generator {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.spec.Info.Description = desc
-	g.invalidateCache()
+	g.invalidateCacheLocked()
 	return g
 }
 
@@ -227,11 +233,13 @@ func (g *Generator) SetDescription(desc string) *Generator {
 
 // Server adds a server to the spec.
 func (g *Generator) Server(url, description string) *Generator {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	g.spec.Servers = append(g.spec.Servers, Server{
 		URL:         url,
 		Description: description,
 	})
-	g.invalidateCache()
+	g.invalidateCacheLocked()
 	return g
 }
 
@@ -244,6 +252,8 @@ func (g *Generator) AddServer(url, description string) *Generator {
 
 // AddPath adds a path to the spec.
 func (g *Generator) AddPath(method, path string, op Operation) *Generator {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	pathItem, ok := g.spec.Paths[path]
 	if !ok {
 		pathItem = PathItem{}
@@ -267,19 +277,21 @@ func (g *Generator) AddPath(method, path string, op Operation) *Generator {
 	}
 
 	g.spec.Paths[path] = pathItem
-	g.invalidateCache()
+	g.invalidateCacheLocked()
 	return g
 }
 
 // AddSchema adds a schema to components.
 func (g *Generator) AddSchema(name string, schema *Schema) *Generator {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	schemas, ok := g.spec.Components["schemas"].(map[string]*Schema)
 	if !ok {
 		schemas = make(map[string]*Schema)
 		g.spec.Components["schemas"] = schemas
 	}
 	schemas[name] = schema
-	g.invalidateCache()
+	g.invalidateCacheLocked()
 	return g
 }
 
@@ -296,13 +308,15 @@ func (g *Generator) AddSchema(name string, schema *Schema) *Generator {
 //
 // OAuth2 flows and OpenID Connect are out of scope for v2.3.
 func (g *Generator) AddSecurityScheme(name string, scheme SecurityScheme) *Generator {
+	g.mu.Lock()
+	defer g.mu.Unlock()
 	schemes, ok := g.spec.Components["securitySchemes"].(map[string]SecurityScheme)
 	if !ok {
 		schemes = make(map[string]SecurityScheme)
 		g.spec.Components["securitySchemes"] = schemes
 	}
 	schemes[name] = scheme
-	g.invalidateCache()
+	g.invalidateCacheLocked()
 	return g
 }
 
@@ -361,13 +375,41 @@ func (g *Generator) ToJSON() ([]byte, error) {
 	return json.MarshalIndent(g.spec, "", "  ")
 }
 
-// Spec returns the spec.
+// Spec returns the generator's internal *Spec. Safe for read-only
+// inspection (existing tests and the router-openapi glue use it this
+// way).
+//
+// WARNING: do NOT mutate the returned Spec directly. Writes bypass the
+// cache-invalidation path (invalidateCacheLocked runs only inside the
+// mutation methods below) and race against a concurrent Handler. Use
+// AddPath, AddSchema, AddSecurityScheme, Server, and Description to
+// modify the spec. A future release may return a defensive clone; until
+// then the current return is a live pointer — treat it as read-only.
 func (g *Generator) Spec() *Spec {
 	return g.spec
 }
 
 // GenerateSchemaFromType generates an OpenAPI schema from a Go type.
+//
+// Recursive types (self-referential or mutually recursive structs) are
+// detected and emitted as $ref entries into components/schemas. The
+// first visit to each named struct type produces an inline schema and,
+// when a Generator is available (see the internal generator-aware
+// helper), registers the schema under components/schemas so downstream
+// $refs resolve. Subsequent revisits during the same top-level call
+// short-circuit to {"$ref": "#/components/schemas/<Name>"}.
+//
+// Without cycle detection this function stack-overflowed on any
+// self-referential type (audit finding openapi-validator#2, task-05).
 func GenerateSchemaFromType(t reflect.Type) *Schema {
+	return generateSchemaFromTypeVisited(t, make(map[reflect.Type]bool))
+}
+
+// generateSchemaFromTypeVisited is the internal cycle-aware entry point.
+// The visited set is threaded through the recursion so a struct that is
+// already being expanded upstream is emitted as a $ref rather than
+// inlined again (which would stack-overflow).
+func generateSchemaFromTypeVisited(t reflect.Type, visited map[reflect.Type]bool) *Schema {
 	if t == nil {
 		return &Schema{Type: "object"}
 	}
@@ -384,23 +426,39 @@ func GenerateSchemaFromType(t reflect.Type) *Schema {
 	case reflect.Bool:
 		return &Schema{Type: "boolean"}
 	case reflect.Slice, reflect.Array:
-		items := GenerateSchemaFromType(t.Elem())
+		items := generateSchemaFromTypeVisited(t.Elem(), visited)
 		return &Schema{Type: "array", Items: items}
 	case reflect.Map:
 		return &Schema{
 			Type:                 "object",
-			AdditionalProperties: GenerateSchemaFromType(t.Elem()),
+			AdditionalProperties: generateSchemaFromTypeVisited(t.Elem(), visited),
 		}
 	case reflect.Struct:
-		return generateSchemaFromStruct(t)
-	case reflect.Ptr:
-		return GenerateSchemaFromType(t.Elem())
+		return generateSchemaFromStructVisited(t, visited)
+	case reflect.Pointer:
+		return generateSchemaFromTypeVisited(t.Elem(), visited)
 	default:
 		return &Schema{Type: "object"}
 	}
 }
 
-func generateSchemaFromStruct(t reflect.Type) *Schema {
+// generateSchemaFromStructVisited produces the object-schema shape for a
+// struct type while tracking already-visited types to break cycles. A
+// revisit to a named type returns a $ref pointing at
+// components/schemas/<sanitized-name>. Anonymous structs (Name()=="")
+// are always inlined — there's nothing meaningful to $ref to and
+// anonymous types cannot be recursive.
+func generateSchemaFromStructVisited(t reflect.Type, visited map[reflect.Type]bool) *Schema {
+	if visited[t] && t.Name() != "" {
+		return &Schema{Ref: "#/components/schemas/" + sanitizeSchemaName(t.PkgPath(), t.Name())}
+	}
+	// Only track named types in the visited set — anonymous struct{...}
+	// literals can appear multiple times legitimately and shouldn't
+	// short-circuit each other.
+	if t.Name() != "" {
+		visited[t] = true
+	}
+
 	schema := &Schema{
 		Type:       "object",
 		Properties: make(map[string]*Schema),
@@ -433,7 +491,7 @@ func generateSchemaFromStruct(t reflect.Type) *Schema {
 			desc = field.Tag.Get("description")
 		}
 
-		propSchema := GenerateSchemaFromType(field.Type)
+		propSchema := generateSchemaFromTypeVisited(field.Type, visited)
 		propSchema.Description = desc
 
 		schema.Properties[name] = propSchema
@@ -444,6 +502,28 @@ func generateSchemaFromStruct(t reflect.Type) *Schema {
 	}
 
 	return schema
+}
+
+// sanitizeSchemaName builds an OpenAPI-safe schema identifier from a
+// type's PkgPath and Name. Two types named "node" in different packages
+// need distinct component keys; using the last two path segments joined
+// by "." is a pragmatic middle ground between full-path disambiguation
+// (unwieldy: "github.com.example.repo.pkg.node") and bare Name()
+// (ambiguous). Anonymous types (Name()=="") should never reach this —
+// callers must gate on t.Name() first.
+func sanitizeSchemaName(pkgPath, typeName string) string {
+	if pkgPath == "" {
+		return typeName
+	}
+	parts := strings.Split(pkgPath, "/")
+	if len(parts) > 2 {
+		parts = parts[len(parts)-2:]
+	}
+	pkgSegment := strings.Join(parts, ".")
+	if pkgSegment == "" {
+		return typeName
+	}
+	return pkgSegment + "." + typeName
 }
 
 // Handler returns an http.Handler that serves the OpenAPI spec.
