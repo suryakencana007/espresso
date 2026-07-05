@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** Task 2 (both touch `middleware/http/middleware.go` `RateLimitMiddleware` neighborhood; coordinate on CHANGELOG merge order)
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #69 — clientKey via net.SplitHostPort; WithTrustedProxies opt-in for XFF (RFC 7239 rightmost-trusted-hop); TokenBucketLimiterPerKey background sweeper + Close/WithBucketTTL.
+
 ## Context
 
 Two related defects in `RateLimitMiddleware` (`middleware/http/middleware.go:237-257`):
@@ -16,12 +18,12 @@ Also `SlidingWindowLimiter.Allow` holds one global mutex and does an O(n) scan p
 
 ## Acceptance Criteria
 
-- [ ] By default, `RateLimitMiddleware` keys on the **host** portion of `r.RemoteAddr` (via `net.SplitHostPort`) — not the full `host:port`. New TCP connections from the same client IP hit the same bucket.
-- [ ] `X-Forwarded-For` is **not trusted by default**. A `WithTrustedProxies(cidrs ...string)` option enables it and, when set, takes the **rightmost trusted hop** from the header — never the raw leftmost value.
-- [ ] `TokenBucketLimiterPerKey` evicts buckets idle for > TTL (configurable, default 10 minutes). Eviction runs lazily on `Allow` or via a background goroutine — pick one and document.
-- [ ] Regression tests reproduce both defects on the pre-fix code and lock the fixes.
-- [ ] `SlidingWindowLimiter` godoc gains a `// Note: single-mutex, O(n)-per-Allow — for high-concurrency use TokenBucketLimiter*` comment (documentation only, no behavior change).
-- [ ] Migration note: existing users of `RateLimitMiddleware` who rely on `X-Forwarded-For` must add `WithTrustedProxies(...)` — this is a **breaking behavior change** (correctly).
+- [x] By default, `RateLimitMiddleware` keys on the **host** portion of `r.RemoteAddr` (via `net.SplitHostPort`) — not the full `host:port`. New TCP connections from the same client IP hit the same bucket.
+- [x] `X-Forwarded-For` is **not trusted by default**. A `WithTrustedProxies(cidrs ...string)` option enables it and, when set, takes the **rightmost trusted hop** from the header — never the raw leftmost value.
+- [x] `TokenBucketLimiterPerKey` evicts buckets idle for > TTL (configurable, default 10 minutes). Eviction runs lazily on `Allow` or via a background goroutine — pick one and document.
+- [x] Regression tests reproduce both defects on the pre-fix code and lock the fixes.
+- [x] `SlidingWindowLimiter` godoc gains a `// Note: single-mutex, O(n)-per-Allow — for high-concurrency use TokenBucketLimiter*` comment (documentation only, no behavior change).
+- [x] Migration note: existing users of `RateLimitMiddleware` who rely on `X-Forwarded-For` must add `WithTrustedProxies(...)` — this is a **breaking behavior change** (correctly).
 
 ## Technical Approach
 
@@ -121,10 +123,10 @@ Add above `SlidingWindowLimiter`:
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./middleware/http/... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: `RateLimitMiddleware` no longer trusts `X-Forwarded-For` by default (breaking behavior change; opt in via `WithTrustedProxies`); keys default to the client host, not `host:port`; `TokenBucketLimiterPerKey` evicts idle buckets. Under `Added`: `WithTrustedProxies`, `WithBucketTTL`.
-- [ ] Migration note (Task 12): callers relying on X-Forwarded-For must add `WithTrustedProxies(...)` and set the reverse-proxy CIDRs; users that pass through a well-known LB (Cloudflare, AWS ALB, etc.) get a doc pointer to the current published CIDR list.
-- [ ] No public API signature changed on `RateLimitMiddleware` (only new option added).
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./middleware/http/... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: `RateLimitMiddleware` no longer trusts `X-Forwarded-For` by default (breaking behavior change; opt in via `WithTrustedProxies`); keys default to the client host, not `host:port`; `TokenBucketLimiterPerKey` evicts idle buckets. Under `Added`: `WithTrustedProxies`, `WithBucketTTL`.
+- [x] Migration note (Task 12): callers relying on X-Forwarded-For must add `WithTrustedProxies(...)` and set the reverse-proxy CIDRs; users that pass through a well-known LB (Cloudflare, AWS ALB, etc.) get a doc pointer to the current published CIDR list.
+- [x] No public API signature changed on `RateLimitMiddleware` (only new option added).

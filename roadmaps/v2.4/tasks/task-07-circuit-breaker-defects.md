@@ -4,6 +4,8 @@
 **Estimated Effort:** 1 day
 **Dependencies:** Task 1 (shares `middleware/service/layer.go`)
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #68 — Four state-machine defects fixed (reset failures on Closed success; count transitioning probe; re-read state under lock; HalfOpenMaxProbes bounds probes); CircuitBreakerError consolidated to type alias.
+
 ## Context
 
 The audit reproduced four defects in `CircuitBreakerLayer` (`middleware/service/layer.go:222-274`), three verified with live tests:
@@ -17,12 +19,12 @@ Also secondary: there are **two parallel `CircuitBreakerError` types** (`middlew
 
 ## Acceptance Criteria
 
-- [ ] `failures` resets to 0 on any successful call while `StateClosed` (or use a rolling window over N most-recent calls).
-- [ ] The first probe's success (after `Open→HalfOpen` transition) is counted toward `SuccessThreshold`.
-- [ ] The success path re-reads state under the write lock before mutating, so a concurrent state change is observed and the mutation is skipped or adjusted accordingly.
-- [ ] Half-open admits at most `HalfOpenMaxProbes` (default 1) concurrent probes; extra requests observing `HalfOpen` return `ErrCircuitBreakerOpen`-equivalent immediately.
-- [ ] Only one `CircuitBreakerError` type exists in the module; the hand-rolled `errorsAs` is removed in favor of `errors.As` where possible.
-- [ ] No breaking change to `CircuitBreaker(...)` `LayerConfig` constructor signature; new fields on the config (like `HalfOpenMaxProbes`) are additive with sensible defaults.
+- [x] `failures` resets to 0 on any successful call while `StateClosed` (or use a rolling window over N most-recent calls).
+- [x] The first probe's success (after `Open→HalfOpen` transition) is counted toward `SuccessThreshold`.
+- [x] The success path re-reads state under the write lock before mutating, so a concurrent state change is observed and the mutation is skipped or adjusted accordingly.
+- [x] Half-open admits at most `HalfOpenMaxProbes` (default 1) concurrent probes; extra requests observing `HalfOpen` return `ErrCircuitBreakerOpen`-equivalent immediately.
+- [x] Only one `CircuitBreakerError` type exists in the module; the hand-rolled `errorsAs` is removed in favor of `errors.As` where possible.
+- [x] No breaking change to `CircuitBreaker(...)` `LayerConfig` constructor signature; new fields on the config (like `HalfOpenMaxProbes`) are additive with sensible defaults.
 
 ## Technical Approach
 
@@ -122,10 +124,10 @@ Delete the `error.go:21` duplicate if it is unused externally (grep first — if
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./middleware/service/... ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: four `CircuitBreakerLayer` correctness defects — failure count now resets on successful calls while Closed; the transitioning probe's success is counted; state-machine mutations re-check state under the lock; half-open concurrency is bounded (default `HalfOpenMaxProbes=1`). Under `Added` (if applicable): `HalfOpenMaxProbes` on the `LayerConfig` constructor.
-- [ ] Migration note (Task 12): a service that was tripping the circuit under long-running low-rate transient failures will now stay closed; the previous behavior was cumulative over process lifetime.
-- [ ] No public API signature changed on `CircuitBreaker(...)` (additive field on config only).
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./middleware/service/... ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: four `CircuitBreakerLayer` correctness defects — failure count now resets on successful calls while Closed; the transitioning probe's success is counted; state-machine mutations re-check state under the lock; half-open concurrency is bounded (default `HalfOpenMaxProbes=1`). Under `Added` (if applicable): `HalfOpenMaxProbes` on the `LayerConfig` constructor.
+- [x] Migration note (Task 12): a service that was tripping the circuit under long-running low-rate transient failures will now stay closed; the previous behavior was cumulative over process lifetime.
+- [x] No public API signature changed on `CircuitBreaker(...)` (additive field on config only).

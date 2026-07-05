@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #60 — TokenBucketLimiter refill starvation fixed — nanosecond int64 math credits fractional seconds.
+
 ## Context
 
 `TokenBucketLimiter` starves all traffic under sustained sub-second load — a defect audit-confirmed by a live repro (rate=100/s, cap=5, one request every 100ms for 3s admits **5 of 30** requests in both global and per-key modes; a drained bucket polled every 200ms admits 0 for 2s).
@@ -20,12 +22,12 @@ The existing test (`middleware_test.go:397-420`) sleeps 1.1s once and masks the 
 
 ## Acceptance Criteria
 
-- [ ] `TokenBucketLimiter` at `rate=100/s`, `cap=5`, requests every 100ms for 3s admits approximately `rate * duration` requests (~300, allowing ±5% for edge timing), not `cap` and then nothing.
-- [ ] Same holds for `TokenBucketLimiterPerKey` under the same load pattern.
-- [ ] Fractional-second refill is credited — a request 500ms after the previous one on `rate=10/s` credits ~5 tokens toward the bucket, not 0.
-- [ ] `lastRefill` advances only by the amount of time actually credited to tokens (no free clock advance for un-credited fractional seconds).
-- [ ] The existing 1.1s-sleep test still passes.
-- [ ] No public API signature change.
+- [x] `TokenBucketLimiter` at `rate=100/s`, `cap=5`, requests every 100ms for 3s admits approximately `rate * duration` requests (~300, allowing ±5% for edge timing), not `cap` and then nothing.
+- [x] Same holds for `TokenBucketLimiterPerKey` under the same load pattern.
+- [x] Fractional-second refill is credited — a request 500ms after the previous one on `rate=10/s` credits ~5 tokens toward the bucket, not 0.
+- [x] `lastRefill` advances only by the amount of time actually credited to tokens (no free clock advance for un-credited fractional seconds).
+- [x] The existing 1.1s-sleep test still passes.
+- [x] No public API signature change.
 
 ## Technical Approach
 
@@ -74,9 +76,9 @@ The `1.1s sleep` test at `middleware_test.go:397-420` currently passes on the bu
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./middleware/http/... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: `TokenBucketLimiter` and `TokenBucketLimiterPerKey` correctly refill under sustained sub-second traffic; previously truncated fractional seconds to zero while advancing the refill clock, starving all traffic after the initial burst.
-- [ ] No public API signature changed.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./middleware/http/... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: `TokenBucketLimiter` and `TokenBucketLimiterPerKey` correctly refill under sustained sub-second traffic; previously truncated fractional seconds to zero while advancing the refill clock, starving all traffic after the initial burst.
+- [x] No public API signature changed.

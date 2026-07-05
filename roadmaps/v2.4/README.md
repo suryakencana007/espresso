@@ -1,5 +1,10 @@
 # Espresso v2.4.0 — Ground Truth
 
+> **Status: shipped 2026-07-05.** Tag [`v2.4.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.4.0).
+> A correctness release closing the ten P0/P1 findings from the 2026-07-02 alignment audit against v2.3.0.
+> Upgrade notes: [`docs/migration-v2.3-to-v2.4.md`](../../docs/migration-v2.3-to-v2.4.md) and CHANGELOG `[2.4.0]`.
+> This directory is retained for historical reference; future work has its own roadmap.
+
 This directory contains the roadmap and task specifications for Espresso v2.4.0, a **minor** release that is a correctness/quality cleanup with **no new feature surface** other than a JSON-body limit hook. Ground Truth is the release where the framework's behavior catches up to what its docs, comments, and marketing claim — the audit run of 2026-07-02 through 2026-07-04 surfaced ~30 confirmed defects between shipped behavior and shipped contracts, and v2.4 closes the P0/P1 ones.
 
 ## Why v2.4?

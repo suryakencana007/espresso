@@ -4,6 +4,8 @@
 **Estimated Effort:** 1.5 days
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #64 — TimeoutLayer no longer races the request-struct pool — sentinel abandonedByTimeoutErr; skip pool.Put on abandonment; context.Canceled → 503.
+
 ## Context
 
 The 2026-07-02 audit reproduced a `-race`-detected data race in the flagship `TimeoutLayer` when combined with `WithLayersTyped`'s pooled request struct. `TimeoutLayer` (`middleware/service/layer.go:50-73`) spawns a goroutine running `next.Call(ctx, req)` and returns on `ctx.Done()`, leaving that goroutine holding a reference to `req`. The outer handler from `applyLayersAndConvert` (`withlayers.go:414-435`) then runs its deferred `resetReq(req); pool.Put(req)` unconditionally (`withlayers.go:421-424`); the next request `pool.Get()`s the same struct and `Extract()` writes into it while the abandoned goroutine may still be reading it.
@@ -14,11 +16,11 @@ Secondary: on parent-context cancellation `TimeoutLayer` returns `context.Cancel
 
 ## Acceptance Criteria
 
-- [ ] `TimeoutLayer` + `WithLayersTyped` + a handler that outlives the deadline no longer produces `WARNING: DATA RACE` under `-race`, verified by a regression test shaped like the audit's repro.
-- [ ] The regression test reliably fails on the pre-fix commit (spot-check via a temporary revert during Task 11 verification).
-- [ ] `core.go`'s `Resettable` godoc documents that pooled request structs must not be retained past handler return.
-- [ ] `context.Canceled` from `TimeoutLayer` maps to a client-disconnect status rather than 500 via `translateLayerError` (either propagate the classification or return a sentinel).
-- [ ] No public API signature change; no breaking change to `Timeout(d time.Duration)`'s `LayerConfig` constructor.
+- [x] `TimeoutLayer` + `WithLayersTyped` + a handler that outlives the deadline no longer produces `WARNING: DATA RACE` under `-race`, verified by a regression test shaped like the audit's repro.
+- [x] The regression test reliably fails on the pre-fix commit (spot-check via a temporary revert during Task 11 verification).
+- [x] `core.go`'s `Resettable` godoc documents that pooled request structs must not be retained past handler return.
+- [x] `context.Canceled` from `TimeoutLayer` maps to a client-disconnect status rather than 500 via `translateLayerError` (either propagate the classification or return a sentinel).
+- [x] No public API signature change; no breaking change to `Timeout(d time.Duration)`'s `LayerConfig` constructor.
 
 ## Technical Approach
 
@@ -75,10 +77,10 @@ Add to `core.go`'s `Resettable` godoc (near line where `Resettable` is declared)
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] `govulncheck ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: `TimeoutLayer` no longer races the request-struct pool on abandoned handlers; `context.Canceled` from a service layer maps to 503 rather than 500.
-- [ ] No public API signature changed.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] `govulncheck ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: `TimeoutLayer` no longer races the request-struct pool on abandoned handlers; `context.Canceled` from a service layer maps to 503 rather than 500.
+- [x] No public API signature changed.

@@ -4,6 +4,8 @@
 **Estimated Effort:** 1.5 days
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #71 — OpenAPI Generator mutation methods hold g.mu across mutation + invalidateCacheLocked; recursive types emit $ref via cycle-detected schema generation.
+
 ## Context
 
 Two defects in `openapi/openapi.go` share the file and land together:
@@ -16,11 +18,11 @@ Secondary: `Spec()` (`openapi.go:365-367`) hands out the internal `*Spec`, so ex
 
 ## Acceptance Criteria
 
-- [ ] `AddPath` (and every mutation method: `AddSchema`, `AddSecurityScheme`, `Server`, `Description`, `SetDescription`) writes `g.spec` inside `g.mu.Lock()` critical sections, folding the existing `invalidateCache()` call into the same section.
-- [ ] A `-race` regression test running `AddPath` concurrently with `Handler().ServeHTTP` is clean (was: `WARNING: DATA RACE`).
-- [ ] The `Generator` godoc at `openapi.go:141-147` is corrected — either the race-safety claim is true (holds after the fix) or the doc is reworded. Given the fix makes it true, keep the claim and add the new regression test as the "-race verified" reference.
-- [ ] `GenerateSchemaFromType` detects self-referential types and emits `$ref: "#/components/schemas/<Name>"` on revisit, registering the type under `components/schemas` on first visit. A recursive `type node struct{ Children []*node }` produces a spec, not a stack overflow.
-- [ ] `Spec()` godoc explicitly warns callers that returned `*Spec` mutation bypasses cache invalidation (the finding recommends adding a `SpecClone()` for external readers; land the warning, defer the clone).
+- [x] `AddPath` (and every mutation method: `AddSchema`, `AddSecurityScheme`, `Server`, `Description`, `SetDescription`) writes `g.spec` inside `g.mu.Lock()` critical sections, folding the existing `invalidateCache()` call into the same section.
+- [x] A `-race` regression test running `AddPath` concurrently with `Handler().ServeHTTP` is clean (was: `WARNING: DATA RACE`).
+- [x] The `Generator` godoc at `openapi.go:141-147` is corrected — either the race-safety claim is true (holds after the fix) or the doc is reworded. Given the fix makes it true, keep the claim and add the new regression test as the "-race verified" reference.
+- [x] `GenerateSchemaFromType` detects self-referential types and emits `$ref: "#/components/schemas/<Name>"` on revisit, registering the type under `components/schemas` on first visit. A recursive `type node struct{ Children []*node }` produces a spec, not a stack overflow.
+- [x] `Spec()` godoc explicitly warns callers that returned `*Spec` mutation bypasses cache invalidation (the finding recommends adding a `SpecClone()` for external readers; land the warning, defer the clone).
 
 ## Technical Approach
 
@@ -110,10 +112,10 @@ The `Generator` godoc at `openapi.go:141-147` claims "verified under `-race`". A
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./openapi/... -count=2` clean.
-- [ ] `go test -race ./... -count=2` clean (regression across the module).
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: `openapi.Generator` mutation methods now hold `g.mu` across spec mutation + cache invalidation, closing the previously-latent data race the godoc claimed was guarded; `GenerateSchemaFromType` handles recursive types via `$ref` to `components/schemas` instead of dying with a stack overflow.
-- [ ] No public API signature changed on any exported OpenAPI method.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./openapi/... -count=2` clean.
+- [x] `go test -race ./... -count=2` clean (regression across the module).
+- [x] `golangci-lint run ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: `openapi.Generator` mutation methods now hold `g.mu` across spec mutation + cache invalidation, closing the previously-latent data race the godoc claimed was guarded; `GenerateSchemaFromType` handles recursive types via `$ref` to `components/schemas` instead of dying with a stack overflow.
+- [x] No public API signature changed on any exported OpenAPI method.

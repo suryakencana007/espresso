@@ -4,6 +4,8 @@
 **Estimated Effort:** 1 day
 **Dependencies:** None (but Task 3 makes SSE-through-middleware possible; independent files)
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #62 + #66 + #67 — BrewContext drains in-flight requests on cancel (04a); cmd/example use BrewContext (04c); SSE clears WriteTimeout per-connection (04b).
+
 ## Context
 
 Three related shutdown/lifecycle defects, bundled because they share `server.go`, `sse.go`, and `cmd/example/`:
@@ -16,11 +18,11 @@ Three related shutdown/lifecycle defects, bundled because they share `server.go`
 
 ## Acceptance Criteria
 
-- [ ] `BrewContext` with an in-flight 500ms request, `WithShutdownTimeout(5s)`, and ctx cancelled: the request drains to completion; `BrewContext` returns after ≥500ms (not ~0ms); `OnShutdown` hooks see a live ctx with a future deadline.
-- [ ] An SSE stream served via `router.Brew()` with default settings survives past 10s (no `WriteTimeout` kill); the fix uses `http.NewResponseController(w).SetWriteDeadline(...)` per write in `sse.go`, not a `WriteTimeout` default change.
-- [ ] The default `WriteTimeout=10s` remains in place for non-stream routes (its DoS-protective purpose is correct).
-- [ ] `cmd/example/sse/main.go` and `cmd/example/websocket/main.go` no longer race the framework's graceful shutdown — either use plain `router.Brew(...)` (blocks on signals internally) or `router.BrewContext(ctx, ...)` with `signal.NotifyContext` and no separate goroutine.
-- [ ] No public API signature change on `Brew`/`BrewContext`; `SetWriteDeadline` usage in `sse.go` is a hidden implementation detail.
+- [x] `BrewContext` with an in-flight 500ms request, `WithShutdownTimeout(5s)`, and ctx cancelled: the request drains to completion; `BrewContext` returns after ≥500ms (not ~0ms); `OnShutdown` hooks see a live ctx with a future deadline.
+- [x] An SSE stream served via `router.Brew()` with default settings survives past 10s (no `WriteTimeout` kill); the fix uses `http.NewResponseController(w).SetWriteDeadline(...)` per write in `sse.go`, not a `WriteTimeout` default change.
+- [x] The default `WriteTimeout=10s` remains in place for non-stream routes (its DoS-protective purpose is correct).
+- [x] `cmd/example/sse/main.go` and `cmd/example/websocket/main.go` no longer race the framework's graceful shutdown — either use plain `router.Brew(...)` (blocks on signals internally) or `router.BrewContext(ctx, ...)` with `signal.NotifyContext` and no separate goroutine.
+- [x] No public API signature change on `Brew`/`BrewContext`; `SetWriteDeadline` usage in `sse.go` is a hidden implementation detail.
 
 ## Technical Approach
 
@@ -111,11 +113,11 @@ Use option A for `sse/main.go` and `websocket/main.go` — matches the documente
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `go build ./cmd/example/...` clean; smoke-run of both examples exits cleanly on SIGINT.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: `BrewContext` now correctly drains in-flight requests on ctx cancellation; SSE streams survive the default `WriteTimeout` via per-stream `SetWriteDeadline` clearing; `cmd/example/sse` and `cmd/example/websocket` no longer race their own graceful shutdown.
-- [ ] Migration note (Task 12): SSE now works out of the box on `router.Brew()` defaults; users who worked around the previous behavior via `WithWriteTimeout(0)` may remove that.
-- [ ] No public API signature changed on `Brew`/`BrewContext`.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `go build ./cmd/example/...` clean; smoke-run of both examples exits cleanly on SIGINT.
+- [x] `golangci-lint run ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: `BrewContext` now correctly drains in-flight requests on ctx cancellation; SSE streams survive the default `WriteTimeout` via per-stream `SetWriteDeadline` clearing; `cmd/example/sse` and `cmd/example/websocket` no longer race their own graceful shutdown.
+- [x] Migration note (Task 12): SSE now works out of the box on `router.Brew()` defaults; users who worked around the previous behavior via `WithWriteTimeout(0)` may remove that.
+- [x] No public API signature changed on `Brew`/`BrewContext`.

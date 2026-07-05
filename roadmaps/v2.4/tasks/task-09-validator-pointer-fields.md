@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #65 — applyRulesToField helper — nil pointers skip non-required rules, non-nil pointers dereferenced for rules; required continues to operate on the pointer itself.
+
 ## Context
 
 Validator rules never dereference pointer fields — audit-confirmed by reproduction:
@@ -25,13 +27,13 @@ This directly contradicts `docs/guide/validation.md:121` ("Nil pointer fields ar
 
 ## Acceptance Criteria
 
-- [ ] `*string` with `validate:"email"` and a valid value like `strPtr("a@b.com")` passes validation.
-- [ ] `*int` with `validate:"min=18"` and a valid value like `intPtr(30)` passes validation.
-- [ ] `*string` with `validate:"required,min=3"`, when nil, fails on `required` only (not on `min`). When non-nil short value ("ab"), fails on `min`.
-- [ ] Nil pointer fields skip all non-`required` rules (matches the doc contract at `docs/guide/validation.md:121`).
-- [ ] Non-nil pointer fields have their rules applied to the dereferenced element value.
-- [ ] Existing non-pointer validator tests continue to pass unchanged.
-- [ ] `required` continues to operate on the pointer itself (i.e. `*string` is "required" iff non-nil, not iff non-empty).
+- [x] `*string` with `validate:"email"` and a valid value like `strPtr("a@b.com")` passes validation.
+- [x] `*int` with `validate:"min=18"` and a valid value like `intPtr(30)` passes validation.
+- [x] `*string` with `validate:"required,min=3"`, when nil, fails on `required` only (not on `min`). When non-nil short value ("ab"), fails on `min`.
+- [x] Nil pointer fields skip all non-`required` rules (matches the doc contract at `docs/guide/validation.md:121`).
+- [x] Non-nil pointer fields have their rules applied to the dereferenced element value.
+- [x] Existing non-pointer validator tests continue to pass unchanged.
+- [x] `required` continues to operate on the pointer itself (i.e. `*string` is "required" iff non-nil, not iff non-empty).
 
 ## Technical Approach
 
@@ -115,10 +117,10 @@ Re-read `docs/guide/validation.md:121` after the fix. The current text says "Nil
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./validator/... -count=2` clean.
-- [ ] `go test -race ./... -count=2` clean (regression across the module).
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: validator rules now dereference non-nil pointer fields; nil pointer fields skip non-`required` rules as documented.
-- [ ] No public API signature changed.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./validator/... -count=2` clean.
+- [x] `go test -race ./... -count=2` clean (regression across the module).
+- [x] `golangci-lint run ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: validator rules now dereference non-nil pointer fields; nil pointer fields skip non-`required` rules as documented.
+- [x] No public API signature changed.
