@@ -15,7 +15,7 @@
 
 Like a perfectly pulled espresso shot, this framework delivers:
 
-- **Fast** — Zero-allocation handlers with sync.Pool for request objects
+- **Fast** — Request structs pooled via `sync.Pool`; typed handlers dispatch without per-route reflection (measured ~8 allocs/op end-to-end for `Doppio` JSON round-trip, ~2 for `Ristretto` static text)
 - **Strong** — Production-ready with battle-tested patterns inspired by Axum (Rust) and Tower
 - **Pure** — No magic, just clean Go code with explicit types
 - **Aromatic** — Rich type-safe extractors without manual implementation
@@ -1144,11 +1144,13 @@ func getUser(ctx context.Context, req *extractor.Path[struct{ ID int `path:"id"`
 
 ### Handler Performance
 
-| Handler Type | Allocation | Pool |
-|--------------|-------------|------|
-| `Doppio` | Zero per request | sync.Pool |
-| `Solo` | Zero per request | sync.Pool |
-| `Ristretto` | Zero | None needed |
+| Handler Type | Request struct | Framework-side round-trip (measured) |
+|--------------|----------------|--------------------------------------|
+| `Doppio` (ctx + extractor + err) | pooled via `sync.Pool` | ~8 allocs/op — includes full sonic JSON decode + encode |
+| `Solo` (extractor + err) | pooled via `sync.Pool` | ~8 allocs/op |
+| `Ristretto` (ctx only) | no request struct | ~2 allocs/op (Header set + body write) |
+
+Numbers are the framework's contribution end-to-end (including one `sonic.Decode` + one `sonic.Encode` for `Doppio` JSON) on Go 1.25 / AMD Ryzen 7 4800H — see the `bench/` directory for the framework-comparison harness. The `sync.Pool` guarantee applies to the request struct itself: no per-request allocation for that specific object. Response encoding, JSON marshalling, and header manipulation still allocate as expected for `net/http`-based frameworks.
 
 ```bash
 BenchmarkDecodeSafeJSON-16    357073    3208 ns/op    5669 B/op    15 allocs/op

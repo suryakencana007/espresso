@@ -21,7 +21,7 @@ hero:
 features:
   - icon: 🚀
     title: Fast
-    details: Zero-allocation handlers with sync.Pool for request objects. Inspired by Axum's extractor pattern.
+    details: Request structs pooled via sync.Pool; typed handlers dispatch without per-route reflection. Inspired by Axum's extractor pattern.
   - icon: 💪
     title: Strong
     details: Production-ready with battle-tested patterns including circuit breaker, rate limiting, and retry logic.

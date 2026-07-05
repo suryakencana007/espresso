@@ -298,7 +298,11 @@ func (c *CookieExtractor[T]) Reset() {
 type Cookie[T any] = CookieExtractor[T]
 
 // RawBodyExtractor extracts the raw request body as bytes.
-// Uses pooled byte slices to reduce allocations for frequently accessed request bodies.
+// Reset retains the backing array for slices ≤ 64 KiB so repeated
+// requests hitting the same pooled handler amortize the allocation; a
+// previous godoc line claiming shared pooled byte-slices is dropped
+// because the framework does not maintain any such pool — retention is
+// purely per-pooled-handler on the sync.Pool of RawBodyExtractor structs.
 type RawBodyExtractor struct {
 	Data []byte
 }

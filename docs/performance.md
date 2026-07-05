@@ -128,13 +128,13 @@ use the typed handler variants — `Ristretto`, `Solo`, `Doppio`, `Lungo`,
 
 A Gin / Echo / Fiber comparison lives in [`bench/`](https://github.com/suryakencana007/espresso/v2/tree/main/bench) as a separate Go module (so the comparison deps don't pollute the main module). It covers three scenarios (static text, JSON round-trip, path param) and reports ns/op + B/op + allocs/op.
 
-Summary on an Intel Core Ultra 7 155H, Go 1.23 (`go test -bench . -benchmem -benchtime=3s`):
+The persistent qualitative ordering across CPU generations:
 
-- Espresso is within ~12% of Gin on static text and within ~35% on path parameters.
-- On JSON round-trip, Espresso (979 ns/op) beats Gin (1412 ns/op) but trails Echo (774 ns/op).
+- On JSON round-trip, Espresso beats Gin and trails Echo — the extractor-and-decode path is where the typed-generic dispatch pays off.
+- Espresso trails Gin and Echo on plain static text and simple path-parameter routes; the `Router.ServeHTTP` context-injection tax for the SSE/WebSocket registries (documented in the audit report) shows up here first.
 - Fiber's numbers in that harness include fasthttp wire-format overhead and are directional only.
 
-See the full table and methodology in [the main README](../README.md#framework-comparison) and [`bench/README.md`](https://github.com/suryakencana007/espresso/v2/tree/main/bench/README.md).
+For live numbers on your own hardware, run the bench harness (`cd bench && go test -bench . -benchmem -benchtime=3s -count=1`). The full comparison table in the [main README](../README.md#framework-comparison) is refreshed on the release cycle; if it disagrees with a live run on the current commit, trust the live run and file a doc-refresh issue.
 
 ## See Also
 

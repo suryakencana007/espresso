@@ -80,7 +80,14 @@ func WithPingInterval(d time.Duration) WSOption {
 	return func(c *WSConfig) { c.PingInterval = d }
 }
 
-// WithWSReadTimeout sets the timeout for Read operations. 0 means no timeout.
+// WithWSReadTimeout sets the requested Read timeout on the WSConfig.
+// The value is stored on the config but is currently NOT enforced by
+// readLoop — WS.Read defers to the caller's ctx for cancellation, and
+// the default PingInterval-based keepalive provides dead-peer detection
+// on the framework's ping goroutine rather than a per-read deadline.
+// Audit finding streaming#4 tracks wiring or removing this option; the
+// call is kept for API compatibility. 0 means no timeout (which is the
+// current effective behavior regardless of the value set here).
 func WithWSReadTimeout(d time.Duration) WSOption {
 	return func(c *WSConfig) { c.ReadTimeout = d }
 }
