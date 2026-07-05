@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 
+	"github.com/suryakencana007/espresso/v2/internal/bodylimit"
 	"github.com/suryakencana007/espresso/v2/internal/errorenvelope"
 	httpmiddleware "github.com/suryakencana007/espresso/v2/middleware/http"
 	servicemiddleware "github.com/suryakencana007/espresso/v2/middleware/service"
@@ -247,13 +248,20 @@ func translateLayerError(err error) (*Error, bool) {
 	return nil, false
 }
 
-// writeExtractError writes an appropriate error response for a request extraction error.
-// If the error is a *Error, it's used directly. Otherwise, it's wrapped as a
-// 400 Bad Request.
+// writeExtractError writes an appropriate error response for a request
+// extraction error. If the error is a *Error, it's used directly. If it
+// matches the bodylimit.ErrBodyTooLarge sentinel (returned by extractors
+// that read the request body under a configured cap), it's translated to
+// a 413 Payload Too Large envelope. Otherwise it's wrapped as a 400 Bad
+// Request.
 func writeExtractError(w http.ResponseWriter, r *http.Request, err error) {
 	var espErr *Error
 	if errors.As(err, &espErr) {
 		writeErrorResponse(w, r, espErr)
+		return
+	}
+	if errors.Is(err, bodylimit.ErrBodyTooLarge) {
+		writeErrorResponse(w, r, ErrRequestEntityTooLarge(err.Error()))
 		return
 	}
 	writeErrorResponse(w, r, ErrBadRequest(err.Error()))
@@ -295,6 +303,14 @@ func ErrConflict(message string) *Error {
 // that is disabled.
 func ErrPreconditionFailed(message string) *Error {
 	return NewError(http.StatusPreconditionFailed, message).WithCode("PRECONDITION_FAILED")
+}
+
+// ErrRequestEntityTooLarge creates a 413 Payload Too Large error.
+// Framework extractors emit this when the request body exceeds the
+// configured cap set via Router.WithJSONBodyLimit; handlers can return
+// it directly when their own I/O paths need the same shape.
+func ErrRequestEntityTooLarge(message string) *Error {
+	return NewError(http.StatusRequestEntityTooLarge, message).WithCode("PAYLOAD_TOO_LARGE")
 }
 
 // ErrUnprocessableEntity creates a 422 Unprocessable Entity error.
@@ -526,6 +542,10 @@ func defaultCodeForStatus(status int) string {
 		return "NOT_FOUND"
 	case http.StatusConflict:
 		return "CONFLICT"
+	case http.StatusPreconditionFailed:
+		return "PRECONDITION_FAILED"
+	case http.StatusRequestEntityTooLarge:
+		return "PAYLOAD_TOO_LARGE"
 	case http.StatusUnprocessableEntity:
 		return "UNPROCESSABLE_ENTITY"
 	case http.StatusTooManyRequests:

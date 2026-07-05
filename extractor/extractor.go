@@ -13,8 +13,16 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/suryakencana007/espresso/v2/internal/bodylimit"
 	"github.com/suryakencana007/espresso/v2/internal/validatehook"
 )
+
+// defaultBodyLimit is the fallback body cap when no Router-scoped
+// WithJSONBodyLimit is configured — matches espresso.MaxPayloadSize
+// (1 MB). Kept as a local constant so the extractor package stays a leaf
+// with no back-edge to the root; the value is verified by an
+// import-direction test in the root package.
+const defaultBodyLimit int64 = 1 * 1024 * 1024
 
 type fieldInfo struct {
 	index    int
@@ -295,14 +303,21 @@ type RawBodyExtractor struct {
 	Data []byte
 }
 
-// Extract reads the raw request body into Data.
-// For large bodies (>64KB), uses pooled buffers for better performance.
+// Extract reads the raw request body into Data, capped at the router's
+// configured JSON body limit (Router.WithJSONBodyLimit, default 1 MB).
+// Bodies larger than the cap return an error wrapping
+// bodylimit.ErrBodyTooLarge; writeExtractError in the root package
+// translates that sentinel to a 413 Payload Too Large envelope.
 func (rb *RawBodyExtractor) Extract(r *http.Request) error {
 	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
 
-	var err error
-	rb.Data, err = io.ReadAll(r.Body)
-	return err
+	limit := bodylimit.From(r.Context(), defaultBodyLimit)
+	data, err := bodylimit.ReadAllLimited(r.Body, limit)
+	if err != nil {
+		return err
+	}
+	rb.Data = data
+	return nil
 }
 
 // Reset clears the extractor data for reuse.
@@ -345,12 +360,15 @@ type RawBodyWithHeadersExtractor[H any] struct {
 }
 
 // Extract reads the raw body and populates Headers from the request's
-// HTTP headers. Body is read first so a header-extraction failure still
-// drains the body (matching RawBodyExtractor's drain-and-close behavior).
+// HTTP headers. Body is read first (bounded by Router.WithJSONBodyLimit,
+// default 1 MB) so a header-extraction failure still drains the body
+// (matching RawBodyExtractor's drain-and-close behavior). Bodies larger
+// than the cap return bodylimit.ErrBodyTooLarge (via %w wrap) → 413.
 func (rb *RawBodyWithHeadersExtractor[H]) Extract(r *http.Request) error {
 	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
 
-	body, err := io.ReadAll(r.Body)
+	limit := bodylimit.From(r.Context(), defaultBodyLimit)
+	body, err := bodylimit.ReadAllLimited(r.Body, limit)
 	if err != nil {
 		return err
 	}
@@ -380,10 +398,20 @@ type XMLExtractor[T any] struct {
 	Data T
 }
 
-// Extract decodes XML from the request body into Data.
+// Extract decodes XML from the request body into Data. Reads the body
+// under the router's WithJSONBodyLimit cap (default 1 MB); over-limit
+// bodies return bodylimit.ErrBodyTooLarge → 413 without invoking the
+// XML parser at all. Pre-reading the body before Unmarshal is the
+// pattern that keeps this consistent with RawBody's over-limit handling.
 func (x *XMLExtractor[T]) Extract(r *http.Request) error {
 	defer func() { _, _ = io.Copy(io.Discard, r.Body); _ = r.Body.Close() }()
-	if err := xml.NewDecoder(r.Body).Decode(&x.Data); err != nil {
+
+	limit := bodylimit.From(r.Context(), defaultBodyLimit)
+	data, err := bodylimit.ReadAllLimited(r.Body, limit)
+	if err != nil {
+		return err
+	}
+	if err := xml.Unmarshal(data, &x.Data); err != nil {
 		return err
 	}
 	return validatehook.Run(&x.Data)

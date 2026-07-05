@@ -339,3 +339,87 @@ func TestRouter_ReturnsPointer(t *testing.T) {
 type testPathReq struct {
 	ID string `path:"id"`
 }
+
+// TestRouter_WithJSONBodyLimit_Rejects locks the router-level option.
+// A router with WithJSONBodyLimit(N) rejects bodies larger than N with
+// a 413 canonical envelope, before the handler is invoked. Pre-fix,
+// WithJSONBodyLimit did not exist, so the test could not be written —
+// and the extractor decoded arbitrarily large bodies.
+func TestRouter_WithJSONBodyLimit_Rejects(t *testing.T) {
+	limit := int64(32)
+
+	var handlerCalled bool
+	router := Portafilter().
+		WithJSONBodyLimit(limit)
+	router.Post("/echo", Doppio(func(ctx context.Context, req *JSON[map[string]string]) (JSON[map[string]string], error) {
+		handlerCalled = true
+		return JSON[map[string]string]{Data: req.Data}, nil
+	}))
+
+	body := strings.Repeat("x", int(limit)+1) // over cap
+	req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if handlerCalled {
+		t.Error("handler must not be invoked when body exceeds limit")
+	}
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"PAYLOAD_TOO_LARGE"`) {
+		t.Errorf("expected canonical envelope with code PAYLOAD_TOO_LARGE, got body: %s", rec.Body.String())
+	}
+}
+
+// TestRouter_WithJSONBodyLimit_Accepts locks the boundary: a valid
+// JSON body at exactly the limit succeeds and the handler runs.
+func TestRouter_WithJSONBodyLimit_Accepts(t *testing.T) {
+	body := `{"name":"ok"}`
+	limit := int64(len(body))
+
+	var got string
+	router := Portafilter().WithJSONBodyLimit(limit)
+	router.Post("/echo", Doppio(func(ctx context.Context, req *JSON[struct {
+		Name string `json:"name"`
+	}]) (JSON[struct{}], error) {
+		got = req.Data.Name
+		return JSON[struct{}]{}, nil
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if got != "ok" {
+		t.Errorf("handler saw Name=%q, want ok", got)
+	}
+}
+
+// TestRouter_WithJSONBodyLimit_NonPositiveDefaults locks that
+// misconfiguration (limit <= 0) falls back to MaxPayloadSize rather
+// than uncapping the router.
+func TestRouter_WithJSONBodyLimit_NonPositiveDefaults(t *testing.T) {
+	// A router built with limit=0 should still reject bodies over
+	// MaxPayloadSize (1 MB) — proving the option normalized 0 to the
+	// default rather than storing 0 (which would mean "no cap").
+	router := Portafilter().WithJSONBodyLimit(0)
+	router.Post("/echo", Doppio(func(ctx context.Context, req *JSON[map[string]string]) (JSON[struct{}], error) {
+		return JSON[struct{}]{}, nil
+	}))
+
+	body := strings.Repeat("x", int(MaxPayloadSize)+1)
+	req := httptest.NewRequest(http.MethodPost, "/echo", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("expected 413 (0 limit → MaxPayloadSize default), got %d", rec.Code)
+	}
+}

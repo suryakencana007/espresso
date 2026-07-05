@@ -1,6 +1,8 @@
 package espresso
 
 import (
+	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -8,6 +10,8 @@ import (
 	"time"
 
 	"github.com/bytedance/sonic"
+
+	"github.com/suryakencana007/espresso/v2/internal/bodylimit"
 )
 
 func TestJSON_WriteResponse(t *testing.T) {
@@ -449,4 +453,90 @@ func TestJSON_Bidirectional(t *testing.T) {
 			t.Errorf("expected ID 1, got %d", result.ID)
 		}
 	})
+}
+// TestJSON_ExtractRejectsOverLimit locks v2.4 task-06 D1: JSON[T].Extract
+// pre-fix decoded r.Body unbounded — a caller could stream any size body
+// into sonic's internal buffer and exhaust memory. Post-fix, an over-
+// limit body is rejected with a 413 *espresso.Error before decoding.
+//
+// This test injects a per-request limit via bodylimit.From's context key
+// (as WithJSONBodyLimit would do at router registration time) and sends
+// limit+1 bytes of garbage. Expected: ErrRequestEntityTooLarge with code
+// PAYLOAD_TOO_LARGE. Pre-fix: sonic parse error (or timeout / OOM in the
+// pathological case) — never PAYLOAD_TOO_LARGE.
+func TestJSON_ExtractRejectsOverLimit(t *testing.T) {
+	limit := int64(64)
+	body := strings.Repeat("x", int(limit)+1) // 65 bytes, over cap
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	r = r.WithContext(injectBodyLimit(r.Context(), limit))
+
+	var j JSON[struct{ Name string }]
+	err := j.Extract(r)
+	if err == nil {
+		t.Fatal("expected error for over-limit body, got nil")
+	}
+	var espErr *Error
+	if !errors.As(err, &espErr) {
+		t.Fatalf("expected *Error, got %T: %v", err, err)
+	}
+	if espErr.StatusCode != http.StatusRequestEntityTooLarge || espErr.Code != "PAYLOAD_TOO_LARGE" {
+		t.Errorf("expected 413 PAYLOAD_TOO_LARGE, got %d %q", espErr.StatusCode, espErr.Code)
+	}
+}
+
+// TestJSON_ExtractAcceptsAtLimit locks the boundary: a body exactly at
+// the configured limit succeeds; only limit+1 triggers the over-limit
+// path. Also confirms decode still works when the limit is honored.
+func TestJSON_ExtractAcceptsAtLimit(t *testing.T) {
+	body := `{"name":"alice"}`
+	limit := int64(len(body)) // exactly at the cap
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	r = r.WithContext(injectBodyLimit(r.Context(), limit))
+
+	var j JSON[struct {
+		Name string `json:"name"`
+	}]
+	if err := j.Extract(r); err != nil {
+		t.Fatalf("body at exactly the cap should decode: %v", err)
+	}
+	if j.Data.Name != "alice" {
+		t.Errorf("expected Name=alice, got %q", j.Data.Name)
+	}
+}
+
+// TestJSON_ExtractDefaultsToMaxPayloadSize confirms that when no
+// WithJSONBodyLimit middleware is installed, the extractor falls back to
+// MaxPayloadSize (1 MB) — so the safety property advertised in http.go
+// is actually enforced on the framework path (which pre-fix, per the
+// audit's finding core-perf#3, was NOT the case — the 1MB cap was dead
+// code only used by cmd/example).
+func TestJSON_ExtractDefaultsToMaxPayloadSize(t *testing.T) {
+	// Body just over the default MaxPayloadSize.
+	body := strings.Repeat("x", int(MaxPayloadSize)+1)
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	// No bodylimit injection — Extract should fall back to MaxPayloadSize.
+
+	var j JSON[struct{ Name string }]
+	err := j.Extract(r)
+	if err == nil {
+		t.Fatal("expected default MaxPayloadSize cap to reject body > 1 MB, got nil error (pre-fix behavior: unbounded)")
+	}
+	var espErr *Error
+	if !errors.As(err, &espErr) || espErr.Code != "PAYLOAD_TOO_LARGE" {
+		t.Errorf("expected PAYLOAD_TOO_LARGE via default cap, got %v", err)
+	}
+}
+
+// injectBodyLimit is a test helper that installs a per-request body
+// limit into ctx by running one request through bodylimit.Middleware
+// and capturing the child context. Focused Extract-level tests use
+// this to avoid standing up the full Router.WithJSONBodyLimit chain.
+func injectBodyLimit(ctx context.Context, limit int64) context.Context {
+	var got context.Context
+	stub := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r.Context() })
+	bodylimit.Middleware(limit)(stub).ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx),
+	)
+	return got
 }
