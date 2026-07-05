@@ -811,3 +811,158 @@ type mockHijackerResponseWriter struct {
 func (m *mockHijackerResponseWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
 	return nil, nil, nil
 }
+
+// TestRateLimit_KeysOnHostNotHostPort locks D1a from v2.4 task-08. Pre-fix,
+// RateLimitMiddleware keyed on the full r.RemoteAddr (host:port). Because
+// every new TCP connection gets a fresh ephemeral port, a client could
+// bypass a per-key limiter simply by reconnecting between requests. Post-
+// fix, clientKey extracts the host portion via net.SplitHostPort so both
+// requests from the same client IP land in the same bucket regardless
+// of port.
+func TestRateLimit_KeysOnHostNotHostPort(t *testing.T) {
+	cfg := &rateLimitConfig{}
+
+	req1 := httptest.NewRequest("GET", "/test", nil)
+	req1.RemoteAddr = "192.0.2.1:1234"
+	req2 := httptest.NewRequest("GET", "/test", nil)
+	req2.RemoteAddr = "192.0.2.1:5678"
+
+	key1 := clientKey(req1, cfg)
+	key2 := clientKey(req2, cfg)
+
+	if key1 != "192.0.2.1" {
+		t.Errorf("expected key1 = '192.0.2.1', got %q (pre-fix behavior: keyed on host:port)", key1)
+	}
+	if key1 != key2 {
+		t.Errorf("expected same key for same host, got %q vs %q (pre-fix: ephemeral port bypass)", key1, key2)
+	}
+}
+
+// TestRateLimit_XFFNotTrustedByDefault locks D1b. Pre-fix, the middleware
+// unconditionally trusted X-Forwarded-For, so a client that connected
+// directly to the server could mint unlimited keys by rotating XFF
+// values (or spoof another client's identity). Post-fix, XFF is IGNORED
+// unless the request's RemoteAddr host is in a WithTrustedProxies CIDR.
+func TestRateLimit_XFFNotTrustedByDefault(t *testing.T) {
+	cfg := &rateLimitConfig{} // no trusted proxies
+
+	req1 := httptest.NewRequest("GET", "/test", nil)
+	req1.RemoteAddr = "192.0.2.1:1234"
+	req1.Header.Set("X-Forwarded-For", "1.1.1.1")
+
+	req2 := httptest.NewRequest("GET", "/test", nil)
+	req2.RemoteAddr = "192.0.2.1:1234"
+	req2.Header.Set("X-Forwarded-For", "2.2.2.2")
+
+	key1 := clientKey(req1, cfg)
+	key2 := clientKey(req2, cfg)
+
+	// Both requests are from the same actual client, so their keys must match.
+	// Pre-fix: key1="1.1.1.1", key2="2.2.2.2" (XFF trusted unconditionally).
+	if key1 != "192.0.2.1" || key2 != "192.0.2.1" {
+		t.Errorf("expected both keys to be RemoteAddr host, got %q and %q (pre-fix: XFF blindly trusted)", key1, key2)
+	}
+}
+
+// TestRateLimit_TrustedProxyTakesRightmostHop locks the RFC 7239 hop
+// selection logic. When RemoteAddr IS in a trusted CIDR and XFF contains
+// a chain of proxies, the middleware walks right-to-left, skips trusted
+// hops, and returns the first non-trusted address as the client key.
+func TestRateLimit_TrustedProxyTakesRightmostHop(t *testing.T) {
+	_, trustedNet, _ := net.ParseCIDR("192.168.0.0/16")
+	cfg := &rateLimitConfig{trustedProxies: []*net.IPNet{trustedNet}}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "192.168.0.1:5678"
+	// XFF chain: attacker-supplied leftmost, real client middle, trusted proxy rightmost.
+	req.Header.Set("X-Forwarded-For", "10.0.0.1, 203.0.113.5, 192.168.0.2")
+
+	key := clientKey(req, cfg)
+
+	// Walk right-to-left: 192.168.0.2 is trusted (skip), 203.0.113.5 is not
+	// (return). The attacker's spoofed leftmost value must never be used.
+	if key != "203.0.113.5" {
+		t.Errorf("expected key '203.0.113.5' (rightmost non-trusted hop), got %q", key)
+	}
+}
+
+// TestRateLimit_UntrustedRemoteAddrIgnoresXFF verifies the trust gate:
+// when RemoteAddr is NOT in a trusted CIDR, XFF is ignored even if the
+// option is configured. This prevents an attacker who connects directly
+// (bypassing the proxy) from spoofing via XFF.
+func TestRateLimit_UntrustedRemoteAddrIgnoresXFF(t *testing.T) {
+	_, trustedNet, _ := net.ParseCIDR("192.168.0.0/16")
+	cfg := &rateLimitConfig{trustedProxies: []*net.IPNet{trustedNet}}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "1.2.3.4:9999" // NOT in trusted CIDR
+	req.Header.Set("X-Forwarded-For", "attacker-value")
+
+	key := clientKey(req, cfg)
+
+	if key != "1.2.3.4" {
+		t.Errorf("expected RemoteAddr host '1.2.3.4' (untrusted client → XFF ignored), got %q", key)
+	}
+}
+
+// TestRateLimit_WithTrustedProxiesParsesBareIP verifies WithTrustedProxies
+// accepts both CIDR notation and bare IPs (auto-wrapped to /32 or /128).
+func TestRateLimit_WithTrustedProxiesParsesBareIP(t *testing.T) {
+	cfg := &rateLimitConfig{}
+	WithTrustedProxies("10.0.0.5", "2001:db8::1", "192.168.0.0/16", "invalid-junk")(cfg)
+
+	if len(cfg.trustedProxies) != 3 {
+		t.Fatalf("expected 3 parsed CIDRs (bare IPv4, bare IPv6, CIDR; junk skipped), got %d", len(cfg.trustedProxies))
+	}
+
+	req := httptest.NewRequest("GET", "/test", nil)
+	req.RemoteAddr = "10.0.0.5:1234"
+	req.Header.Set("X-Forwarded-For", "203.0.113.9")
+
+	if key := clientKey(req, cfg); key != "203.0.113.9" {
+		t.Errorf("expected bare-IP-trusted proxy to honor XFF hop, got %q", key)
+	}
+}
+
+// TestTokenBucketLimiterPerKey_EvictsIdleBuckets locks D2: the pre-fix
+// per-key map only grew — combined with the pre-fix XFF-spoof bug this
+// was an unbounded memory-growth DoS. Post-fix, a background sweeper
+// removes buckets whose lastRefill is older than bucketTTL.
+func TestTokenBucketLimiterPerKey_EvictsIdleBuckets(t *testing.T) {
+	limiter := NewTokenBucketLimiterPerKey(100, 10, WithBucketTTL(80*time.Millisecond))
+	defer func() { _ = limiter.Close() }()
+
+	limiter.Allow("key-a")
+	limiter.Allow("key-b")
+
+	limiter.mu.RLock()
+	sizeBefore := len(limiter.buckets)
+	limiter.mu.RUnlock()
+	if sizeBefore != 2 {
+		t.Fatalf("expected 2 buckets after two Allow calls, got %d", sizeBefore)
+	}
+
+	// Sleep past 3 sweep intervals (bucketTTL/2 * 3 = 120ms) so idle
+	// buckets get swept. Buckets are stale after bucketTTL=80ms.
+	time.Sleep(200 * time.Millisecond)
+
+	// Poke a third key so its bucket exists and is fresh.
+	limiter.Allow("key-c")
+
+	limiter.mu.RLock()
+	sizeAfter := len(limiter.buckets)
+	_, hasA := limiter.buckets["key-a"]
+	_, hasB := limiter.buckets["key-b"]
+	_, hasC := limiter.buckets["key-c"]
+	limiter.mu.RUnlock()
+
+	if hasA || hasB {
+		t.Errorf("expected idle key-a and key-b to be evicted (pre-fix behavior: map only grows), got hasA=%v hasB=%v", hasA, hasB)
+	}
+	if !hasC {
+		t.Error("expected fresh key-c to still be present")
+	}
+	if sizeAfter != 1 {
+		t.Errorf("expected 1 bucket after eviction, got %d", sizeAfter)
+	}
+}
