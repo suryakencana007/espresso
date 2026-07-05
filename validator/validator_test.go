@@ -296,6 +296,177 @@ func TestAsDefaultValidator_ValidReturnsNil(t *testing.T) {
 	}
 }
 
+// TestStruct_PointerFieldsDereference locks the v2.4 task-09 fix. Before the
+// fix, walkStruct applied rules to the raw pointer value and only
+// dereferenced for the recursion step afterwards. Every rule except
+// `required` was unusable on pointer fields: *string with `email` yielded
+// "email rule requires string field" and *int with `min=18` yielded
+// "min/max not supported for kind ptr", even for valid values. This
+// contradicted docs/guide/validation.md's "Nil pointer fields are skipped"
+// contract and turned well-formed client requests into 400s.
+//
+// Post-fix: nil pointers skip non-`required` rules; non-nil pointers have
+// their rules applied to the dereferenced element value; `required` still
+// operates on the pointer itself so a nil pointer fails `required`.
+func TestStruct_PointerString_Email(t *testing.T) {
+	type req struct {
+		Email *string `json:"email" validate:"email"`
+	}
+
+	// Valid email through pointer — pre-fix: "email rule requires string field".
+	valid := "user@example.com"
+	if err := validator.Struct(req{Email: &valid}); err != nil {
+		t.Errorf("valid *string email should pass, got %v", err)
+	}
+
+	// Nil pointer — non-required rule skipped, no error.
+	if err := validator.Struct(req{}); err != nil {
+		t.Errorf("nil *string should skip email rule, got %v", err)
+	}
+
+	// Invalid email through pointer — rule sees dereferenced value, fails.
+	invalid := "not-an-email"
+	if err := validator.Struct(req{Email: &invalid}); err == nil {
+		t.Error("expected email validation failure on *string with invalid value")
+	}
+}
+
+func TestStruct_PointerInt_Min(t *testing.T) {
+	type req struct {
+		Age *int `json:"age" validate:"min=18"`
+	}
+
+	valid := 30
+	if err := validator.Struct(req{Age: &valid}); err != nil {
+		t.Errorf("valid *int min should pass, got %v", err)
+	}
+
+	if err := validator.Struct(req{}); err != nil {
+		t.Errorf("nil *int should skip min rule, got %v", err)
+	}
+
+	tooYoung := 17
+	if err := validator.Struct(req{Age: &tooYoung}); err == nil {
+		t.Error("expected min violation on *int with value below bound")
+	}
+}
+
+func TestStruct_PointerFloat_Max(t *testing.T) {
+	type req struct {
+		Weight *float64 `json:"weight" validate:"max=200"`
+	}
+
+	valid := 75.5
+	if err := validator.Struct(req{Weight: &valid}); err != nil {
+		t.Errorf("valid *float64 max should pass, got %v", err)
+	}
+
+	over := 250.0
+	if err := validator.Struct(req{Weight: &over}); err == nil {
+		t.Error("expected max violation on *float64 over bound")
+	}
+}
+
+func TestStruct_PointerString_URL(t *testing.T) {
+	type req struct {
+		Site *string `json:"site" validate:"url"`
+	}
+
+	valid := "https://example.com/path"
+	if err := validator.Struct(req{Site: &valid}); err != nil {
+		t.Errorf("valid *string url should pass, got %v", err)
+	}
+
+	if err := validator.Struct(req{}); err != nil {
+		t.Errorf("nil *string url should skip, got %v", err)
+	}
+}
+
+func TestStruct_PointerString_OneOf(t *testing.T) {
+	type req struct {
+		Role *string `json:"role" validate:"oneof=admin user guest"`
+	}
+
+	valid := "admin"
+	if err := validator.Struct(req{Role: &valid}); err != nil {
+		t.Errorf("valid *string oneof should pass, got %v", err)
+	}
+
+	invalid := "owner"
+	if err := validator.Struct(req{Role: &invalid}); err == nil {
+		t.Error("expected oneof failure on *string with disallowed value")
+	}
+}
+
+func TestStruct_PointerString_Regex(t *testing.T) {
+	type req struct {
+		Code *string `json:"code" validate:"regex=^[A-Z]{3}$"`
+	}
+
+	valid := "ABC"
+	if err := validator.Struct(req{Code: &valid}); err != nil {
+		t.Errorf("valid *string regex should pass, got %v", err)
+	}
+
+	invalid := "abc"
+	if err := validator.Struct(req{Code: &invalid}); err == nil {
+		t.Error("expected regex failure on *string with non-matching value")
+	}
+}
+
+func TestStruct_PointerRequired(t *testing.T) {
+	// `required` on a pointer field operates on the pointer itself: a nil
+	// pointer fails, a non-nil pointer to any value (including zero) passes.
+	type req struct {
+		Name *string `json:"name" validate:"required"`
+	}
+
+	// Nil pointer — required fails.
+	if err := validator.Struct(req{}); err == nil {
+		t.Error("expected required to fail on nil pointer")
+	}
+
+	// Non-nil pointer to empty string — required passes (the pointer itself
+	// is non-nil). Note: this differs from `required` on a bare string,
+	// which fails on the zero value. It matches Go's typical "*T is
+	// present if non-nil" semantics.
+	empty := ""
+	if err := validator.Struct(req{Name: &empty}); err != nil {
+		t.Errorf("non-nil *string should satisfy required, got %v", err)
+	}
+}
+
+func TestStruct_PointerRequiredWithChainedRule(t *testing.T) {
+	// `required,email` on a *string: nil pointer fails required; non-nil
+	// pointer applies email to the dereferenced value.
+	type req struct {
+		Email *string `json:"email" validate:"required,email"`
+	}
+
+	if err := validator.Struct(req{}); err == nil {
+		t.Error("expected required to fail on nil pointer")
+	}
+
+	invalid := "not-an-email"
+	err := validator.Struct(req{Email: &invalid})
+	if err == nil {
+		t.Fatal("expected email rule to fail on invalid non-nil *string")
+	}
+	var fe espresso.FieldErrors
+	if !errors.As(err, &fe) {
+		t.Fatalf("expected FieldErrors, got %T", err)
+	}
+	// required passes (pointer non-nil), email fails: exactly 1 error.
+	if len(fe) != 1 {
+		t.Errorf("expected 1 error (email only, required satisfied by non-nil pointer), got %d: %v", len(fe), fe)
+	}
+
+	valid := "user@example.com"
+	if err := validator.Struct(req{Email: &valid}); err != nil {
+		t.Errorf("required+email should pass with valid pointer, got %v", err)
+	}
+}
+
 func TestStruct_ToValidationErrors(t *testing.T) {
 	type req struct {
 		Name string `json:"name" validate:"required"`
