@@ -86,19 +86,35 @@ type Status int
 ### State Functions
 
 ```go
-func GetState[T any](ctx context.Context) (T, error)
+func GetState[T any](ctx context.Context) (T, bool)
 func MustGetState[T any](ctx context.Context) T
+func FromState[S, T any](ctx context.Context, get func(S) T) (T, bool)
+func FromMustState[S, T any](ctx context.Context, get func(S) T) T
 func WithStateMiddleware(state any) func(http.Handler) http.Handler
 ```
+
+See [State API](/api/state) for details.
 
 ### Handler Functions
 
 ```go
-func Ristretto(f func(context.Context) T) http.HandlerFunc  // ctx only, no error
-func Solo(f func(context.Context) T) http.HandlerFunc  // 1 arg
-func Doppio(f func(context.Context, *Req) T) http.HandlerFunc  // 2 args
-func Lungo(f func(context.Context, *Req1, *Req2) (T, error)) http.HandlerFunc  // 3 args (context + 2 extractors)
+// ctx only, no extractor, no error
+func Ristretto[Res IntoResponse](fn func(context.Context) Res) http.HandlerFunc
+
+// one extractor, no context, error return required
+func Solo[Req FromRequest, Res IntoResponse](fn func(Req) (Res, error)) http.HandlerFunc
+
+// context + one extractor, error return required (most common shape)
+func Doppio[Req FromRequest, Res IntoResponse](fn func(context.Context, Req) (Res, error)) http.HandlerFunc
+
+// context + two extractors, error return required (only supported two-extractor path)
+func Lungo[Req1, Req2 FromRequest, Res IntoResponse](fn func(context.Context, Req1, Req2) (Res, error)) http.HandlerFunc
+
+// context + two extractors, no error (rare)
+func LungoNoErr[Req1, Req2 FromRequest, Res IntoResponse](fn func(context.Context, Req1, Req2) Res) http.HandlerFunc
 ```
+
+See [Handler API](/api/espresso#ristretto) for details and examples.
 
 ### Error Constructors
 

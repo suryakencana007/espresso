@@ -58,6 +58,7 @@ func TestDocsConsistency(t *testing.T) {
 	t.Run("forbidden_symbols_in_docs_examples", testDocsForbiddenSymbols)
 	t.Run("handler_godoc_two_extractor_claim", testHandlerGodocClaim)
 	t.Run("extractor_generics_qualified_with_extractor_pkg", testDocsExtractorQualifier)
+	t.Run("corrected_claims_do_not_regress", testDocsCorrectedClaims)
 }
 
 // extractorGenericRe matches a root-package qualification of an extractor
@@ -182,6 +183,117 @@ func scanGoFencesForForbidden(t *testing.T, file, content string) {
 			if strings.Contains(line, sym) {
 				t.Errorf("forbidden symbol %q found in Go example at %s:%d: %s",
 					sym, file, i+1, strings.TrimSpace(line))
+			}
+		}
+	}
+}
+
+// correctedClaim is a single audit finding whose fix Task 10 landed in v2.4.
+// The pattern is a substring that must NOT reappear anywhere in the target
+// files — reintroducing it means an editor pasted the pre-fix language back
+// in. Sites lists the paths to scan (raw content, not just fences: some of
+// these are prose claims); skips lists paths where the pattern legitimately
+// appears (e.g. this test file names the forbidden phrases; the CHANGELOG
+// documents the correction; the roadmap task files quote the old wording).
+type correctedClaim struct {
+	pattern string
+	sites   []string
+	skips   map[string]bool
+	because string
+}
+
+// docsCorrectedClaims are the audit-flagged phrases whose fix landed in v2.4.
+// Every entry maps to a specific PR that corrected it; a regression here
+// means the correction was undone by a later edit.
+var docsCorrectedClaims = []correctedClaim{
+	{
+		pattern: "Zero-allocation handlers",
+		sites:   []string{"README.md", "docs/index.md", "docs/guide/index.md"},
+		skips:   map[string]bool{"CHANGELOG.md": true},
+		because: "v2.4 task-10 reworded to the defensible pooled-request claim (measured ~8 allocs/op for Doppio JSON, ~2 for Ristretto).",
+	},
+	{
+		pattern: "zero-allocation object pooling",
+		sites:   []string{"core.go"},
+		because: "v2.4 task-10 reworded package doc to reflect that only the request-struct pool is genuinely zero-alloc.",
+	},
+	{
+		pattern: "Zero per request",
+		sites:   []string{"README.md"},
+		because: "v2.4 task-10 replaced the Handler Performance table with measured framework-side numbers.",
+	},
+	{
+		pattern: "Middleware runs in reverse order",
+		sites:   []string{"docs/guide/middleware/index.md", "docs/examples/middleware-stack.md"},
+		because: "v2.4 task-10 (PR #63) corrected middleware ordering docs: first-registered = outermost = executes first.",
+	},
+	{
+		pattern: "last added = first executed",
+		sites:   []string{"docs/guide/middleware/index.md"},
+		because: "v2.4 task-10 (PR #63) corrected the backwards middleware-order claim.",
+	},
+	{
+		pattern: "func WithServer(",
+		sites:   []string{"docs/api/espresso.md"},
+		because: "v2.4 task-10 (PR #63) deleted the phantom WithServer ServerOption that never existed.",
+	},
+	{
+		pattern: "func GetState[T any](ctx context.Context) (T, error)",
+		sites:   []string{"docs/api/state.md", "docs/api/index.md"},
+		because: "v2.4 task-10 (PR #63) corrected GetState signature to (T, bool) — actual return type since introduction.",
+	},
+	{
+		pattern: "func Solo[T any](f func(context.Context) T)",
+		sites:   []string{"docs/api/espresso.md", "docs/api/index.md"},
+		because: "v2.4 task-10 (PR #63) corrected Solo signature; ctx-only shape is Ristretto, Solo takes an extractor + err.",
+	},
+	{
+		pattern: "Uses pooled byte slices",
+		sites:   []string{"extractor/extractor.go"},
+		because: "v2.4 task-10 removed the false pooling claim; RawBodyExtractor has no shared byte-slice pool.",
+	},
+	{
+		pattern: "Use pooled buffer for encoding",
+		sites:   []string{"response.go"},
+		because: "v2.4 task-10 removed the false pooling comment; JSON.WriteResponse streams direct to ResponseWriter.",
+	},
+	{
+		pattern: "verified under -race)",
+		sites:   []string{"openapi/openapi.go"},
+		skips:   map[string]bool{"openapi/openapi_test.go": true},
+		because: "v2.4 task-05 (PR #71) tightened the Generator godoc — the old claim without a test reference was audit finding openapi-validator#1.",
+	},
+}
+
+// testDocsCorrectedClaims scans each site file for its pattern and fails on
+// a hit. Locks Task 10's corrections against silent regression: any future PR
+// that reintroduces one of these phrases into a scanned file breaks CI with
+// a message pointing at the audit finding and the corrective PR.
+func testDocsCorrectedClaims(t *testing.T) {
+	for _, c := range docsCorrectedClaims {
+		for _, site := range c.sites {
+			if c.skips[site] {
+				continue
+			}
+			data, err := os.ReadFile(site) //nolint:gosec // sites are hard-coded relative paths
+			if err != nil {
+				if os.IsNotExist(err) {
+					t.Logf("site %q not present; skipping (%v)", site, err)
+					continue
+				}
+				t.Errorf("read %s: %v", site, err)
+				continue
+			}
+			content := string(data)
+			if !strings.Contains(content, c.pattern) {
+				continue
+			}
+			// Report every offending line.
+			for i, line := range strings.Split(content, "\n") {
+				if strings.Contains(line, c.pattern) {
+					t.Errorf("%s:%d reintroduced corrected claim %q — %s\n  offending line: %s",
+						site, i+1, c.pattern, c.because, strings.TrimSpace(line))
+				}
 			}
 		}
 	}
