@@ -233,14 +233,65 @@ type RateLimiter interface {
 	Allow(key string) bool
 }
 
-// RateLimitMiddleware rejects requests that exceed rate limits.
-func RateLimitMiddleware(limiter RateLimiter) Middleware {
+// RateLimitOption configures RateLimitMiddleware behavior.
+type RateLimitOption func(*rateLimitConfig)
+
+type rateLimitConfig struct {
+	trustedProxies []*net.IPNet
+}
+
+// WithTrustedProxies configures RateLimitMiddleware to trust the
+// X-Forwarded-For header ONLY when the request's RemoteAddr host is in
+// one of the given CIDR blocks. Each entry accepts CIDR notation
+// ("10.0.0.0/8", "2001:db8::/32") or a bare IP (auto-wrapped as /32 for
+// IPv4, /128 for IPv6).
+//
+// When RemoteAddr is trusted, the key is extracted from X-Forwarded-For
+// by walking right-to-left, skipping any hops whose IPs are also in a
+// trusted CIDR, and returning the first non-trusted address (RFC 7239
+// rightmost-trusted-hop semantics). This prevents a client that connects
+// directly to the server from spoofing another client's identity via
+// XFF, while still respecting the header on legitimately-proxied
+// requests.
+//
+// Without this option (default), X-Forwarded-For is IGNORED — every
+// request keys on its RemoteAddr host, matching the safe default. This
+// is a breaking behavior change from earlier versions that trusted XFF
+// unconditionally.
+func WithTrustedProxies(cidrs ...string) RateLimitOption {
+	return func(c *rateLimitConfig) {
+		for _, cidr := range cidrs {
+			if _, n, err := net.ParseCIDR(cidr); err == nil {
+				c.trustedProxies = append(c.trustedProxies, n)
+				continue
+			}
+			// Bare IP → /32 or /128.
+			if ip := net.ParseIP(cidr); ip != nil {
+				suffix := "/32"
+				if ip.To4() == nil {
+					suffix = "/128"
+				}
+				if _, n, err := net.ParseCIDR(cidr + suffix); err == nil {
+					c.trustedProxies = append(c.trustedProxies, n)
+				}
+			}
+		}
+	}
+}
+
+// RateLimitMiddleware rejects requests that exceed rate limits. The key
+// used to identify a client defaults to the host portion of RemoteAddr
+// (see net.SplitHostPort — dropping the ephemeral port so per-connection
+// bucket bypass is impossible). Configure trusted upstream proxies via
+// WithTrustedProxies to opt into X-Forwarded-For hop resolution.
+func RateLimitMiddleware(limiter RateLimiter, opts ...RateLimitOption) Middleware {
+	cfg := &rateLimitConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			key := r.RemoteAddr
-			if forwarded := r.Header.Get("X-Forwarded-For"); forwarded != "" {
-				key = forwarded
-			}
+			key := clientKey(r, cfg)
 
 			if !limiter.Allow(key) {
 				errorenvelope.Write(w, http.StatusTooManyRequests, errorenvelope.Body{
@@ -256,7 +307,61 @@ func RateLimitMiddleware(limiter RateLimiter) Middleware {
 	}
 }
 
+// clientKey extracts the rate-limit key from r per the rules in cfg.
+// Splits RemoteAddr into host:port and keys on the host (never the port,
+// which is ephemeral). If RemoteAddr's host is in a trusted-proxy CIDR
+// and X-Forwarded-For is present, walks the XFF list right-to-left,
+// skipping any hops also in a trusted CIDR, and returns the first
+// non-trusted address (RFC 7239). Otherwise ignores XFF entirely.
+func clientKey(r *http.Request, cfg *rateLimitConfig) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	if !isIPTrusted(host, cfg.trustedProxies) {
+		return host
+	}
+	xff := r.Header.Get("X-Forwarded-For")
+	if xff == "" {
+		return host
+	}
+	hops := strings.Split(xff, ",")
+	for i := len(hops) - 1; i >= 0; i-- {
+		hop := strings.TrimSpace(hops[i])
+		if hop == "" {
+			continue
+		}
+		if !isIPTrusted(hop, cfg.trustedProxies) {
+			return hop
+		}
+	}
+	return host
+}
+
+// isIPTrusted reports whether ipStr belongs to any of the given CIDRs.
+// Returns false when trustedProxies is empty or ipStr does not parse.
+func isIPTrusted(ipStr string, trustedProxies []*net.IPNet) bool {
+	if len(trustedProxies) == 0 {
+		return false
+	}
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return false
+	}
+	for _, cidr := range trustedProxies {
+		if cidr.Contains(ip) {
+			return true
+		}
+	}
+	return false
+}
+
 // TokenBucketLimiter enforces rate limits using token bucket semantics.
+//
+// Per-key limiters (see NewTokenBucketLimiterPerKey) evict idle buckets in
+// the background so the per-key map is bounded by the active-client set,
+// not the process-lifetime spoofable-key set. Global limiters (see
+// NewTokenBucketLimiter) hold no per-key state and do not evict.
 type TokenBucketLimiter struct {
 	rate       int
 	capacity   int
@@ -265,12 +370,31 @@ type TokenBucketLimiter struct {
 	buckets    map[string]*tokenBucket
 	tokens     int
 	lastRefill time.Time
+
+	// Per-key eviction plumbing. bucketTTL is the idle duration after
+	// which a bucket becomes eligible for sweeping; done signals the
+	// sweeper goroutine to exit on Close. Only used when perKey=true.
+	bucketTTL time.Duration
+	done      chan struct{}
+	closeOnce sync.Once
 }
 
 type tokenBucket struct {
 	tokens     int
 	lastRefill time.Time
 	mu         sync.Mutex
+}
+
+// TokenBucketLimiterOption configures a per-key TokenBucketLimiter.
+type TokenBucketLimiterOption func(*TokenBucketLimiter)
+
+// WithBucketTTL sets the idle duration after which an unused per-key
+// bucket is evicted from the limiter's internal map. Default 10 minutes.
+// Applied only to per-key limiters; ignored on the global limiter.
+func WithBucketTTL(d time.Duration) TokenBucketLimiterOption {
+	return func(l *TokenBucketLimiter) {
+		l.bucketTTL = d
+	}
 }
 
 // NewTokenBucketLimiter creates a global token bucket limiter.
@@ -285,13 +409,90 @@ func NewTokenBucketLimiter(rate, capacity int) *TokenBucketLimiter {
 	}
 }
 
-// NewTokenBucketLimiterPerKey creates a per-key token bucket limiter.
-func NewTokenBucketLimiterPerKey(rate, capacity int) *TokenBucketLimiter {
-	return &TokenBucketLimiter{
-		rate:     rate,
-		capacity: capacity,
-		perKey:   true,
-		buckets:  make(map[string]*tokenBucket),
+// NewTokenBucketLimiterPerKey creates a per-key token bucket limiter with
+// TTL-based bucket eviction. A background goroutine sweeps idle buckets
+// every bucketTTL/2. Callers should call Close when the limiter is no
+// longer needed so the goroutine can exit; forgetting to Close leaks one
+// goroutine per constructed limiter but does not affect correctness.
+func NewTokenBucketLimiterPerKey(rate, capacity int, opts ...TokenBucketLimiterOption) *TokenBucketLimiter {
+	l := &TokenBucketLimiter{
+		rate:      rate,
+		capacity:  capacity,
+		perKey:    true,
+		buckets:   make(map[string]*tokenBucket),
+		bucketTTL: 10 * time.Minute,
+		done:      make(chan struct{}),
+	}
+	for _, opt := range opts {
+		opt(l)
+	}
+	go l.sweepIdleBuckets()
+	return l
+}
+
+// Close stops the background sweeper goroutine on per-key limiters. Safe
+// to call multiple times and safe to call on a global limiter (no-op).
+func (l *TokenBucketLimiter) Close() error {
+	if !l.perKey {
+		return nil
+	}
+	l.closeOnce.Do(func() { close(l.done) })
+	return nil
+}
+
+// sweepIdleBuckets runs in a background goroutine and periodically
+// removes per-key buckets whose lastRefill is older than bucketTTL.
+// Exits when Close is called (done is closed).
+func (l *TokenBucketLimiter) sweepIdleBuckets() {
+	interval := l.bucketTTL / 2
+	if interval <= 0 {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-l.done:
+			return
+		case <-ticker.C:
+			l.evictExpiredBuckets(time.Now())
+		}
+	}
+}
+
+// evictExpiredBuckets removes buckets idle beyond bucketTTL as of now.
+// Splits into a snapshot phase (read lock, gather stale keys) and a
+// delete phase (write lock, re-verify staleness under the write lock and
+// remove) to avoid holding the outer write lock across N bucket mutex
+// acquisitions and to be race-safe against concurrent Allow calls that
+// might revive a bucket between the snapshot and the delete.
+func (l *TokenBucketLimiter) evictExpiredBuckets(now time.Time) {
+	l.mu.RLock()
+	stale := make([]string, 0)
+	for key, bucket := range l.buckets {
+		bucket.mu.Lock()
+		if now.Sub(bucket.lastRefill) > l.bucketTTL {
+			stale = append(stale, key)
+		}
+		bucket.mu.Unlock()
+	}
+	l.mu.RUnlock()
+	if len(stale) == 0 {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	for _, key := range stale {
+		bucket, ok := l.buckets[key]
+		if !ok {
+			continue
+		}
+		bucket.mu.Lock()
+		expired := now.Sub(bucket.lastRefill) > l.bucketTTL
+		bucket.mu.Unlock()
+		if expired {
+			delete(l.buckets, key)
+		}
 	}
 }
 
@@ -362,6 +563,12 @@ func (l *TokenBucketLimiter) allowPerKey(key string) bool {
 }
 
 // SlidingWindowLimiter enforces rate limits using a sliding window.
+//
+// Note: uses a single mutex and performs an O(n) prune per Allow, where n
+// is the number of requests in the current window. Fine at low-to-moderate
+// concurrency; for sub-millisecond p99 at high load, prefer
+// TokenBucketLimiter or TokenBucketLimiterPerKey (both hold a per-key
+// mutex only for the duration of the token math).
 type SlidingWindowLimiter struct {
 	window          time.Duration
 	maxReq          int
