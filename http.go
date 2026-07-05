@@ -44,6 +44,38 @@ func putBuffer(buf *bytes.Buffer) {
 	bufferPool.Put(buf)
 }
 
+// DecodeSafeJSONLimit safely decodes JSON from an HTTP request body,
+// rejecting bodies larger than limit with ErrRequestEntityTooLarge (413).
+// Reads through a pooled buffer under an io.LimitReader capped at
+// limit+1 so a body of exactly limit bytes decodes successfully; one
+// extra byte triggers the over-limit response.
+//
+// Closes r.Body on return. On a JSON parse error the returned error is
+// wrapped with the sonic message for debuggability. On over-limit the
+// returned error is an *espresso.Error(413) whose message names the
+// exceeded cap.
+func DecodeSafeJSONLimit[Req any](r *http.Request, req *Req, limit int64) error {
+	defer func() { _ = r.Body.Close() }()
+
+	buf := getBuffer()
+	defer putBuffer(buf)
+
+	// limit+1 lets a body of exactly `limit` bytes succeed; one more
+	// byte gets us into over-limit territory below.
+	n, err := buf.ReadFrom(io.LimitReader(r.Body, limit+1))
+	if err != nil && err != io.EOF {
+		return fmt.Errorf("failed to read body: %w", err)
+	}
+	if n > limit {
+		return ErrRequestEntityTooLarge(fmt.Sprintf("body exceeds %d bytes", limit))
+	}
+
+	if err := sonic.Unmarshal(buf.Bytes(), req); err != nil {
+		return fmt.Errorf("invalid JSON format: %w", err)
+	}
+	return nil
+}
+
 // DecodeSafeJSON safely decodes JSON from an HTTP request body with memory protection.
 // It uses a pooled buffer with size limiting to prevent memory exhaustion attacks.
 //
@@ -51,6 +83,8 @@ func putBuffer(buf *bytes.Buffer) {
 //   - Memory-limited reading (MaxPayloadSize)
 //   - Buffer pooling for reduced allocations
 //   - Safe against large payload attacks
+//
+// For a configurable cap, use DecodeSafeJSONLimit directly.
 //
 // Example:
 //
@@ -60,17 +94,5 @@ func putBuffer(buf *bytes.Buffer) {
 //	    return
 //	}
 func DecodeSafeJSON[Req any](r *http.Request, req *Req) error {
-	buf := getBuffer()
-	defer putBuffer(buf)
-
-	// Limit reader to prevent memory exhaustion
-	limitedReader := io.LimitReader(r.Body, MaxPayloadSize)
-	if _, err := buf.ReadFrom(limitedReader); err != nil && err != io.EOF {
-		return fmt.Errorf("failed to read body: %w", err)
-	}
-
-	if err := sonic.Unmarshal(buf.Bytes(), req); err != nil {
-		return fmt.Errorf("invalid JSON format: %w", err)
-	}
-	return nil
+	return DecodeSafeJSONLimit(r, req, MaxPayloadSize)
 }

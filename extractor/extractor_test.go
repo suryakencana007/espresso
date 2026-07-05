@@ -2,11 +2,15 @@ package extractor
 
 import (
 	"bytes"
+	"context"
+	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/suryakencana007/espresso/v2/internal/bodylimit"
 )
 
 func TestQueryExtractor_Basic(t *testing.T) {
@@ -1398,4 +1402,76 @@ func BenchmarkFileExtractor_Extract(b *testing.B) {
 		ext := &FileExtractor{}
 		_ = ext.Extract(req)
 	}
+}
+
+// TestRawBody_ExtractRejectsOverLimit locks v2.4 task-06 for the raw-
+// body extractor: pre-fix Extract called io.ReadAll unbounded, so any
+// caller could exhaust memory. Post-fix, over-limit bodies return an
+// error that unwraps to bodylimit.ErrBodyTooLarge — writeExtractError
+// in the root package translates that sentinel to a 413 envelope.
+func TestRawBody_ExtractRejectsOverLimit(t *testing.T) {
+	limit := int64(32)
+	body := strings.Repeat("y", int(limit)+1)
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	r = r.WithContext(injectBodyLimitForTest(r.Context(), limit))
+
+	rb := &RawBodyExtractor{}
+	err := rb.Extract(r)
+	if err == nil {
+		t.Fatal("expected error for over-limit body, got nil")
+	}
+	if !errors.Is(err, bodylimit.ErrBodyTooLarge) {
+		t.Errorf("expected bodylimit.ErrBodyTooLarge sentinel, got: %v", err)
+	}
+}
+
+// TestRawBody_ExtractAcceptsAtLimit locks the boundary.
+func TestRawBody_ExtractAcceptsAtLimit(t *testing.T) {
+	body := "hello world"
+	limit := int64(len(body))
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	r = r.WithContext(injectBodyLimitForTest(r.Context(), limit))
+
+	rb := &RawBodyExtractor{}
+	if err := rb.Extract(r); err != nil {
+		t.Fatalf("body at exactly the cap should read: %v", err)
+	}
+	if string(rb.Data) != body {
+		t.Errorf("Data = %q, want %q", rb.Data, body)
+	}
+}
+
+// TestXML_ExtractRejectsOverLimit locks the XML extractor's cap. Pre-
+// fix Extract handed r.Body straight to xml.NewDecoder with no cap.
+// Post-fix Extract pre-reads bytes under bodylimit.ReadAllLimited so
+// the parser is never invoked on an over-limit payload.
+func TestXML_ExtractRejectsOverLimit(t *testing.T) {
+	limit := int64(64)
+	body := "<root>" + strings.Repeat("z", int(limit)+10) + "</root>"
+	r := httptest.NewRequest(http.MethodPost, "/", strings.NewReader(body))
+	r = r.WithContext(injectBodyLimitForTest(r.Context(), limit))
+
+	xe := &XMLExtractor[struct {
+		Text string `xml:",chardata"`
+	}]{}
+	err := xe.Extract(r)
+	if err == nil {
+		t.Fatal("expected error for over-limit XML body, got nil")
+	}
+	if !errors.Is(err, bodylimit.ErrBodyTooLarge) {
+		t.Errorf("expected bodylimit.ErrBodyTooLarge sentinel, got: %v", err)
+	}
+}
+
+// injectBodyLimitForTest is the extractor-package twin of the root
+// package helper — runs one request through bodylimit.Middleware to
+// capture the ctx it injects. Not exported; test-only.
+func injectBodyLimitForTest(ctx context.Context, limit int64) context.Context {
+	var got context.Context
+	stub := http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) { got = r.Context() })
+	bodylimit.Middleware(limit)(stub).ServeHTTP(
+		httptest.NewRecorder(),
+		httptest.NewRequest(http.MethodGet, "/", nil).WithContext(ctx),
+	)
+	return got
 }

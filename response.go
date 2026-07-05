@@ -4,6 +4,8 @@ import (
 	"net/http"
 
 	"github.com/bytedance/sonic"
+
+	"github.com/suryakencana007/espresso/v2/internal/bodylimit"
 )
 
 // IntoResponse is the interface that response types must implement to enable
@@ -94,8 +96,14 @@ func (j *JSON[T]) Reset() {
 //	    return JSON[UserRes]{Data: UserRes{ID: 1}}, nil
 //	}
 func (j *JSON[T]) Extract(r *http.Request) error {
-	defer func() { _ = r.Body.Close() }()
-	if err := sonic.ConfigDefault.NewDecoder(r.Body).Decode(&j.Data); err != nil {
+	// Body limit routed through DecodeSafeJSONLimit — the router-scoped
+	// cap (WithJSONBodyLimit) is read from the context via bodylimit.From
+	// and MaxPayloadSize (1 MB) is the default when no router option was
+	// configured. Bodies larger than the cap return ErrRequestEntityTooLarge
+	// (413) which the extract-error path (writeExtractError) turns into
+	// the canonical envelope.
+	limit := bodylimit.From(r.Context(), MaxPayloadSize)
+	if err := DecodeSafeJSONLimit(r, &j.Data, limit); err != nil {
 		return err
 	}
 	return RunDefaultValidator(&j.Data)

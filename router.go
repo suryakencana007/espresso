@@ -3,6 +3,8 @@ package espresso
 import (
 	"context"
 	"net/http"
+
+	"github.com/suryakencana007/espresso/v2/internal/bodylimit"
 )
 
 // ShutdownHook is a function invoked during graceful shutdown.
@@ -146,6 +148,31 @@ func (r *Router) OnShutdown(hook ShutdownHook) *Router {
 func (r *Router) WithState(state any) *Router {
 	r.state = state
 	r.middleware = append([]func(http.Handler) http.Handler{WithStateMiddleware(state)}, r.middleware...)
+	return r
+}
+
+// WithJSONBodyLimit sets the maximum request body size (in bytes) that
+// the framework's body-reading extractors will accept. Applies to
+// JSON[T], extractor.RawBody, extractor.RawBodyWithHeaders, and
+// extractor.XML[T]. Bodies larger than the cap are rejected with a 413
+// Payload Too Large canonical envelope; the underlying handler is not
+// called. The default (when this option is not set) is MaxPayloadSize
+// (1 MB, defined in http.go).
+//
+// Non-positive limits are silently coerced to the default so a
+// misconfiguration cannot uncap the framework. Register before routes so
+// the injecting middleware is bound at Get/Post registration time.
+//
+// Example:
+//
+//	router := espresso.Portafilter().
+//	    WithJSONBodyLimit(5 * 1024 * 1024). // allow 5 MB uploads
+//	    Post("/api/documents", handleUpload)
+func (r *Router) WithJSONBodyLimit(limit int64) *Router {
+	if limit <= 0 {
+		limit = MaxPayloadSize
+	}
+	r.middleware = append([]func(http.Handler) http.Handler{bodylimit.Middleware(limit)}, r.middleware...)
 	return r
 }
 
