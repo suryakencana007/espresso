@@ -1,5 +1,7 @@
 # Execution Order for v2.4.0
 
+> **Shipped 2026-07-05** — tag [`v2.4.0`](https://github.com/suryakencana007/espresso/releases/tag/v2.4.0). This records the planned order; **actual execution** was highly parallel and finished substantially inside the two-week envelope: tasks 02/03/04a/10-subset (#60/#61/#62/#63) landed on the first push after the initial CI wiring PR #58, then task-01/04b/04c/07/08/09 (#64-#69) in a fast follow-up wave, then task-05/06/10-remainder (#70/#71/#72) once the design workflow (`wf_739486d2-345`) fanned out design proposals for the four remaining P0/P1s in parallel, then verification (#73) and the release cut (#74). All 12 tasks closed in three days, exercise-driven by the audit workflow's structured design phase.
+
 This document provides the recommended execution order for the v2.4 roadmap tasks. The schedule is sized for approximately two focused weeks. v2.4 is a correctness/quality cleanup pass — the headline is closing the P0/P1 defects the 2026-07-02/03/04 alignment audit reproduced against v2.3.0. The work is broader than v2.3's OpenAPI-focused cycle but each individual task is narrow, and seven of the ten code tasks touch disjoint files, so heavy parallelism is available.
 
 ## Overview (planned)

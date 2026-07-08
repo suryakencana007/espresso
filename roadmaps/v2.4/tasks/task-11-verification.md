@@ -4,6 +4,8 @@
 **Estimated Effort:** 1 day
 **Dependencies:** Tasks 1-10
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #73 — testDocsCorrectedClaims drift guard locking 11 audit-corrected phrases; caught docs/api/index.md:89 GetState signature regression PR #63 missed.
+
 ## Context
 
 The v2.4 release is a correctness/quality pass; the whole point is that each P0/P1 fix lands **locked by a regression test shaped like the audit's repro**. This task is the safety net that catches: (a) a fix whose regression test does not actually reproduce the bug on pre-fix code, (b) a fix that broke an adjacent invariant, (c) a doc that drifted between Task 10's landing and the release, and (d) audit findings not owned by any Task 1-10 that were meant to be picked up.
@@ -12,15 +14,15 @@ The audit noted a real blind spot in the v2.3 snippet-compile guard (`docs_snipp
 
 ## Acceptance Criteria
 
-- [ ] Every P0 task's regression test reliably **fails on the pre-fix commit** (spot-check via a temporary revert-branch; document the check in the PR body).
-- [ ] `go test -race -shuffle=on ./... -count=1` clean.
-- [ ] `go test -race -shuffle=on ./... -count=1` on Linux CI (Ubuntu-latest) clean — no OS-specific timing that only reproduces one way.
-- [ ] `go test -tags=integration ./tests/integration/...` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] `govulncheck ./...` clean on root **and** `bench/` (CI already covers this per #58; verify green on this PR).
-- [ ] The snippet-compile guard is extended to compile more fences. Two viable shapes below (Step 11.2) — pick one, document.
-- [ ] The v2.3-deferred non-hermetic fences (auth Complete Example with `golang-jwt/jwt`) are now CI-covered under the extended guard.
-- [ ] No unclosed audit finding in the P0/P1 tier remains. Cross-reference the audit report and confirm.
+- [x] Every P0 task's regression test reliably **fails on the pre-fix commit** (spot-check via a temporary revert-branch; document the check in the PR body).
+- [x] `go test -race -shuffle=on ./... -count=1` clean.
+- [x] `go test -race -shuffle=on ./... -count=1` on Linux CI (Ubuntu-latest) clean — no OS-specific timing that only reproduces one way.
+- [x] `go test -tags=integration ./tests/integration/...` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] `govulncheck ./...` clean on root **and** `bench/` (CI already covers this per #58; verify green on this PR).
+- [x] The snippet-compile guard is extended to compile more fences. Two viable shapes below (Step 11.2) — pick one, document.
+- [x] The v2.3-deferred non-hermetic fences (auth Complete Example with `golang-jwt/jwt`) are now CI-covered under the extended guard.
+- [x] No unclosed audit finding in the P0/P1 tier remains. Cross-reference the audit report and confirm.
 
 ## Technical Approach
 
@@ -90,11 +92,11 @@ This task adds tests; it does not add production code. New tests are all under e
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] Each P0 regression test verified to fail on pre-fix commit (documented in the PR body).
-- [ ] `go test -race -shuffle=on ./... -count=1` clean on Windows and CI Linux.
-- [ ] `go test -tags=integration ./tests/integration/...` clean.
-- [ ] `golangci-lint run ./...` clean; `govulncheck ./...` clean.
-- [ ] Snippet-compile guard extended and the auth Complete Example (or its `testdata/` extraction) is now CI-covered.
-- [ ] Audit reconciliation table (Task 11.5) posted as a comment on this PR or added to `roadmaps/v2.4/README.md` `Related, Deferred`.
-- [ ] CHANGELOG `[Unreleased]` entry under `Changed` (tests/docs): snippet-compile guard extended to cover previously-skipped fences; regression tests added for every P0 finding.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] Each P0 regression test verified to fail on pre-fix commit (documented in the PR body).
+- [x] `go test -race -shuffle=on ./... -count=1` clean on Windows and CI Linux.
+- [x] `go test -tags=integration ./tests/integration/...` clean.
+- [x] `golangci-lint run ./...` clean; `govulncheck ./...` clean.
+- [x] Snippet-compile guard extended and the auth Complete Example (or its `testdata/` extraction) is now CI-covered.
+- [x] Audit reconciliation table (Task 11.5) posted as a comment on this PR or added to `roadmaps/v2.4/README.md` `Related, Deferred`.
+- [x] CHANGELOG `[Unreleased]` entry under `Changed` (tests/docs): snippet-compile guard extended to cover previously-skipped fences; regression tests added for every P0 finding.

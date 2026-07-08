@@ -4,6 +4,8 @@
 **Estimated Effort:** 1 day
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #70 — internal/bodylimit leaf carries CtxKey/Middleware/ErrBodyTooLarge/ReadAllLimited; Router.WithJSONBodyLimit + ErrRequestEntityTooLarge added.
+
 ## Context
 
 `JSON[T].Extract` (`response.go:96-102`) is unbounded:
@@ -28,14 +30,14 @@ Same exposure applies to `extractor.RawBody` and `extractor.RawBodyWithHeaders` 
 
 ## Acceptance Criteria
 
-- [ ] `JSON[T].Extract` returns `413 Payload Too Large` with the canonical envelope when body exceeds the configured cap. Below the cap, behavior unchanged.
-- [ ] `extractor.RawBody.Extract` and `extractor.RawBodyWithHeaders.Extract` respect the same cap.
-- [ ] `extractor.XML[T].Extract` respects the same cap.
-- [ ] Cap is configurable per-router via a new `WithJSONBodyLimit(n int64)` option (or a more general `WithBodyLimit(n int64)` that also covers `RawBody`/`XML` — see Step 6.3 for the naming decision).
-- [ ] Default cap is `http.MaxPayloadSize` (1 MB, defined in `http.go`).
-- [ ] A new `espresso.ErrRequestEntityTooLarge(msg)` constructor is added (matching the `Err*` naming pattern in `error.go`); status 413, code `PAYLOAD_TOO_LARGE`.
-- [ ] Regression test: body of `cap+1` bytes returns 413 with canonical envelope; body at exactly `cap` succeeds.
-- [ ] No breaking change to `JSON[T].Extract` return signature; the cap error is a normal `error` return, translated by the existing error path to 413.
+- [x] `JSON[T].Extract` returns `413 Payload Too Large` with the canonical envelope when body exceeds the configured cap. Below the cap, behavior unchanged.
+- [x] `extractor.RawBody.Extract` and `extractor.RawBodyWithHeaders.Extract` respect the same cap.
+- [x] `extractor.XML[T].Extract` respects the same cap.
+- [x] Cap is configurable per-router via a new `WithJSONBodyLimit(n int64)` option (or a more general `WithBodyLimit(n int64)` that also covers `RawBody`/`XML` — see Step 6.3 for the naming decision).
+- [x] Default cap is `http.MaxPayloadSize` (1 MB, defined in `http.go`).
+- [x] A new `espresso.ErrRequestEntityTooLarge(msg)` constructor is added (matching the `Err*` naming pattern in `error.go`); status 413, code `PAYLOAD_TOO_LARGE`.
+- [x] Regression test: body of `cap+1` bytes returns 413 with canonical envelope; body at exactly `cap` succeeds.
+- [x] No breaking change to `JSON[T].Extract` return signature; the cap error is a normal `error` return, translated by the existing error path to 413.
 
 ## Technical Approach
 
@@ -120,11 +122,11 @@ None of this is actually pooled encoding — the code is `sonic.ConfigDefault.Ne
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] `govulncheck ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Added`: `espresso.WithJSONBodyLimit(n int64)` router option; `espresso.ErrRequestEntityTooLarge(msg)` error constructor; `413` added to `defaultCodeForStatus`. Under `Fixed`: `JSON[T].Extract`, `extractor.RawBody`, and `extractor.XML[T]` now respect a configurable body-size cap (default 1 MB); previously they decoded arbitrarily large bodies into memory.
-- [ ] Migration note (Task 12): callers hit 413 on bodies over 1 MB by default; raise via `WithJSONBodyLimit(higher)` per router.
-- [ ] No breaking change to any existing extractor signature.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] `govulncheck ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Added`: `espresso.WithJSONBodyLimit(n int64)` router option; `espresso.ErrRequestEntityTooLarge(msg)` error constructor; `413` added to `defaultCodeForStatus`. Under `Fixed`: `JSON[T].Extract`, `extractor.RawBody`, and `extractor.XML[T]` now respect a configurable body-size cap (default 1 MB); previously they decoded arbitrarily large bodies into memory.
+- [x] Migration note (Task 12): callers hit 413 on bodies over 1 MB by default; raise via `WithJSONBodyLimit(higher)` per router.
+- [x] No breaking change to any existing extractor signature.

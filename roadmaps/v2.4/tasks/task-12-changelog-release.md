@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** Tasks 1-11
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #74 — CHANGELOG [Unreleased] → [2.4.0]; package.json + docs/.vitepress/config.ts version chips bumped; docs/migration-v2.3-to-v2.4.md added; tag v2.4.0 cut from the merge commit.
+
 ## Context
 
 Final task. Follows the atomic-release discipline established in v2.0 task-07 / v2.1 task-06 / v2.2 task-05 / v2.3 task-07: single commit promoting `[Unreleased]` → `[2.4.0]`, bumping version chips, plus a new migration guide covering the behavior changes v2.4 ships.
@@ -20,14 +22,14 @@ The behavior changes to call out in the migration guide:
 
 ## Acceptance Criteria
 
-- [ ] `CHANGELOG.md`'s `[Unreleased]` section is promoted to `[2.4.0] - 2026-MM-DD` in a single atomic commit; a new empty `[Unreleased]` section is added on top.
-- [ ] `package.json`'s `"version"` field is `2.4.0`.
-- [ ] `docs/.vitepress/config.ts` version reference bumped to `v2.4.0`.
-- [ ] `docs/migration-v2.3-to-v2.4.md` exists and covers the seven behavior changes above with before/after examples for each.
-- [ ] `docs/.vitepress/config.ts` sidebar includes a link to the new migration guide.
-- [ ] The version-bump commit lands as a single atomic commit (not split across multiple PRs); tag `v2.4.0` from the merge commit.
-- [ ] GitHub release created (`gh release create v2.4.0`) with the `[2.4.0]` CHANGELOG body.
-- [ ] Post-release smoke: `go get github.com/suryakencana007/espresso/v2@v2.4.0` resolves and builds against a throwaway project exercising `WithJSONBodyLimit`, `WithTrustedProxies`, and a corrected `Solo` example.
+- [x] `CHANGELOG.md`'s `[Unreleased]` section is promoted to `[2.4.0] - 2026-MM-DD` in a single atomic commit; a new empty `[Unreleased]` section is added on top.
+- [x] `package.json`'s `"version"` field is `2.4.0`.
+- [x] `docs/.vitepress/config.ts` version reference bumped to `v2.4.0`.
+- [x] `docs/migration-v2.3-to-v2.4.md` exists and covers the seven behavior changes above with before/after examples for each.
+- [x] `docs/.vitepress/config.ts` sidebar includes a link to the new migration guide.
+- [x] The version-bump commit lands as a single atomic commit (not split across multiple PRs); tag `v2.4.0` from the merge commit.
+- [x] GitHub release created (`gh release create v2.4.0`) with the `[2.4.0]` CHANGELOG body.
+- [x] Post-release smoke: `go get github.com/suryakencana007/espresso/v2@v2.4.0` resolves and builds against a throwaway project exercising `WithJSONBodyLimit`, `WithTrustedProxies`, and a corrected `Solo` example.
 
 ## Technical Approach
 
@@ -147,7 +149,7 @@ None new — the release itself is the deliverable.
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `git tag v2.4.0` pushed, GitHub release published.
-- [ ] Smoke project builds against `v2.4.0`.
-- [ ] The `roadmaps/v2.4/` retrospective marking (pre-checked boxes + ship-date banner) can happen in a follow-up PR after the release lands, following the v2.3 pattern.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `git tag v2.4.0` pushed, GitHub release published.
+- [x] Smoke project builds against `v2.4.0`.
+- [x] The `roadmaps/v2.4/` retrospective marking (pre-checked boxes + ship-date banner) can happen in a follow-up PR after the release lands, following the v2.3 pattern.

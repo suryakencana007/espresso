@@ -4,6 +4,8 @@
 **Estimated Effort:** 0.5 day
 **Dependencies:** None
 
+> **Status: ✅ Shipped 2026-07-05 (v2.4.0).** Delivered via #61 — LoggingMiddleware statusRecorder forwards Flusher/Hijacker/Push/Unwrap — SSE and WS routes work through the middleware again.
+
 ## Context
 
 `LoggingMiddleware`'s `statusRecorder` (`middleware/http/middleware.go:472-501`) embeds `http.ResponseWriter` and overrides only `WriteHeader`. It implements neither `http.Flusher`, `http.Hijacker`, nor `Unwrap()` for `http.ResponseController`. Router middleware wraps every route (`router.go:208-214`), so with `LoggingMiddleware` installed:
@@ -17,11 +19,11 @@ The `gzipResponseWriter` in the same file (`middleware.go:210-229`) forwards `Fl
 
 ## Acceptance Criteria
 
-- [ ] With `LoggingMiddleware` installed on a router, an SSE `StreamSimple` route returns `200 Content-Type: text/event-stream` (not 500).
-- [ ] With `LoggingMiddleware` installed, a WebSocket `WebSocketSimple` route upgrades to `101 Switching Protocols` (not 501).
-- [ ] `statusRecorder` forwards `Flush()`, `Hijack()`, `Push()`, and implements `Unwrap() http.ResponseWriter` for `http.ResponseController`.
-- [ ] `statusRecorder` records status on first `Write()` when `WriteHeader` was never called (default 200), so the log's status field reflects the actual response.
-- [ ] No public API signature change; `LoggingMiddleware` remains `func LoggingMiddleware(logger zerolog.Logger) espresso.Middleware`.
+- [x] With `LoggingMiddleware` installed on a router, an SSE `StreamSimple` route returns `200 Content-Type: text/event-stream` (not 500).
+- [x] With `LoggingMiddleware` installed, a WebSocket `WebSocketSimple` route upgrades to `101 Switching Protocols` (not 501).
+- [x] `statusRecorder` forwards `Flush()`, `Hijack()`, `Push()`, and implements `Unwrap() http.ResponseWriter` for `http.ResponseController`.
+- [x] `statusRecorder` records status on first `Write()` when `WriteHeader` was never called (default 200), so the log's status field reflects the actual response.
+- [x] No public API signature change; `LoggingMiddleware` remains `func LoggingMiddleware(logger zerolog.Logger) espresso.Middleware`.
 
 ## Technical Approach
 
@@ -103,9 +105,9 @@ func (r *statusRecorder) Unwrap() http.ResponseWriter { return r.ResponseWriter 
 
 ## Definition of Done
 
-- [ ] All Acceptance Criteria checkboxes ticked.
-- [ ] `go test -race ./middleware/http/... ./... -count=2` clean.
-- [ ] `golangci-lint run ./...` clean.
-- [ ] CI's `Test (race)` job green on the PR.
-- [ ] CHANGELOG `[Unreleased]` entry under `Fixed`: `LoggingMiddleware`'s response-writer wrapper now forwards `Flusher`/`Hijacker`/`Pusher` and provides `Unwrap()` for `http.ResponseController`, restoring SSE and WebSocket compatibility.
-- [ ] No public API signature changed.
+- [x] All Acceptance Criteria checkboxes ticked.
+- [x] `go test -race ./middleware/http/... ./... -count=2` clean.
+- [x] `golangci-lint run ./...` clean.
+- [x] CI's `Test (race)` job green on the PR.
+- [x] CHANGELOG `[Unreleased]` entry under `Fixed`: `LoggingMiddleware`'s response-writer wrapper now forwards `Flusher`/`Hijacker`/`Pusher` and provides `Unwrap()` for `http.ResponseController`, restoring SSE and WebSocket compatibility.
+- [x] No public API signature changed.
