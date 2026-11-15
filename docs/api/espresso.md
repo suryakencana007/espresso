@@ -385,9 +385,13 @@ func WithReadHeaderTimeout(d time.Duration) ServerOption
 ### WithWriteTimeout
 
 Maximum duration before timing out writes of the response. Defaults to
-10 seconds. **Note:** long-lived SSE streams are affected — a
-follow-up (v2.4 task-04b) will make SSE handlers automatically clear
-this per-connection.
+10 seconds. Since v2.4, SSE handlers clear the per-connection write
+deadline at stream open via
+`http.NewResponseController(w).SetWriteDeadline(time.Time{})`, so
+long-lived streams are not cut off by this default. If a middleware in
+the wrapper chain does not forward `Unwrap()` (pre-Go-1.20 wrappers),
+clearing fails and the stream is bounded by this timeout — raise it with
+`WithWriteTimeout(0)` in that case.
 
 ```go
 func WithWriteTimeout(d time.Duration) ServerOption
