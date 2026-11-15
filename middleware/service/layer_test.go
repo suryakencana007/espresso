@@ -443,69 +443,80 @@ func TestCircuitBreaker_TransitioningProbeSuccessCounts(t *testing.T) {
 // and 10 concurrent requests, exactly one should reach the wrapped
 // service and nine should short-circuit with a CircuitBreakerError.
 func TestCircuitBreaker_HalfOpenLimitsConcurrentProbes(t *testing.T) {
-	config := CircuitBreakerConfig{
-		ServiceName:       "test",
-		FailureThreshold:  2,
-		Timeout:           30 * time.Millisecond,
-		SuccessThreshold:  1,
-		HalfOpenMaxProbes: 1,
-	}
-
-	release := make(chan struct{})
-	svc := serviceFunc[string, string](func(ctx context.Context, req string) (string, error) {
-		if req == "fail" {
-			return "", errors.New("fail")
+	// Repeat the burst: the defect this locks is a race between concurrent
+	// Open→HalfOpen transitions, so a single burst only trips it on some
+	// schedules. Several rounds plus a start barrier make a regression red
+	// reliably rather than once every few hundred CI runs.
+	for round := 0; round < 10; round++ {
+		config := CircuitBreakerConfig{
+			ServiceName:       "test",
+			FailureThreshold:  2,
+			Timeout:           30 * time.Millisecond,
+			SuccessThreshold:  1,
+			HalfOpenMaxProbes: 1,
 		}
-		// Probes block until released so all 10 requests coexist.
-		<-release
-		return "ok", nil
-	})
 
-	layer := CircuitBreakerLayer[string, string](config)
-	wrapped := layer(svc)
-
-	// Trip the circuit.
-	_, _ = wrapped.Call(context.Background(), "fail")
-	_, _ = wrapped.Call(context.Background(), "fail")
-
-	// Let the open-timeout elapse.
-	time.Sleep(40 * time.Millisecond)
-
-	var (
-		mu       sync.Mutex
-		passed   int
-		rejected int
-	)
-	var wg sync.WaitGroup
-	for range 10 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			_, err := wrapped.Call(context.Background(), "probe")
-			mu.Lock()
-			defer mu.Unlock()
-			if err == nil {
-				passed++
-				return
+		release := make(chan struct{})
+		svc := serviceFunc[string, string](func(ctx context.Context, req string) (string, error) {
+			if req == "fail" {
+				return "", errors.New("fail")
 			}
-			if !IsCircuitBreakerError(err) {
-				t.Errorf("unexpected non-circuit-breaker error: %v", err)
-				return
-			}
-			rejected++
-		}()
-	}
-	// Give goroutines time to reach the wrapped service (or be
-	// short-circuited) before releasing the passing one.
-	time.Sleep(50 * time.Millisecond)
-	close(release)
-	wg.Wait()
+			// Probes block until released so all 10 requests coexist.
+			<-release
+			return "ok", nil
+		})
 
-	if passed != 1 {
-		t.Errorf("expected 1 probe to reach the wrapped service, got %d (pre-fix behavior: unbounded probes)", passed)
-	}
-	if rejected != 9 {
-		t.Errorf("expected 9 probes to be rejected, got %d", rejected)
+		layer := CircuitBreakerLayer[string, string](config)
+		wrapped := layer(svc)
+
+		// Trip the circuit.
+		_, _ = wrapped.Call(context.Background(), "fail")
+		_, _ = wrapped.Call(context.Background(), "fail")
+
+		// Let the open-timeout elapse.
+		time.Sleep(40 * time.Millisecond)
+
+		var (
+			mu       sync.Mutex
+			passed   int
+			rejected int
+		)
+		var wg sync.WaitGroup
+		start := make(chan struct{})
+		for range 10 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				// Release every caller together so they are likely to observe
+				// StateOpen simultaneously, widening the transition race.
+				<-start
+				_, err := wrapped.Call(context.Background(), "probe")
+				mu.Lock()
+				defer mu.Unlock()
+				if err == nil {
+					passed++
+					return
+				}
+				if !IsCircuitBreakerError(err) {
+					t.Errorf("round %d: unexpected non-circuit-breaker error: %v", round, err)
+					return
+				}
+				rejected++
+			}()
+		}
+		close(start)
+		// Give goroutines time to reach the wrapped service (or be
+		// short-circuited) before releasing the passing one.
+		time.Sleep(50 * time.Millisecond)
+		close(release)
+		wg.Wait()
+
+		if passed != 1 {
+			t.Fatalf("round %d: expected 1 probe to reach the wrapped service, got %d (pre-fix behavior: unbounded probes)", round, passed)
+		}
+		if rejected != 9 {
+			t.Fatalf("round %d: expected 9 probes to be rejected, got %d", round, rejected)
+		}
 	}
 }
 
