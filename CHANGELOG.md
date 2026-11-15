@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `(*Error).WithHeader(key, value)` attaches response headers to a
+  handler-returned error — for example `Retry-After` on a 429. Reserved
+  framing headers (`Content-Type`, `Content-Length`, `Transfer-Encoding`)
+  and hop-by-hop headers are ignored. Closes #77.
+
 ## [2.4.0] - 2026-07-05
 
 A correctness release — **Ground Truth** — that closes the ten P0/P1

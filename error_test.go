@@ -437,6 +437,121 @@ func TestError_WithRequestID_WriteResponse(t *testing.T) {
 	}
 }
 
+func TestError_WithHeader_WriteResponse(t *testing.T) {
+	err := ErrTooManyRequests("too many attempts").
+		WithCode("TOO_MANY_REQUESTS").
+		WithHeader("Retry-After", "30")
+
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d", w.Code)
+	}
+	if got := w.Header().Get("Retry-After"); got != "30" {
+		t.Errorf("expected Retry-After '30', got %q", got)
+	}
+	if got := w.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+		t.Errorf("content type must stay writer-owned, got %q", got)
+	}
+}
+
+func TestError_WithHeader_HandlerReturnsError(t *testing.T) {
+	err := ErrTooManyRequests("too many attempts").
+		WithCode("TOO_MANY_REQUESTS").
+		WithHeader("Retry-After", "30")
+
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	writeHandlerError(w, r, err)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d", w.Code)
+	}
+	if got := w.Header().Get("Retry-After"); got != "30" {
+		t.Errorf("expected Retry-After '30', got %q", got)
+	}
+
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("failed to decode response: %v", err)
+	}
+	if resp.Error.Code != "TOO_MANY_REQUESTS" {
+		t.Errorf("expected code TOO_MANY_REQUESTS, got %q", resp.Error.Code)
+	}
+}
+
+func TestError_WithHeader_EndToEnd(t *testing.T) {
+	router := Portafilter()
+	router.Post("/throttled", Solo(func(*testReq) (testRes, error) {
+		return testRes{}, ErrTooManyRequests("too many attempts").
+			WithCode("TOO_MANY_REQUESTS").
+			WithHeader("Retry-After", "30")
+	}))
+
+	req := httptest.NewRequest(http.MethodPost, "/throttled", strings.NewReader(`{"name":"john"}`))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected status 429, got %d", rec.Code)
+	}
+	if got := rec.Header().Get("Retry-After"); got != "30" {
+		t.Errorf("expected Retry-After '30' through the router, got %q", got)
+	}
+}
+
+func TestError_WithHeader_Replace(t *testing.T) {
+	err := ErrBadRequest("bad").WithHeader("X-Trace", "one").WithHeader("X-Trace", "two")
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	values := w.Header().Values("X-Trace")
+	if len(values) != 1 || values[0] != "two" {
+		t.Errorf("expected a single replaced value 'two', got %v", values)
+	}
+}
+
+func TestError_WithHeader_ReservedIgnored(t *testing.T) {
+	reserved := []string{
+		"Content-Type", "content-length", "Transfer-Encoding",
+		"Connection", "Keep-Alive", "Proxy-Authenticate",
+		"Proxy-Authorization", "TE", "Trailer", "Upgrade",
+	}
+	for _, key := range reserved {
+		t.Run(key, func(t *testing.T) {
+			err := ErrBadRequest("bad").WithHeader(key, "evil")
+			w := httptest.NewRecorder()
+			writeErrorResponse(w, nil, err)
+
+			if got := w.Header().Get(key); got != "" && !strings.EqualFold(key, "Content-Type") {
+				t.Errorf("reserved header %q must be ignored, got %q", key, got)
+			}
+			if strings.EqualFold(key, "Content-Type") {
+				if got := w.Header().Get("Content-Type"); got != "application/json; charset=utf-8" {
+					t.Errorf("content type must stay writer-owned, got %q", got)
+				}
+			}
+		})
+	}
+}
+
+func TestError_WithHeader_NoHeaderUnchanged(t *testing.T) {
+	// The zero-header path must remain byte-identical: no extra header keys
+	// and the historical body shape.
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, ErrNotFound("resource not found"))
+
+	if len(w.Header()) != 1 {
+		t.Errorf("expected only Content-Type, got %v", w.Header())
+	}
+	want := "{\"error\":{\"code\":\"NOT_FOUND\",\"message\":\"resource not found\"}}\n"
+	if got := w.Body.String(); got != want {
+		t.Errorf("body changed:\n got %q\nwant %q", got, want)
+	}
+}
+
 // ============================================
 // Field Error Tests (unchanged from original)
 // ============================================
