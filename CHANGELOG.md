@@ -7,23 +7,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.0] - 2026-11-15
+
+An additive minor release — **Headers & Recovery** — that closes the two
+issues open at the end of the v2.4 cycle and a race the CI surfaced on the
+way. Handler-returned errors can now carry response headers (a `429` can
+send the `Retry-After` its status implies), `CircuitBreakerLayer` again
+respects `HalfOpenMaxProbes`, and the build is clean on Go 1.27.
+
+**Upgrade from v2.4:** no code changes are required — every new symbol is
+additive and existing behavior is preserved. The one observable behavior
+change is the circuit-breaker probe bound, which is a fix: callers that
+happened to benefit from the buggy extra probes will now see
+`HalfOpenMaxProbes` respected. See
+[`docs/migration-v2.4-to-v2.5.md`](docs/migration-v2.4-to-v2.5.md).
+
 ### Added
 
-- `(*Error).WithHeader(key, value)` attaches response headers to a
-  handler-returned error — for example `Retry-After` on a 429 — and
-  `(*Error).WithHeaderAdd(key, value)` appends repeatable values such as
-  multiple `Set-Cookie` or `WWW-Authenticate` lines. Reserved framing headers
+- **`(*Error).WithHeader(key, value string) *Error`** — attach a response
+  header to a handler-returned error and keep chaining. Handlers return
+  `(Res, error)` and never see the `http.ResponseWriter`, so a `429` had no
+  way to send the `Retry-After` (RFC 9110 §10.2.3) its status implies.
+  Headers are written on the error path, before the status line, and cover
+  `Error.WriteResponse`, `writeHandlerError`, translated service-layer
+  errors, and the SSE/WebSocket setup paths. Reserved framing headers
   (`Content-Type`, `Content-Length`, `Transfer-Encoding`) and hop-by-hop
-  headers are ignored. Closes #77.
+  headers (`Connection`, `Keep-Alive`, `Proxy-Authenticate`,
+  `Proxy-Authorization`, `TE`, `Trailer`, `Upgrade`) are ignored,
+  case-insensitively, so a handler cannot corrupt response framing
+  (#77, #79).
+- **`(*Error).WithHeaderAdd(key, value string) *Error`** — append a header
+  value instead of replacing the previous one, mirroring
+  `http.Header.Add`. Use it for headers that legitimately repeat, such as
+  several `Set-Cookie` lines or `WWW-Authenticate` challenges (#77, #79).
 
 ### Fixed
 
-- Bumped `github.com/bytedance/sonic` to v1.15.3 (and `sonic/loader` to
-  v0.5.2) so Go 1.27 builds no longer print the boot-time fallback warning or
-  silently drop to `encoding/json`. Closes #76.
-- `CircuitBreakerLayer` no longer admits more than `HalfOpenMaxProbes`
-  concurrent probes: concurrent `Open→HalfOpen` transitions each reset the
-  in-flight probe counter, wiping slots acquired by peers. Closes #82.
+- **`CircuitBreakerLayer` bounds half-open probes correctly again.**
+  Concurrent requests that observed `StateOpen` with the open timeout
+  elapsed each re-ran the `Open → HalfOpen` transition and reset the
+  in-flight probe counter, wiping slots a peer had already acquired — so
+  more than `HalfOpenMaxProbes` probes could reach a just-recovering
+  upstream, exactly the stampede the probe limit exists to prevent. The
+  transition now re-checks the state under the write lock so a single
+  goroutine owns the reset; the atomic counter stays the only admission
+  gate (#82, #83).
+- **`github.com/bytedance/sonic` bumped to v1.15.3** (`sonic/loader` to
+  v0.5.2). sonic v1.15.0 does not support Go 1.27: every process start
+  printed a fallback warning and JSON encoding silently dropped to
+  `encoding/json`, killing the `JSON[T]` fast path. Output is unchanged;
+  only the warning and the fallback go away (#76, #78).
+
+### Changed
+
+- **CI runs the test and vulncheck jobs on Go 1.27.** `govulncheck` had
+  gone red on every branch against the Go 1.25 standard library, and CI
+  never exercised the Go 1.27 toolchain this release targets. The lint job
+  stays on the Go 1.25 the pinned golangci-lint is validated against.
+  Internal only — no consumer action (#81).
 
 ## [2.4.0] - 2026-07-05
 

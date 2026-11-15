@@ -62,10 +62,11 @@ export default defineConfig({
           { text: "v1 → v2", link: "/migration-v1-to-v2" },
           { text: "v2.0 → v2.1", link: "/migration-v2-to-v2.1" },
           { text: "v2.3 → v2.4", link: "/migration-v2.3-to-v2.4" },
+          { text: "v2.4 → v2.5", link: "/migration-v2.4-to-v2.5" },
         ],
       },
       {
-        text: "v2.4.0",
+        text: "v2.5.0",
         items: [
           {
             text: "Changelog",
@@ -131,6 +132,7 @@ export default defineConfig({
             { text: "v1 → v2 Migration", link: "/migration-v1-to-v2" },
             { text: "v2.0 → v2.1 Migration", link: "/migration-v2-to-v2.1" },
             { text: "v2.3 → v2.4 Migration", link: "/migration-v2.3-to-v2.4" },
+            { text: "v2.4 → v2.5 Migration", link: "/migration-v2.4-to-v2.5" },
           ],
         },
       ],
