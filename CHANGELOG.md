@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Bumped `github.com/bytedance/sonic` to v1.15.3 (and `sonic/loader` to
+  v0.5.2) so Go 1.27 builds no longer print the boot-time fallback warning or
+  silently drop to `encoding/json`. Closes #76.
+
 ## [2.4.0] - 2026-07-05
 
 A correctness release — **Ground Truth** — that closes the ten P0/P1
