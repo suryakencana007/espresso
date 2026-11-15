@@ -168,9 +168,7 @@ func HandlerCtxReqErr[Req FromRequest, Res IntoResponse](fn func(context.Context
 			return
 		}
 
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -227,9 +225,7 @@ func HandlerCtxReq1Req2Err[Req1 FromRequest, Req2 FromRequest, Res IntoResponse]
 			return
 		}
 
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -279,9 +275,7 @@ func HandlerCtxReq1Req2[Req1 FromRequest, Req2 FromRequest, Res IntoResponse](
 		}
 
 		res := fn(r.Context(), req1, req2)
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -314,9 +308,7 @@ func HandlerCtxReq[Req FromRequest, Res IntoResponse](fn func(context.Context, R
 		}
 
 		res := fn(r.Context(), req)
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -354,9 +346,7 @@ func HandlerReqErr[Req FromRequest, Res IntoResponse](fn func(Req) (Res, error))
 			return
 		}
 
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -389,9 +379,7 @@ func HandlerReq[Req FromRequest, Res IntoResponse](fn func(Req) Res) http.Handle
 		}
 
 		res := fn(req)
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -413,9 +401,7 @@ func HandlerCtx[Res IntoResponse](fn func(context.Context) (Res, error)) http.Ha
 			return
 		}
 
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -432,9 +418,7 @@ func HandlerCtx[Res IntoResponse](fn func(context.Context) (Res, error)) http.Ha
 func HandlerCtxNoErr[Res IntoResponse](fn func(context.Context) Res) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res := fn(r.Context())
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -456,9 +440,7 @@ func HandlerNoReq[Res IntoResponse](fn func() (Res, error)) http.HandlerFunc {
 			return
 		}
 
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -475,9 +457,7 @@ func HandlerNoReq[Res IntoResponse](fn func() (Res, error)) http.HandlerFunc {
 func HandlerNoReqNoErr[Res IntoResponse](fn func() Res) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		res := fn()
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
 
@@ -780,9 +760,7 @@ func createHandlerFromInfo(v reflect.Value, _ reflect.Type, info *handlerInfo) h
 			return
 		}
 
-		if err := writeResponse(w, res); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeAnyResponseOrError(w, r, res)
 	}
 }
 
@@ -794,5 +772,58 @@ func writeResponse(w http.ResponseWriter, res any) error {
 		return Text{Body: v}.WriteResponse(w)
 	default:
 		return JSON[any]{Data: v}.WriteResponse(w)
+	}
+}
+
+// responseTracker wraps a ResponseWriter for the duration of a single
+// WriteResponse call so the error path can tell whether the status line was
+// already sent. Once a response has started, a 500 cannot replace it, and
+// net/http logs the second WriteHeader as "superfluous response.WriteHeader
+// call". The wrapper also suppresses duplicate WriteHeader calls and forwards
+// Flush/Unwrap so a custom IntoResponse that streams still works.
+type responseTracker struct {
+	http.ResponseWriter
+	wroteHeader bool
+}
+
+func (t *responseTracker) WriteHeader(code int) {
+	if t.wroteHeader {
+		return
+	}
+	t.wroteHeader = true
+	t.ResponseWriter.WriteHeader(code)
+}
+
+func (t *responseTracker) Write(p []byte) (int, error) {
+	// A Write before any WriteHeader implicitly commits a 200.
+	t.wroteHeader = true
+	return t.ResponseWriter.Write(p)
+}
+
+func (t *responseTracker) Flush() {
+	if f, ok := t.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
+}
+
+func (t *responseTracker) Unwrap() http.ResponseWriter { return t.ResponseWriter }
+
+// writeResponseOrError writes res, and only falls back to a canonical 500 when
+// the write failed before the status line was committed. If the response has
+// already started there is nothing to replace, so the fallback is skipped
+// rather than emitting a second WriteHeader.
+func writeResponseOrError[Res IntoResponse](w http.ResponseWriter, r *http.Request, res Res) {
+	tracked := &responseTracker{ResponseWriter: w}
+	if err := res.WriteResponse(tracked); err != nil && !tracked.wroteHeader {
+		writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
+	}
+}
+
+// writeAnyResponseOrError is writeResponseOrError for the reflection dispatch
+// path, where the concrete response type is not known statically.
+func writeAnyResponseOrError(w http.ResponseWriter, r *http.Request, res any) {
+	tracked := &responseTracker{ResponseWriter: w}
+	if err := writeResponse(tracked, res); err != nil && !tracked.wroteHeader {
+		writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 	}
 }

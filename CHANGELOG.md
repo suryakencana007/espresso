@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- The response-write error fallback no longer emits a second `WriteHeader`
+  ("superfluous response.WriteHeader call") once a response has already
+  started. A write that fails after the status line — a client disconnect, or
+  a JSON payload that cannot be marshalled — is now left alone; the 500
+  envelope is written only when nothing was sent yet. Closes #88.
+
 ## [2.5.0] - 2026-11-15
 
 An additive minor release — **Headers & Recovery** — that closes the two
