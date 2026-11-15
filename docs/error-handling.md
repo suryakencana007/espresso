@@ -66,6 +66,27 @@ return espresso.ErrInternal("database error").
 
 The wrapped error is logged but **never exposed** to the client. Only the message and code are visible in the response.
 
+### Response Headers
+
+Attach headers the status implies with `.WithHeader(key, value)`. They are
+written on the error path, before the status line:
+
+```go
+return espresso.ErrTooManyRequests("too many attempts").
+    WithCode("TOO_MANY_REQUESTS").
+    WithHeader("Retry-After", "30")
+```
+
+Repeated calls with the same key replace the value. Use
+`.WithHeaderAdd(key, value)` to append instead, when a header may repeat (for
+example multiple `Set-Cookie` lines or `WWW-Authenticate` challenges).
+
+Reserved headers the
+server owns are ignored (`Content-Type`, `Content-Length`,
+`Transfer-Encoding`) along with hop-by-hop headers (`Connection`,
+`Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`,
+`Upgrade`), so a handler cannot corrupt response framing.
+
 ### Request ID Integration
 
 When `RequestIDMiddleware` is used, error responses automatically include the request ID from the context:

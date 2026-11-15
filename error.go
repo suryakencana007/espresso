@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/suryakencana007/espresso/v2/internal/bodylimit"
 	"github.com/suryakencana007/espresso/v2/internal/errorenvelope"
@@ -74,6 +75,11 @@ type Error struct {
 	// requestID stores a manually set request ID for backward compatibility.
 	// Prefer relying on automatic request ID injection via RequestIDMiddleware.
 	requestID string
+
+	// headers holds response headers attached via WithHeader. They are applied
+	// on the error path only, immediately before the status line is written,
+	// and are never serialized into the JSON body.
+	headers http.Header
 }
 
 // NewError creates a new Error with the given HTTP status code and message.
@@ -127,6 +133,54 @@ func (e *Error) WithRequestID(requestID string) *Error {
 	return e
 }
 
+// WithHeader attaches a response header to the error and returns the Error for
+// chaining. The header is written on the error path, before the status line.
+// Repeated calls with the same key replace the previously set value (Set
+// semantics), matching WithCode/WithDetail; use WithHeaderAdd to append
+// instead of replace.
+//
+// Use it for headers the HTTP status implies, such as Retry-After on a 429:
+//
+//	return espresso.ErrTooManyRequests("too many attempts").
+//	    WithCode("TOO_MANY_REQUESTS").
+//	    WithHeader("Retry-After", "30")
+//
+// Reserved headers the server owns are ignored so a handler cannot corrupt
+// framing or emit hop-by-hop headers: Content-Type, Content-Length,
+// Transfer-Encoding, Connection, Keep-Alive, Proxy-Authenticate,
+// Proxy-Authorization, TE, Trailer, and Upgrade. Matching is case-insensitive.
+func (e *Error) WithHeader(key, value string) *Error {
+	if isReservedHeader(key) {
+		return e
+	}
+	if e.headers == nil {
+		e.headers = make(http.Header)
+	}
+	e.headers.Set(key, value)
+	return e
+}
+
+// WithHeaderAdd appends a value for key instead of replacing any previously
+// attached values, so one error can carry multiple headers of the same name —
+// for example several Set-Cookie lines or WWW-Authenticate challenges:
+//
+//	return espresso.ErrUnauthorized("authentication required").
+//	    WithHeader("WWW-Authenticate", `Bearer realm="api"`).
+//	    WithHeaderAdd("WWW-Authenticate", `Basic realm="api"`)
+//
+// The same reserved-header rules as WithHeader apply. A later WithHeader call
+// with the same key replaces every value accumulated by WithHeaderAdd.
+func (e *Error) WithHeaderAdd(key, value string) *Error {
+	if isReservedHeader(key) {
+		return e
+	}
+	if e.headers == nil {
+		e.headers = make(http.Header)
+	}
+	e.headers.Add(key, value)
+	return e
+}
+
 // Error implements the error interface.
 // Returns a string representation suitable for logging, including the
 // internal error if present.
@@ -164,11 +218,47 @@ type errorResponse struct {
 // unchanged (guarded by TestWithLayers_ExtractorErrorReturnsStructuredJSON).
 type errorBody = errorenvelope.Body
 
+// reservedHeaders are response headers the framework owns or that must not be
+// set per response: the former would corrupt the envelope, and the latter are
+// hop-by-hop (RFC 9110 §7.6.1) and would be dropped by intermediaries anyway.
+var reservedHeaders = map[string]struct{}{
+	"connection":          {},
+	"content-length":      {},
+	"content-type":        {},
+	"keep-alive":          {},
+	"proxy-authenticate":  {},
+	"proxy-authorization": {},
+	"te":                  {},
+	"trailer":             {},
+	"transfer-encoding":   {},
+	"upgrade":             {},
+}
+
+// isReservedHeader reports whether key names a header that WithHeader must not
+// set. Matching is case-insensitive per HTTP field-name rules.
+func isReservedHeader(key string) bool {
+	_, reserved := reservedHeaders[strings.ToLower(strings.TrimSpace(key))]
+	return reserved
+}
+
+// applyErrorHeaders copies the headers attached to err onto w. It must run
+// before the status line is written; errorenvelope.Write then sets Content-Type
+// afterwards, so the content type stays writer-owned even if a caller somehow
+// bypasses isReservedHeader.
+func applyErrorHeaders(w http.ResponseWriter, err *Error) {
+	for key, values := range err.headers {
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+}
+
 // writeErrorResponse writes the error as a JSON response by delegating to the
 // shared envelope writer. If r is non-nil, the request ID is automatically
 // included from context. Routing through errorenvelope.Write keeps this byte-
 // identical to the panic/auth/rate-limit paths in middleware/http.
 func writeErrorResponse(w http.ResponseWriter, r *http.Request, err *Error) {
+	applyErrorHeaders(w, err)
 	errorenvelope.Write(w, err.StatusCode, errorBody{
 		Code:      err.Code,
 		Message:   err.Message,

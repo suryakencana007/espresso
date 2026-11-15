@@ -253,6 +253,8 @@ Builder methods on `*Error`:
 (*Error) WithCode(code string) *Error
 (*Error) WithDetail(key string, value any) *Error
 (*Error) WithDetails(details map[string]any) *Error
+(*Error) WithHeader(key, value string) *Error
+(*Error) WithHeaderAdd(key, value string) *Error
 (*Error) WithRequestID(id string) *Error
 (*Error) Wrap(err error) *Error
 ```
