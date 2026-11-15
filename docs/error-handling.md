@@ -66,10 +66,14 @@ return espresso.ErrInternal("database error").
 
 The wrapped error is logged but **never exposed** to the client. Only the message and code are visible in the response.
 
-### Response Headers
+### Adding Response Headers
 
-Attach headers the status implies with `.WithHeader(key, value)`. They are
-written on the error path, before the status line:
+Sometimes the status code implies a header. A `429` should say how long to
+wait; a `401` should say how to authenticate. Since handlers don't receive the
+`http.ResponseWriter`, Espresso lets you attach those headers to the error
+itself.
+
+Use `.WithHeader(key, value)`:
 
 ```go
 return espresso.ErrTooManyRequests("too many attempts").
@@ -77,14 +81,20 @@ return espresso.ErrTooManyRequests("too many attempts").
     WithHeader("Retry-After", "30")
 ```
 
-Repeated calls with the same key replace the value. Use
-`.WithHeaderAdd(key, value)` to append instead, when a header may repeat (for
-example multiple `Set-Cookie` lines or `WWW-Authenticate` challenges).
+Calling `.WithHeader` again with the same key replaces the previous value. If
+a header may legally appear more than once — several `Set-Cookie` lines, or
+more than one `WWW-Authenticate` challenge — use `.WithHeaderAdd(key, value)`
+instead; it appends. A later `.WithHeader` on that key clears everything
+`.WithHeaderAdd` collected.
 
-Reserved headers the server owns are ignored (`Content-Type`,
-`Content-Length`, `Transfer-Encoding`) along with hop-by-hop headers
-(`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`,
-`TE`, `Trailer`, `Upgrade`), so a handler cannot corrupt response framing.
+Some headers can't be set this way, because doing so could break the response.
+Espresso ignores them (capitalization doesn't matter):
+
+- **Owned by the framework** — `Content-Type`, `Content-Length`, `Transfer-Encoding`.
+- **Hop-by-hop** — `Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`, `Upgrade`.
+
+Everything else — `Retry-After`, `WWW-Authenticate`, `Set-Cookie`, `Link`, and
+your own `X-*` headers — goes through as-is.
 
 ### Request ID Integration
 
