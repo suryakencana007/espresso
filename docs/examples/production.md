@@ -776,7 +776,8 @@ type User struct {
    
 ```go
 gen := openapi.NewGenerator("My API", "1.0.0")
-// Security will be added when middleware supports it
+gen.AddSecurityScheme("bearerAuth", openapi.BearerScheme("JWT"))
+gen.AddSecurityScheme("apiKeyAuth", openapi.APIKeyHeaderScheme("X-API-Key"))
 ```
 
 4. **Export spec**: Save to file for CI/CD pipelines

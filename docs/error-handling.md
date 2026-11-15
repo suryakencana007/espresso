@@ -81,11 +81,10 @@ Repeated calls with the same key replace the value. Use
 `.WithHeaderAdd(key, value)` to append instead, when a header may repeat (for
 example multiple `Set-Cookie` lines or `WWW-Authenticate` challenges).
 
-Reserved headers the
-server owns are ignored (`Content-Type`, `Content-Length`,
-`Transfer-Encoding`) along with hop-by-hop headers (`Connection`,
-`Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`, `TE`, `Trailer`,
-`Upgrade`), so a handler cannot corrupt response framing.
+Reserved headers the server owns are ignored (`Content-Type`,
+`Content-Length`, `Transfer-Encoding`) along with hop-by-hop headers
+(`Connection`, `Keep-Alive`, `Proxy-Authenticate`, `Proxy-Authorization`,
+`TE`, `Trailer`, `Upgrade`), so a handler cannot corrupt response framing.
 
 ### Request ID Integration
 
