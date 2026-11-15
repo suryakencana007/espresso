@@ -513,6 +513,49 @@ func TestError_WithHeader_Replace(t *testing.T) {
 	}
 }
 
+func TestError_WithHeaderAdd_MultipleValues(t *testing.T) {
+	err := ErrUnauthorized("authentication required").
+		WithHeader("WWW-Authenticate", `Bearer realm="api"`).
+		WithHeaderAdd("WWW-Authenticate", `Basic realm="api"`).
+		WithHeader("Set-Cookie", "a=1").
+		WithHeaderAdd("Set-Cookie", "b=2")
+
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	if got := w.Header().Values("WWW-Authenticate"); len(got) != 2 || got[0] != `Bearer realm="api"` || got[1] != `Basic realm="api"` {
+		t.Errorf("expected two WWW-Authenticate values, got %v", got)
+	}
+	if got := w.Header().Values("Set-Cookie"); len(got) != 2 || got[0] != "a=1" || got[1] != "b=2" {
+		t.Errorf("expected two Set-Cookie values, got %v", got)
+	}
+}
+
+func TestError_WithHeaderAdd_SetAfterAddReplaces(t *testing.T) {
+	err := ErrBadRequest("bad").
+		WithHeaderAdd("X-Multi", "one").
+		WithHeaderAdd("X-Multi", "two").
+		WithHeader("X-Multi", "three")
+
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	values := w.Header().Values("X-Multi")
+	if len(values) != 1 || values[0] != "three" {
+		t.Errorf("expected Set to collapse to a single 'three', got %v", values)
+	}
+}
+
+func TestError_WithHeaderAdd_ReservedIgnored(t *testing.T) {
+	err := ErrBadRequest("bad").WithHeaderAdd("Content-Length", "0")
+	w := httptest.NewRecorder()
+	writeErrorResponse(w, nil, err)
+
+	if got := w.Header().Get("Content-Length"); got != "" {
+		t.Errorf("reserved header must be ignored, got %q", got)
+	}
+}
+
 func TestError_WithHeader_ReservedIgnored(t *testing.T) {
 	reserved := []string{
 		"Content-Type", "content-length", "Transfer-Encoding",

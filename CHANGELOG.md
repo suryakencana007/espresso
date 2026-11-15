@@ -10,9 +10,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - `(*Error).WithHeader(key, value)` attaches response headers to a
-  handler-returned error — for example `Retry-After` on a 429. Reserved
-  framing headers (`Content-Type`, `Content-Length`, `Transfer-Encoding`)
-  and hop-by-hop headers are ignored. Closes #77.
+  handler-returned error — for example `Retry-After` on a 429 — and
+  `(*Error).WithHeaderAdd(key, value)` appends repeatable values such as
+  multiple `Set-Cookie` or `WWW-Authenticate` lines. Reserved framing headers
+  (`Content-Type`, `Content-Length`, `Transfer-Encoding`) and hop-by-hop
+  headers are ignored. Closes #77.
 
 ## [2.4.0] - 2026-07-05
 

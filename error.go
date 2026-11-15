@@ -136,7 +136,8 @@ func (e *Error) WithRequestID(requestID string) *Error {
 // WithHeader attaches a response header to the error and returns the Error for
 // chaining. The header is written on the error path, before the status line.
 // Repeated calls with the same key replace the previously set value (Set
-// semantics), matching WithCode/WithDetail.
+// semantics), matching WithCode/WithDetail; use WithHeaderAdd to append
+// instead of replace.
 //
 // Use it for headers the HTTP status implies, such as Retry-After on a 429:
 //
@@ -156,6 +157,27 @@ func (e *Error) WithHeader(key, value string) *Error {
 		e.headers = make(http.Header)
 	}
 	e.headers.Set(key, value)
+	return e
+}
+
+// WithHeaderAdd appends a value for key instead of replacing any previously
+// attached values, so one error can carry multiple headers of the same name —
+// for example several Set-Cookie lines or WWW-Authenticate challenges:
+//
+//	return espresso.ErrUnauthorized("authentication required").
+//	    WithHeader("WWW-Authenticate", `Bearer realm="api"`).
+//	    WithHeaderAdd("WWW-Authenticate", `Basic realm="api"`)
+//
+// The same reserved-header rules as WithHeader apply. A later WithHeader call
+// with the same key replaces every value accumulated by WithHeaderAdd.
+func (e *Error) WithHeaderAdd(key, value string) *Error {
+	if isReservedHeader(key) {
+		return e
+	}
+	if e.headers == nil {
+		e.headers = make(http.Header)
+	}
+	e.headers.Add(key, value)
 	return e
 }
 
