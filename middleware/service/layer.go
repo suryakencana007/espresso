@@ -295,11 +295,21 @@ func CircuitBreakerLayer[Req any, Res any](config CircuitBreakerConfig) Layer[Re
 
 				if time.Since(lastFail) > config.Timeout {
 					state.mu.Lock()
-					state.state = StateHalfOpen
-					state.successes = 0
-					state.halfOpenInFlight.Store(0)
+					// Re-check under the write lock. Several goroutines can read
+					// StateOpen with the timeout elapsed at once; only the first
+					// may transition and reset the probe counter. Without this
+					// guard every one of them re-runs the transition and
+					// Store(0)s the slot the previous goroutine just acquired,
+					// admitting more than HalfOpenMaxProbes probes.
+					if state.state == StateOpen && time.Since(state.lastFailTime) > config.Timeout {
+						state.state = StateHalfOpen
+						state.successes = 0
+						state.halfOpenInFlight.Store(0)
+					}
 					state.mu.Unlock()
 					// Fall through to acquire a probe slot for THIS request.
+					// Everyone that lost the transition race lands here too, so
+					// the atomic Add below remains the single admission gate.
 					if state.halfOpenInFlight.Add(1) > int64(config.HalfOpenMaxProbes) {
 						state.halfOpenInFlight.Add(-1)
 						var zero Res
