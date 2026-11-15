@@ -68,8 +68,9 @@ export default defineConfig({
       {
         text: "v2.5.0",
         items: [
+          { text: "Changelog", link: "/changelog" },
           {
-            text: "Changelog",
+            text: "GitHub Releases",
             link: "https://github.com/suryakencana007/espresso/releases",
           },
           {
