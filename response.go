@@ -60,6 +60,17 @@ type JSON[T any] struct {
 // If Cookies is non-empty, each cookie is written via http.SetCookie before
 // WriteHeader so Set-Cookie lands in the response head.
 func (j JSON[T]) WriteResponse(w http.ResponseWriter) error {
+	// Marshal before committing the status line: a payload that cannot be
+	// encoded must not leave the client with a 200 and a truncated body. The
+	// trailing newline keeps the bytes identical to the previous
+	// ConfigDefault.NewEncoder(w).Encode path. sonic.Marshal allocates its own
+	// buffer per call, same as the encoder did.
+	data, err := sonic.Marshal(j.Data)
+	if err != nil {
+		return err
+	}
+	data = append(data, '\n')
+
 	for _, c := range j.Cookies {
 		http.SetCookie(w, c)
 	}
@@ -69,14 +80,8 @@ func (j JSON[T]) WriteResponse(w http.ResponseWriter) error {
 		status = http.StatusOK
 	}
 	w.WriteHeader(status)
-
-	// Streaming encode direct to the ResponseWriter — the previous comment
-	// here claimed pooled-buffer encoding which was never implemented; sonic
-	// allocates its own transient buffer per Encode call. If users need to
-	// share encoding state across responses they can wire their own encoder,
-	// but the trade-off (one alloc per response vs global synchronization
-	// overhead) doesn't warrant a framework-level pool.
-	return sonic.ConfigDefault.NewEncoder(w).Encode(j.Data)
+	_, err = w.Write(data)
+	return err
 }
 
 // Reset implements Resettable by zeroing the JSON response.

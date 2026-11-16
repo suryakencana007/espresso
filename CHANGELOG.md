@@ -18,6 +18,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   panics after it has already started — or hijacked — the response. The
   response-started tracking is now shared by the root package and
   `middleware/http` via `internal/statuswriter`. Closes #90.
+- `JSON[T]` and `XML[T]` responses marshal before committing the status line,
+  so a payload that cannot be encoded returns a clean `500` instead of a
+  truncated `200`. Output bytes are unchanged for encodable payloads.
+  Closes #91.
 
 ## [2.5.0] - 2026-11-15
 

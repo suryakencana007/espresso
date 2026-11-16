@@ -104,22 +104,27 @@ func TestWriteResponseOrError_FallsBackBeforeResponseStarted(t *testing.T) {
 	}
 }
 
-func TestWriteAnyResponseOrError_MarshalFailureDoesNotDoubleWrite(t *testing.T) {
+func TestWriteAnyResponseOrError_MarshalFailureReturns500(t *testing.T) {
 	w := &writeHeaderCounter{}
-	// A channel cannot be encoded; JSON[T].WriteResponse commits 200 first.
+	// A channel cannot be encoded; JSON[T].WriteResponse must fail before it
+	// commits the status line, so the fallback can still send a clean 500.
 	writeAnyResponseOrError(w, httptest.NewRequest(http.MethodGet, "/", nil), make(chan int))
 
 	if w.headerN != 1 {
 		t.Fatalf("expected exactly one WriteHeader, got %d", w.headerN)
 	}
-	if w.status != http.StatusOK {
-		t.Fatalf("expected the committed 200 to stand, got %d", w.status)
+	if w.status != http.StatusInternalServerError {
+		t.Fatalf("expected a 500, got %d", w.status)
+	}
+	if !strings.Contains(w.body.String(), `"code":"INTERNAL"`) {
+		t.Fatalf("expected the canonical 500 envelope, got %q", w.body.String())
 	}
 }
 
-// TestRouter_NoSuperfluousWriteHeader asserts the user-visible symptom is gone:
-// a real server must not log "superfluous response.WriteHeader call" when a
-// handler's response fails to encode after the status line.
+// TestRouter_NoSuperfluousWriteHeader asserts two things for an unmarshalable
+// JSON response on a real server: the encoder failure is caught before the
+// status line (a clean 500, not a truncated 200), and no
+// "superfluous response.WriteHeader call" is logged.
 func TestRouter_NoSuperfluousWriteHeader(t *testing.T) {
 	router := Portafilter()
 	router.Get("/bad", func() JSON[chan int] {
@@ -136,11 +141,33 @@ func TestRouter_NoSuperfluousWriteHeader(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /bad: %v", err)
 	}
-	_, _ = io.Copy(io.Discard, resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 	_ = resp.Body.Close()
 
+	if resp.StatusCode != http.StatusInternalServerError {
+		t.Fatalf("expected a 500, got %d (body %q)", resp.StatusCode, body)
+	}
+	if !strings.Contains(string(body), `"code":"INTERNAL"`) {
+		t.Fatalf("expected the canonical 500 envelope, got %q", body)
+	}
 	if got := logBuf.String(); strings.Contains(got, "superfluous") {
 		t.Fatalf("server logged a superfluous WriteHeader: %q", got)
+	}
+}
+
+// TestJSON_WriteResponse_MarshalFailureWritesNothing locks the unit contract:
+// a payload that cannot be encoded must return before touching the writer.
+func TestJSON_WriteResponse_MarshalFailureWritesNothing(t *testing.T) {
+	w := &writeHeaderCounter{}
+
+	if err := (JSON[chan int]{Data: make(chan int)}).WriteResponse(w); err == nil {
+		t.Fatal("expected a marshal error")
+	}
+	if w.headerN != 0 {
+		t.Fatalf("a marshal failure must not commit a status line, got %v", w.statuses)
+	}
+	if w.body.Len() != 0 {
+		t.Fatalf("a marshal failure must not write a body, got %q", w.body.String())
 	}
 }
 
