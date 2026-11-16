@@ -437,6 +437,26 @@ func TestError_WithRequestID_WriteResponse(t *testing.T) {
 	}
 }
 
+// TestError_UnencodableDetailStillWellFormed locks the envelope against a
+// truncating write: a Detail that encoding/json cannot encode must not leave a
+// partial body behind (#94).
+func TestError_UnencodableDetailStillWellFormed(t *testing.T) {
+	w := httptest.NewRecorder()
+	r := httptest.NewRequest("GET", "/test", nil)
+	writeErrorResponse(w, r, ErrBadRequest("bad").WithDetail("oops", make(chan int)))
+
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected status 400, got %d", w.Code)
+	}
+	var resp errorResponse
+	if err := json.NewDecoder(w.Body).Decode(&resp); err != nil {
+		t.Fatalf("envelope is not valid JSON (truncated?): %v", err)
+	}
+	if resp.Error.Code != "BAD_REQUEST" {
+		t.Fatalf("expected code BAD_REQUEST, got %q", resp.Error.Code)
+	}
+}
+
 func TestError_WithHeader_WriteResponse(t *testing.T) {
 	err := ErrTooManyRequests("too many attempts").
 		WithCode("TOO_MANY_REQUESTS").

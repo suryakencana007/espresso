@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   so a payload that cannot be encoded returns a clean `500` instead of a
   truncated `200`. Output bytes are unchanged for encodable payloads.
   Closes #91.
+- `errorenvelope.Write` marshals the error envelope before committing the
+  status line, so an error whose `Details` holds a value `encoding/json`
+  cannot encode drops those details instead of truncating the body. Closes
+  #94.
 
 ## [2.5.0] - 2026-11-15
 

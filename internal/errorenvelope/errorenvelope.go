@@ -47,11 +47,24 @@ type envelope struct {
 }
 
 // Write serializes {"error": body} as JSON with the canonical content type and
-// the given status code. It sets Content-Type, writes the status header once,
-// then streams the body — the same sequence the root package uses. It uses the
-// stdlib encoding/json encoder (not sonic) so the leaf stays dependency-free.
+// the given status code. It marshals the envelope before committing the status
+// line: Body.Details is a map[string]any and can hold a value encoding/json
+// cannot encode, and a marshal failure after WriteHeader would truncate the
+// body. When that happens Details is dropped so the client still gets a
+// well-formed envelope; code, message, and request id are preserved.
+//
+// It uses the stdlib encoding/json encoder (not sonic) so the leaf stays
+// dependency-free, and appends the trailing newline json.Encoder.Encode would
+// have written so the bytes are unchanged.
 func Write(w http.ResponseWriter, status int, body Body) {
+	data, err := json.Marshal(envelope{Error: body})
+	if err != nil {
+		// Details carried something json cannot encode; keep the rest of the
+		// envelope rather than truncating the response mid-body.
+		body.Details = nil
+		data, _ = json.Marshal(envelope{Error: body})
+	}
 	w.Header().Set("Content-Type", ContentType)
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(envelope{Error: body})
+	_, _ = w.Write(append(data, '\n'))
 }
