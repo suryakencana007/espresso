@@ -1,13 +1,13 @@
 package espresso
 
 import (
-	"bufio"
 	"context"
-	"net"
 	"net/http"
 	"reflect"
 	"strconv"
 	"sync"
+
+	"github.com/suryakencana007/espresso/v2/internal/statuswriter"
 )
 
 var (
@@ -777,69 +777,13 @@ func writeResponse(w http.ResponseWriter, res any) error {
 	}
 }
 
-// responseTracker wraps a ResponseWriter for the duration of a single
-// WriteResponse call so the error path can tell whether the status line was
-// already sent. Once a response has started, a 500 cannot replace it, and
-// net/http logs the second WriteHeader as "superfluous response.WriteHeader
-// call". The wrapper also suppresses duplicate WriteHeader calls and forwards
-// the optional writer interfaces so a custom IntoResponse that flushes,
-// hijacks, or pushes still works.
-type responseTracker struct {
-	http.ResponseWriter
-	wroteHeader bool
-}
-
-func (t *responseTracker) WriteHeader(code int) {
-	// Informational responses (1xx, except 101 Switching Protocols) do not
-	// commit the status line: net/http allows a final WriteHeader after them.
-	if code >= 100 && code < 200 && code != http.StatusSwitchingProtocols {
-		t.ResponseWriter.WriteHeader(code)
-		return
-	}
-	if t.wroteHeader {
-		return
-	}
-	t.wroteHeader = true
-	t.ResponseWriter.WriteHeader(code)
-}
-
-func (t *responseTracker) Write(p []byte) (int, error) {
-	// A Write before any WriteHeader implicitly commits a 200.
-	t.wroteHeader = true
-	return t.ResponseWriter.Write(p)
-}
-
-func (t *responseTracker) Flush() {
-	// Flush commits a 200 before it sends the buffered headers/body.
-	t.wroteHeader = true
-	if f, ok := t.ResponseWriter.(http.Flusher); ok {
-		f.Flush()
-	}
-}
-
-func (t *responseTracker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	if h, ok := t.ResponseWriter.(http.Hijacker); ok {
-		return h.Hijack()
-	}
-	return nil, nil, http.ErrNotSupported
-}
-
-func (t *responseTracker) Push(target string, opts *http.PushOptions) error {
-	if p, ok := t.ResponseWriter.(http.Pusher); ok {
-		return p.Push(target, opts)
-	}
-	return http.ErrNotSupported
-}
-
-func (t *responseTracker) Unwrap() http.ResponseWriter { return t.ResponseWriter }
-
 // writeResponseOrError writes res, and only falls back to a canonical 500 when
 // the write failed before the status line was committed. If the response has
 // already started there is nothing to replace, so the fallback is skipped
 // rather than emitting a second WriteHeader.
 func writeResponseOrError[Res IntoResponse](w http.ResponseWriter, r *http.Request, res Res) {
-	tracked := &responseTracker{ResponseWriter: w}
-	if err := res.WriteResponse(tracked); err != nil && !tracked.wroteHeader {
+	tracked := statuswriter.New(w)
+	if err := res.WriteResponse(tracked); err != nil && !tracked.WroteHeader() {
 		writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 	}
 }
@@ -847,8 +791,8 @@ func writeResponseOrError[Res IntoResponse](w http.ResponseWriter, r *http.Reque
 // writeAnyResponseOrError is writeResponseOrError for the reflection dispatch
 // path, where the concrete response type is not known statically.
 func writeAnyResponseOrError(w http.ResponseWriter, r *http.Request, res any) {
-	tracked := &responseTracker{ResponseWriter: w}
-	if err := writeResponse(tracked, res); err != nil && !tracked.wroteHeader {
+	tracked := statuswriter.New(w)
+	if err := writeResponse(tracked, res); err != nil && !tracked.WroteHeader() {
 		writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
 	}
 }

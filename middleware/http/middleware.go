@@ -18,6 +18,7 @@ import (
 	"github.com/rs/zerolog/log"
 
 	"github.com/suryakencana007/espresso/v2/internal/errorenvelope"
+	"github.com/suryakencana007/espresso/v2/internal/statuswriter"
 )
 
 // Middleware wraps an HTTP handler with additional behavior.
@@ -70,11 +71,13 @@ func GetRequestID(ctx context.Context) string {
 func RecoverMiddleware() Middleware {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			tracked := statuswriter.New(w)
+			// RecoverMiddleware tracks whether the response started so a panic
+			// after the handler already committed a response does not write a
+			// second status line (net/http logs that as "superfluous").
 			defer func() {
 				if rec := recover(); rec != nil {
 					stack := debug.Stack()
-
-					_ = rec // panic value used for logging above
 
 					log.Error().
 						Interface("error", rec).
@@ -83,6 +86,13 @@ func RecoverMiddleware() Middleware {
 						Str("request_id", GetRequestID(r.Context())).
 						Str("stack", string(stack)).
 						Msg("Panic recovered")
+
+					// The handler may have committed a response before panicking;
+					// a 500 cannot replace it and would be logged as a superfluous
+					// WriteHeader. Only emit the envelope when nothing was sent.
+					if tracked.WroteHeader() {
+						return
+					}
 
 					// Emit the canonical error envelope via the cycle-safe leaf
 					// so a recovered panic is byte-identical to a writeHandlerError
@@ -95,7 +105,7 @@ func RecoverMiddleware() Middleware {
 					})
 				}
 			}()
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(tracked, r)
 		})
 	}
 }
