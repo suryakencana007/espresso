@@ -801,6 +801,37 @@ func TestXMLExtractor_WriteResponseWithStatus(t *testing.T) {
 	}
 }
 
+// xmlWriteCounter records WriteHeader calls so a marshal failure can be shown
+// not to commit a status line.
+type xmlWriteCounter struct {
+	header  http.Header
+	headerN int
+}
+
+func (c *xmlWriteCounter) Header() http.Header {
+	if c.header == nil {
+		c.header = http.Header{}
+	}
+	return c.header
+}
+
+func (c *xmlWriteCounter) WriteHeader(int)             { c.headerN++ }
+func (c *xmlWriteCounter) Write(p []byte) (int, error) { return len(p), nil }
+
+func TestXMLExtractor_WriteResponse_MarshalFailureWritesNothing(t *testing.T) {
+	// A channel cannot be marshaled to XML; the failure must happen before the
+	// status line so the framework can still send a clean error.
+	ext := &XMLExtractor[chan int]{Data: make(chan int)}
+	w := &xmlWriteCounter{}
+
+	if err := ext.WriteResponse(w); err == nil {
+		t.Fatal("expected a marshal error")
+	}
+	if w.headerN != 0 {
+		t.Fatalf("a marshal failure must not commit a status line, got %d WriteHeader calls", w.headerN)
+	}
+}
+
 func TestFieldErrors_Empty(t *testing.T) {
 	errors := FieldErrors{}
 

@@ -429,6 +429,13 @@ func (x *XMLExtractor[T]) Reset() {
 
 // WriteResponse writes the XML response to the HTTP response writer.
 func (x *XMLExtractor[T]) WriteResponse(w http.ResponseWriter) error {
+	// Marshal before committing the status line so a payload that cannot be
+	// encoded does not leave a truncated response behind. (xml.Marshal + the
+	// header is byte-identical to xml.Header + xml.NewEncoder(w).Encode.)
+	body, err := xml.Marshal(x.Data)
+	if err != nil {
+		return err
+	}
 	w.Header().Set("Content-Type", "application/xml")
 	status := 0
 	if s, ok := any(x.Data).(interface{ StatusCode() int }); ok {
@@ -438,11 +445,11 @@ func (x *XMLExtractor[T]) WriteResponse(w http.ResponseWriter) error {
 		status = http.StatusOK
 	}
 	w.WriteHeader(status)
-	_, err := w.Write([]byte(xml.Header))
-	if err != nil {
+	if _, err := w.Write([]byte(xml.Header)); err != nil {
 		return err
 	}
-	return xml.NewEncoder(w).Encode(x.Data)
+	_, err = w.Write(body)
+	return err
 }
 
 // Query is a type alias for QueryExtractor[T].
