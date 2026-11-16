@@ -1,7 +1,9 @@
 package espresso
 
 import (
+	"bufio"
 	"context"
+	"net"
 	"net/http"
 	"reflect"
 	"strconv"
@@ -780,13 +782,20 @@ func writeResponse(w http.ResponseWriter, res any) error {
 // already sent. Once a response has started, a 500 cannot replace it, and
 // net/http logs the second WriteHeader as "superfluous response.WriteHeader
 // call". The wrapper also suppresses duplicate WriteHeader calls and forwards
-// Flush/Unwrap so a custom IntoResponse that streams still works.
+// the optional writer interfaces so a custom IntoResponse that flushes,
+// hijacks, or pushes still works.
 type responseTracker struct {
 	http.ResponseWriter
 	wroteHeader bool
 }
 
 func (t *responseTracker) WriteHeader(code int) {
+	// Informational responses (1xx, except 101 Switching Protocols) do not
+	// commit the status line: net/http allows a final WriteHeader after them.
+	if code >= 100 && code < 200 && code != http.StatusSwitchingProtocols {
+		t.ResponseWriter.WriteHeader(code)
+		return
+	}
 	if t.wroteHeader {
 		return
 	}
@@ -801,9 +810,25 @@ func (t *responseTracker) Write(p []byte) (int, error) {
 }
 
 func (t *responseTracker) Flush() {
+	// Flush commits a 200 before it sends the buffered headers/body.
+	t.wroteHeader = true
 	if f, ok := t.ResponseWriter.(http.Flusher); ok {
 		f.Flush()
 	}
+}
+
+func (t *responseTracker) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	if h, ok := t.ResponseWriter.(http.Hijacker); ok {
+		return h.Hijack()
+	}
+	return nil, nil, http.ErrNotSupported
+}
+
+func (t *responseTracker) Push(target string, opts *http.PushOptions) error {
+	if p, ok := t.ResponseWriter.(http.Pusher); ok {
+		return p.Push(target, opts)
+	}
+	return http.ErrNotSupported
 }
 
 func (t *responseTracker) Unwrap() http.ResponseWriter { return t.ResponseWriter }
