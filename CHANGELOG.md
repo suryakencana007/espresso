@@ -7,25 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [2.5.1] - 2026-11-16
+
+A patch release about **response writing when something goes wrong mid-write**.
+All four fixes close the same class of bug: the framework could commit a status
+line and then fail, which net/http reports as
+`superfluous response.WriteHeader call` and which left the client with a
+misleading response.
+
+**Upgrade from v2.5.0:** nothing to change. No API was added, removed, or
+re-signatured, and encoded output is byte-identical for successful responses.
+
 ### Fixed
 
-- The response-write error fallback no longer emits a second `WriteHeader`
-  ("superfluous response.WriteHeader call") once a response has already
-  started. A write that fails after the status line — a client disconnect, or
-  a JSON payload that cannot be marshalled — is now left alone; the 500
-  envelope is written only when nothing was sent yet. Closes #88.
-- `RecoverMiddleware` no longer writes a second status line when a handler
-  panics after it has already started — or hijacked — the response. The
-  response-started tracking is now shared by the root package and
-  `middleware/http` via `internal/statuswriter`. Closes #90.
-- `JSON[T]` and `XML[T]` responses marshal before committing the status line,
-  so a payload that cannot be encoded returns a clean `500` instead of a
-  truncated `200`. Output bytes are unchanged for encodable payloads.
-  Closes #91.
-- `errorenvelope.Write` marshals the error envelope before committing the
-  status line, so an error whose `Details` holds a value `encoding/json`
-  cannot encode drops those details instead of truncating the body. Closes
-  #94.
+- **`JSON[T]` and `XML[T]` marshal before committing the status line**, so a
+  payload that cannot be encoded returns a clean `500` with the canonical
+  envelope instead of a `200` with a truncated body (#91).
+- **`errorenvelope.Write` marshals the envelope before committing the status
+  line.** An error whose `Details` holds a value `encoding/json` cannot encode
+  now drops those details rather than truncating the body; `code`, `message`,
+  and `request_id` survive (#94).
+- **The response-write error fallback no longer emits a second `WriteHeader`.**
+  A write that fails after the response started — a client disconnect — is
+  left alone instead of logging a superfluous status write; the 500 envelope
+  is written only when nothing was sent yet (#88).
+- **`RecoverMiddleware` skips the 500 envelope when the handler already started
+  — or hijacked — the response.** A panic after the first byte keeps the first
+  status instead of writing a second one. The response-started tracking is now
+  shared by the root package and `middleware/http` via the new
+  `internal/statuswriter` leaf (#90).
 
 ## [2.5.0] - 2026-11-15
 

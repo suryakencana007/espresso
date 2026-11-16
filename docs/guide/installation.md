@@ -99,7 +99,7 @@ module your-project
 go 1.23
 
 require (
-    github.com/suryakencana007/espresso/v2 v2.5.0
+    github.com/suryakencana007/espresso/v2 v2.5.1
     github.com/bytedance/sonic v1.15.3
     github.com/rs/zerolog v1.35.0
 )
