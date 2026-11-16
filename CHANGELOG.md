@@ -14,6 +14,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   started. A write that fails after the status line — a client disconnect, or
   a JSON payload that cannot be marshalled — is now left alone; the 500
   envelope is written only when nothing was sent yet. Closes #88.
+- `RecoverMiddleware` no longer writes a second status line when a handler
+  panics after it has already started — or hijacked — the response. The
+  response-started tracking is now shared by the root package and
+  `middleware/http` via `internal/statuswriter`. Closes #90.
 
 ## [2.5.0] - 2026-11-15
 

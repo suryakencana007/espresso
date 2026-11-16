@@ -1,12 +1,10 @@
 package espresso
 
 import (
-	"bufio"
 	"bytes"
 	"errors"
 	"io"
 	stdlog "log"
-	"net"
 	"net/http"
 	"net/http/httptest"
 	"slices"
@@ -188,58 +186,5 @@ func TestWriteResponseOrError_FlushCommitsResponse(t *testing.T) {
 	}
 	if w.body.Len() != 0 {
 		t.Fatalf("no fallback body expected after a flush, got %q", w.body.String())
-	}
-}
-
-var errHijacked = errors.New("hijacked")
-
-// hijackPusherWriter implements the optional writer interfaces so the tracker's
-// forwarding can be observed.
-type hijackPusherWriter struct {
-	writeHeaderCounter
-	pushed string
-}
-
-func (w *hijackPusherWriter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
-	return nil, nil, errHijacked
-}
-
-func (w *hijackPusherWriter) Push(target string, _ *http.PushOptions) error {
-	w.pushed = target
-	return nil
-}
-
-func TestResponseTracker_ForwardsOptionalInterfaces(t *testing.T) {
-	base := &writeHeaderCounter{}
-	tracked := &responseTracker{ResponseWriter: base}
-
-	var (
-		_ http.Flusher  = tracked
-		_ http.Hijacker = tracked
-		_ http.Pusher   = tracked
-	)
-
-	// The counter implements none of them, so the tracker reports
-	// ErrNotSupported instead of panicking.
-	if _, _, err := tracked.Hijack(); !errors.Is(err, http.ErrNotSupported) {
-		t.Fatalf("Hijack on a non-hijackable writer: got %v, want ErrNotSupported", err)
-	}
-	if err := tracked.Push("/", nil); !errors.Is(err, http.ErrNotSupported) {
-		t.Fatalf("Push on a non-pushable writer: got %v, want ErrNotSupported", err)
-	}
-}
-
-func TestResponseTracker_HijackPushForward(t *testing.T) {
-	base := &hijackPusherWriter{}
-	tracked := &responseTracker{ResponseWriter: base}
-
-	if _, _, err := tracked.Hijack(); !errors.Is(err, errHijacked) {
-		t.Fatalf("Hijack not forwarded: got %v", err)
-	}
-	if err := tracked.Push("/next", nil); err != nil {
-		t.Fatalf("Push: %v", err)
-	}
-	if base.pushed != "/next" {
-		t.Fatalf("Push not forwarded, got %q", base.pushed)
 	}
 }
