@@ -329,9 +329,7 @@ func createTypedHandler(handler any, reqType reflect.Type, _ reflect.Type, layer
 			return
 		}
 
-		if err := writeResponse(w, res); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeAnyResponseOrError(w, r, res)
 	}, nil
 }
 
@@ -457,8 +455,6 @@ func applyLayersAndConvert[Req FromRequest, Res IntoResponse](svc Service[Req, R
 		}
 
 		// Write response
-		if err := res.WriteResponse(w); err != nil {
-			writeHandlerError(w, r, ErrInternal("response write failed").Wrap(err))
-		}
+		writeResponseOrError(w, r, res)
 	}
 }
