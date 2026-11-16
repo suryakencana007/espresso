@@ -39,7 +39,7 @@ If your app already runs on v2.4 and uses the public API:
 1. **Update the dependency:**
 
    ```sh
-   go get github.com/suryakencana007/espresso/v2@v2.5.0
+   go get github.com/suryakencana007/espresso/v2@v2.5.1
    ```
 
 2. **Build it:** `go build ./...`. It will. Nothing in v2.5 can produce a

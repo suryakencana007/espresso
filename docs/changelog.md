@@ -6,17 +6,53 @@ version number tells you what to expect:
 
 - **Major** (`2.x → 3.x`) — something breaking. Old code may need edits.
 - **Minor** (`2.4 → 2.5`) — new features, nothing breaks. Upgrade when ready.
-- **Patch** (`2.5.0 → 2.5.1`) — bug fixes only.
+- **Patch** (`2.5.1 → 2.5.2`) — bug fixes only.
 
 Looking for the exhaustive, line-by-line list? See the
 [full CHANGELOG](https://github.com/suryakencana007/espresso/blob/main/CHANGELOG.md)
 or browse [GitHub releases](https://github.com/suryakencana007/espresso/releases).
 
 ::: tip Latest release
-**v2.5.0** — *Headers & Recovery* · 15 November 2026
+**v2.5.1** — *Safer Response Writes* · 16 November 2026
 :::
 
 ---
+
+## v2.5.1 — Safer Response Writes
+
+**16 November 2026 · patch release** · no upgrade steps needed
+
+A small patch that fixes what happens when writing a response blows up
+halfway through. It is one root problem wearing four hats: the framework
+could send the status line and *then* hit an error, and once the status is
+gone there is no way to take it back. net/http complains about the second
+attempt (`superfluous response.WriteHeader call`), and the client is left with
+something misleading.
+
+**A payload that cannot be encoded now returns a real error.** If a handler
+returns a `JSON[T]` (or `XML[T]`) value that the encoder cannot handle — a
+channel, a function, an unsupported map key — the response used to go out as
+`200 OK` with a half-written body. Now the payload is encoded *before* the
+status is chosen, so the client gets a proper `500` and the usual error
+envelope instead of a truncated success. Normal responses are byte-for-byte
+identical to before.
+
+**The same for the error envelope itself.** An error carrying a `Details`
+value that cannot be encoded no longer truncates the error body. The offending
+details are dropped and the rest of the envelope — code, message, request id —
+still reaches the client.
+
+**A write that fails after the first byte is left alone.** If the client goes
+away mid-response (a cancelled fetch, a closed tab), there is nothing useful to
+send and no status left to change, so the framework no longer tries. That
+removes the `superfluous response.WriteHeader call` lines from your logs.
+
+**Panics after a response started no longer double-write either.**
+`RecoverMiddleware` still logs the panic, but it only writes the canonical
+`500` when nothing has been sent — including after a WebSocket hijack, where
+writing an HTTP response would be meaningless.
+
+No API changes, nothing to rename, nothing to migrate.
 
 ## v2.5.0 — Headers & Recovery
 
